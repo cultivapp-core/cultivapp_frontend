@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { 
   FiCamera, FiLoader, FiMapPin, FiArrowRight, 
   FiMessageSquare, FiSend, FiX, FiCheckCircle, 
-  FiWifiOff, FiWifi, FiTrash2, FiImage 
+  FiWifiOff, FiWifi, FiTrash2, FiImage, FiPlusCircle, FiLogOut 
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
@@ -20,22 +20,26 @@ const VisitFlow = () => {
   const [loading, setLoading] = useState(false);
   const [capturing, setCapturing] = useState(false);
   
+  // 🕒 ESTADOS DE TRACEABILIDAD Y GESTIÓN POR PRODUCTO
+  const [productStartTime, setProductStartTime] = useState(null);
   const [scannedCodes, setScannedCodes] = useState([]); 
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
   const [comment, setComment] = useState("");
   const [commentPhoto, setCommentPhoto] = useState(null); 
+  const [gondolaInicialPhoto, setGondolaInicialPhoto] = useState(null);
 
+  // Pasos actualizados según fluj.jpeg (Loop de gestión entre 2 y 5)
   const stepsInfo = {
-    1: { key: "Fachada", title: "Foto de Local", sub: "Evidencia de llegada" },
-    2: { key: "Góndola Inicio", title: "Góndola Inicial", sub: "Estado previo a reposición" },
-    3: { key: "escaneo", title: "Escanear Productos", sub: "Registra los EAN de reposición" },
-    4: { key: "Góndola Final", title: "Góndola Final", sub: "Evidencia trabajo terminado" },
-    5: { key: "preguntas", title: "Gestión Realizada", sub: "Responde el formulario de visita" },
-    6: { key: "Observaciones", title: "Cierre de Visita", sub: "Evidencia final y observaciones" }
+    1: { key: "Fachada", title: "Llegada al Local", sub: "Evidencia de entrada" },
+    2: { key: "Góndola Inicio", title: "Góndola Inicial", sub: "Estado previo (Inicio Tarea)" },
+    3: { key: "escaneo", title: "Escanear Producto", sub: "Registro de EAN" },
+    4: { key: "preguntas", title: "Encuesta de Gestión", sub: "Formulario del producto" },
+    5: { key: "Observaciones", title: "Observación Adicional", sub: "Foto y comentarios de tarea" },
+    6: { key: "Decision", title: "¿Siguiente Producto?", sub: "Registrar y continuar o finalizar" },
+    7: { key: "Salida", title: "Registro de Salida", sub: "Evidencia final de jornada" }
   };
 
-  // Escucha cambios de red para actualizar la UI en tiempo real
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
     window.addEventListener("online", handleStatus);
@@ -46,9 +50,15 @@ const VisitFlow = () => {
     };
   }, []);
 
-  // Carga de preguntas con cache local para modo offline
+  // Capturamos el inicio de tiempo cuando se empieza un nuevo producto (Paso 2)
   useEffect(() => {
-    if (step === 5) {
+    if (step === 2 && !productStartTime) {
+      setProductStartTime(new Date().toISOString());
+    }
+  }, [step, productStartTime]);
+
+  useEffect(() => {
+    if (step === 4) {
       const loadQuestions = async () => {
         try {
           const data = await api.get("/questions");
@@ -56,26 +66,19 @@ const VisitFlow = () => {
           localStorage.setItem("cultivapp_questions_cache", JSON.stringify(data));
         } catch (err) {
           const cached = localStorage.getItem("cultivapp_questions_cache");
-          if (cached) {
-            setQuestions(JSON.parse(cached));
-            toast("Formulario cargado offline", { icon: '📴' });
-          }
+          if (cached) setQuestions(JSON.parse(cached));
         }
       };
       loadQuestions();
     }
   }, [step]);
 
-  /**
-   * 📸 MANEJO DE CAPTURA DE FOTOS
-   * Soporta sincronización inmediata o guardado offline automático vía OfflineManager
-   */
   const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setCapturing(true);
-    const toastId = toast.loading(isOnline ? "Sincronizando foto..." : "Guardando foto localmente...");
+    const toastId = toast.loading("Procesando imagen...");
 
     const formData = new FormData();
     const tipoEvidencia = stepsInfo[step].key;
@@ -83,24 +86,19 @@ const VisitFlow = () => {
     formData.append("foto", file); 
 
     try {
-      /**
-       * 🚩 EL CAMBIO: El api.post se encarga de llamar al OfflineManager 
-       * si detecta fallo de red. El componente solo recibe la respuesta.
-       */
       const response = await api.post(`/reports/${id}/photo`, formData);
-      
-      // Si la respuesta indica offline, creamos un preview local
       const photoUrl = response?.offline ? URL.createObjectURL(file) : response.url;
 
-      if (step === 6) {
-        setCommentPhoto(photoUrl);
-        toast.success(response?.offline ? "Foto guardada offline" : "Foto sincronizada", { id: toastId });
-      } else {
-        toast.success(response?.offline ? "Visibilidad guardada offline" : "Foto sincronizada", { id: toastId });
+      if (step === 2) setGondolaInicialPhoto(photoUrl);
+      if (step === 5) setCommentPhoto(photoUrl);
+
+      toast.success("Captura guardada", { id: toastId });
+      
+      // Avance automático en pasos de flujo único
+      if (step === 1 || step === 2 || step === 7) {
         setStep(prev => prev + 1);
       }
     } catch (err) {
-      console.error("Error capturando foto:", err);
       toast.error("Error al procesar imagen", { id: toastId });
     } finally {
       setCapturing(false);
@@ -108,9 +106,7 @@ const VisitFlow = () => {
     }
   };
 
-  /**
-   * 🛒 ESCANEO DE PRODUCTOS
-   */
+  // 🛒 LÓGICA DE SCANNER (Mantenida intacta)
   const handleScanSuccess = async (decodedText) => {
     if (scannedCodes.includes(decodedText)) return; 
     if (isProcessingScan.current) return;
@@ -124,33 +120,63 @@ const VisitFlow = () => {
   };
 
   /**
-   * ✅ CIERRE DE VISITA
+   * 🚩 REGISTRO DE TAREA POR PRODUCTO (Trazabilidad)
+   * Se llama al tomar una decisión en el paso 6.
    */
-  const finalizarTodo = async () => {
+  const registrarGestionProducto = async (proximoPaso) => {
     setLoading(true);
-    const toastId = toast.loading(isOnline ? "Finalizando visita..." : "Guardando cierre localmente...");
-    try {
-      const res = await api.post(`/routes/${id}/finish`, { 
-        responses: answers, 
-        comment, 
-        comment_photo_url: commentPhoto 
-      });
+    const toastId = toast.loading("Registrando gestión de producto...");
+    
+    const taskData = {
+      product_codes: scannedCodes,
+      start_time: productStartTime,
+      end_time: new Date().toISOString(),
+      responses: answers,
+      comment,
+      photo_before: gondolaInicialPhoto,
+      photo_after: commentPhoto
+    };
 
-      if (res.offline) {
-        toast.success("Gestión guardada offline. Se enviará al detectar internet.", { id: toastId, duration: 4000 });
+    try {
+      // Guardamos la tarea individual en el backend
+      await api.post(`/routes/${id}/task`, taskData);
+
+      // Limpiamos estados de producto para el siguiente ciclo
+      setScannedCodes([]);
+      setAnswers({});
+      setComment("");
+      setCommentPhoto(null);
+      setGondolaInicialPhoto(null);
+      setProductStartTime(null);
+
+      toast.success("Producto registrado", { id: toastId });
+
+      if (proximoPaso === 'NUEVO') {
+        setStep(2); // Volver a Góndola Inicial
       } else {
-        toast.success("¡Visita finalizada exitosamente!", { id: toastId });
+        setStep(7); // Ir a Registro de Salida
       }
-      
+    } catch (err) {
+      toast.error("Error al registrar tarea", { id: toastId });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finalizarVisitaTotal = async () => {
+    setLoading(true);
+    const toastId = toast.loading("Finalizando visita...");
+    try {
+      await api.post(`/routes/${id}/finish`, { status: "completed" });
+      toast.success("¡Visita finalizada exitosamente!", { id: toastId });
       navigate("/usuario/home");
     } catch (err) { 
-      toast.error("Error al finalizar la visita", { id: toastId }); 
+      toast.error("Error al cerrar visita", { id: toastId }); 
     } finally { 
       setLoading(false); 
     }
   };
 
-  // ... (Resto del JSX se mantiene igual para no romper la UI minimalista)
   return (
     <div className={`min-h-screen font-[Outfit] p-4 pb-24 flex flex-col items-center transition-colors duration-500 ${isOnline ? 'bg-gray-50' : 'bg-orange-50/40'}`}>
       
@@ -162,38 +188,46 @@ const VisitFlow = () => {
 
       {/* Barra de Progreso */}
       <div className="w-full max-w-md flex justify-between mb-8 sticky top-6 z-20 py-2">
-        {[1, 2, 3, 4, 5, 6].map(i => (
-          <div key={i} className={`h-1.5 flex-1 mx-1 rounded-full transition-all duration-700 ${step >= i ? (isOnline ? 'bg-[#87be00]' : 'bg-orange-500') : 'bg-gray-200'}`} />
+        {[1, 2, 3, 4, 5, 7].map(i => (
+          <div key={i} className={`h-1.5 flex-1 mx-1 rounded-full transition-all duration-700 ${step >= i ? 'bg-[#87be00]' : 'bg-gray-200'}`} />
         ))}
       </div>
 
       <div className="w-full max-w-md bg-white p-6 rounded-[2.5rem] shadow-xl text-center space-y-6 border border-gray-100 relative overflow-hidden">
         
-        <div className="absolute top-6 right-6 flex items-center gap-1.5">
-           <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-[#87be00]' : 'bg-orange-500'} animate-pulse`} />
-           <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">{isOnline ? 'Online' : 'Offline'}</span>
-        </div>
-
         <div className="space-y-1 pt-2">
-            <h2 className="text-xl font-black uppercase text-gray-900 tracking-tighter leading-none">{stepsInfo[step].title}</h2>
-            <p className={`text-[9px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step].sub}</p>
+            <h2 className="text-xl font-black uppercase text-gray-900 leading-none">{stepsInfo[step]?.title || "Cierre"}</h2>
+            <p className={`text-[9px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step]?.sub}</p>
         </div>
 
-        {/* PASOS DE CAPTURA 1, 2, 4 */}
-        {(step === 1 || step === 2 || step === 4) && (
-          <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer relative group transition-all active:scale-95">
-             {capturing ? <FiLoader className="animate-spin text-[#87be00]" size={44} /> : (
+        {/* CAPTURA DE FOTOS: 1, 2, 5, 7 */}
+        {(step === 1 || step === 2 || step === 5 || step === 7) && (
+          <div className="space-y-4">
+             {((step === 5 && commentPhoto) || (step === 2 && gondolaInicialPhoto)) ? (
+                <div className="relative rounded-[3rem] overflow-hidden border-4 border-gray-100">
+                    <img src={step === 5 ? commentPhoto : gondolaInicialPhoto} className="w-full aspect-square object-cover" />
+                    <button onClick={() => step === 5 ? setCommentPhoto(null) : setGondolaInicialPhoto(null)} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg"><FiX/></button>
+                </div>
+             ) : (
+                <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
+                  {capturing ? <FiLoader className="animate-spin text-[#87be00]" size={44} /> : (
+                    <>
+                      <div className="bg-white p-6 rounded-full shadow-sm mb-4"><FiCamera size={40} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /></div>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar {stepsInfo[step].title}</span>
+                    </>
+                  )}
+                </div>
+             )}
+             {step === 5 && (
                <>
-                 <div className="bg-white p-6 rounded-full shadow-sm mb-4">
-                    <FiCamera size={40} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} />
-                 </div>
-                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-center px-4">Toca para capturar {stepsInfo[step].title}</span>
+                <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentarios sobre este producto..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
+                <button onClick={() => setStep(6)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Finalizar Producto <FiArrowRight size={16}/></button>
                </>
              )}
           </div>
         )}
 
-        {/* PASO 3: SCANNER */}
+        {/* PASO 3: SCANNER (Intacto) */}
         {step === 3 && (
           <div className="space-y-4 animate-in zoom-in duration-300">
             <div className="rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
@@ -210,12 +244,12 @@ const VisitFlow = () => {
                   </div>
                 )) : <p className="text-[10px] text-gray-300 font-bold uppercase py-8">Esperando productos...</p>}
             </div>
-            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Siguiente Paso <FiArrowRight size={16} className="text-[#87be00]"/></button>
+            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Continuar <FiArrowRight size={16}/></button>
           </div>
         )}
 
-        {/* PASO 5: PREGUNTAS */}
-        {step === 5 && (
+        {/* PASO 4: ENCUESTA */}
+        {step === 4 && (
            <div className="space-y-4 animate-in slide-in-from-right duration-300">
              <div className="bg-gray-50 p-2 rounded-[2.5rem] space-y-1">
                {questions.map((q) => (
@@ -225,53 +259,42 @@ const VisitFlow = () => {
                  </button>
                ))}
              </div>
-             <button onClick={() => setStep(6)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Continuar <FiArrowRight size={16}/></button>
+             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Observaciones <FiArrowRight/></button>
            </div>
         )}
 
-        {/* PASO 6: CIERRE */}
+        {/* PASO 6: DECISIÓN (Diamante fluj.jpeg) */}
         {step === 6 && (
-           <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-500">
-              <div className="space-y-3 text-left">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 flex items-center gap-2">
-                  <FiImage className={isOnline ? 'text-[#87be00]' : 'text-orange-500'}/> Foto de observación (Opcional)
-                </label>
-                
-                {commentPhoto ? (
-                  <div className="relative w-full aspect-video rounded-[2rem] overflow-hidden border-2 border-gray-100 group">
-                    <img src={commentPhoto} alt="Obs" className="w-full h-full object-cover" />
-                    <button onClick={() => setCommentPhoto(null)} className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-lg active:scale-90 transition-transform">
-                      <FiX size={16}/>
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={() => fileInputRef.current.click()} className="w-full py-10 bg-gray-50 border-2 border-dashed border-gray-200 rounded-[2rem] flex flex-col items-center justify-center gap-2 active:bg-gray-100 transition-all">
-                    <FiCamera size={24} className="text-gray-300" />
-                    <span className="text-[9px] font-black text-gray-400 uppercase">Capturar evidencia final</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="text-left space-y-2 px-1">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2 flex items-center gap-2">
-                  <FiMessageSquare className={isOnline ? 'text-[#87be00]' : 'text-orange-500'}/> Comentarios Finales
-                </label>
-                <textarea 
-                  value={comment} 
-                  onChange={(e) => setComment(e.target.value)} 
-                  placeholder="Detalles adicionales..." 
-                  className="w-full h-28 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none placeholder:text-gray-300 shadow-inner" 
-                />
-              </div>
-
-              <button 
-                onClick={finalizarTodo} 
-                disabled={loading} 
-                className={`w-full ${isOnline ? 'bg-[#87be00]' : 'bg-orange-600'} text-white py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-[0.2em] shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all`}
-              >
-                 {loading ? <FiLoader className="animate-spin" /> : <><FiSend/> {isOnline ? 'Finalizar Visita' : 'Guardar Offline'}</>}
+          <div className="py-6 space-y-6 animate-in zoom-in">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-16 h-16 bg-[#87be00]/10 rounded-full flex items-center justify-center text-[#87be00] mb-2"><FiCheckCircle size={32} /></div>
+              <h3 className="text-sm font-black uppercase text-gray-900 tracking-tighter italic">¿Agregar otro producto?</h3>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Registraremos el tiempo de esta gestión.</p>
+            </div>
+            
+            <div className="flex flex-col gap-3">
+              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
+                {loading ? <FiLoader className="animate-spin"/> : <><FiPlusCircle size={18}/> Sí, agregar otro</>}
               </button>
-           </div>
+              <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">
+                <FiLogOut size={18}/> No, finalizar jornada
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PASO FINAL: CIERRE (Aparece tras foto de salida) */}
+        {step === 8 && (
+          <div className="py-6 space-y-4">
+             <div className="bg-[#87be00]/5 p-8 rounded-[3rem] border border-[#87be00]/10">
+               <FiCheckCircle className="text-[#87be00] mx-auto mb-3" size={40} />
+               <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Gestión Finalizada</p>
+               <p className="text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight">Has registrado todos los productos y tu salida del local.</p>
+             </div>
+             <button onClick={finalizarTodo} disabled={loading} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+               {loading ? <FiLoader className="animate-spin" /> : <><FiSend/> Enviar y Cerrar Visita</>}
+             </button>
+          </div>
         )}
 
         <div className="pt-4 border-t border-gray-50 flex items-center justify-center gap-2 text-gray-300 text-[8px] font-bold uppercase tracking-[0.3em]">

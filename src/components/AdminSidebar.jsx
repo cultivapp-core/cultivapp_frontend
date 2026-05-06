@@ -9,7 +9,8 @@ import {
   FiSend, 
   FiBell,
   FiClock,
-  FiBriefcase 
+  FiBriefcase,
+  FiBox // 🚩 NUEVO ICONO PARA EL CATÁLOGO
 } from "react-icons/fi"
 import { useAuth } from "../context/AuthContext"
 import { useNotificationContext } from "../context/NotificationContext" 
@@ -22,7 +23,6 @@ const AdminSidebar = () => {
   const ID_CULTIVA = '0e342e01-d213-4353-b210-39a12ac335cf';
 
   // 🚀 LÓGICA DE ACCESO ELEVADO
-  // Solo se muestra si el usuario es ROOT o es ADMIN de la empresa Cultiva
   const canManageCompanies = 
     user?.role === "ROOT" || 
     (user?.role === "ADMIN_CLIENTE" && user?.company_id === ID_CULTIVA);
@@ -154,6 +154,17 @@ const AdminSidebar = () => {
           >
             <FiHome size={18} />
             Red de Locales
+          </NavLink>
+
+          {/* 🚩 NUEVO: ACCESO AL CATÁLOGO MAESTRO */}
+          <NavLink
+            to="/admin/catalogo"
+            className={({ isActive }) =>
+              `${linkBase} ${isActive ? linkActive : linkInactive}`
+            }
+          >
+            <FiBox size={18} />
+            Catálogo Maestro
           </NavLink>
 
           {/* SOPORTE */}

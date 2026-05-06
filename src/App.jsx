@@ -37,6 +37,8 @@ import AdminUsers from "./pages/admin/AdminUsers"
 import AdminLocales from "./components/AdminLocales"
 import AdminRoutes from "./pages/admin/AdminRoutes"
 import GpsMonitor from "./pages/admin/GpsMonitor" 
+// 🚩 NUEVA IMPORTACIÓN: GESTOR DE CATÁLOGO
+import CatalogManager from "./pages/admin/CatalogManager"
 
 /* ================= SUPERVISOR ================= */
 import SupervisorDashboard from "./pages/supervisor/SupervisorDashboard"
@@ -120,6 +122,8 @@ function App() {
               <Route path="trazabilidad-global" element={<AlertsHistory userRole="ROOT" />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ROOT" />} />
               <Route path="questions" element={<QuestionsManager />} />
+              {/* 🚩 ACCESO ROOT AL CATÁLOGO */}
+              <Route path="catalogo" element={<CatalogManager />} />
             </Route>
 
             {/* 👤 SECCIÓN USUARIO */}
@@ -151,7 +155,6 @@ function App() {
               {/* 🚩 FIX: Admin Cultiva ve Locales.jsx, resto ve AdminLocales.jsx */}
               <Route path="locales" element={<AdminLocales />} />
               
-              {/* 🚩 NUEVA RUTA AGREGADA PARA EMPRESAS EN PANEL ADMIN */}
               <Route path="companies" element={<Companies />} />
               
               <Route path="turnos" element={<TurnosManager />} />
@@ -161,6 +164,8 @@ function App() {
               <Route path="trazabilidad-alertas" element={<AlertsHistory userRole="ADMIN" />} />
               <Route path="questions" element={<QuestionsManager />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ADMIN" />} />
+              {/* 🚩 ACCESO ADMIN AL CATÁLOGO */}
+              <Route path="catalogo" element={<CatalogManager />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />
