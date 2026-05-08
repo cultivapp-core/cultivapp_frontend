@@ -21,7 +21,7 @@ const VisitFlow = () => {
   
   // 📚 ESTADOS DEL CATÁLOGO MAESTRO
   const [brands, setBrands] = useState([]);
-  const [allProducts, setAllProducts] = useState([]);
+  const [allProducts, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState("");
   const [selectedProduct, setSelectedProduct] = useState("");
@@ -32,17 +32,20 @@ const VisitFlow = () => {
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
   const [comment, setComment] = useState("");
-  const [commentPhoto, setCommentPhoto] = useState(null); 
+  
+  // 📸 FOTOS DEL FLUJO
   const [gondolaInicialPhoto, setGondolaInicialPhoto] = useState(null);
+  const [gondolaTerminoPhoto, setGondolaTerminoPhoto] = useState(null); 
 
+  // 🗺️ MAPA DE PASOS OPERATIVOS
   const stepsInfo = {
-    1: { key: "Fachada", title: "Llegada al Local", sub: "Evidencia de entrada" },
-    2: { key: "Góndola Inicio", title: "Góndola Inicial", sub: "Selección de Producto" },
-    3: { key: "escaneo", title: "Escanear Producto", sub: "Registro de EAN" },
-    4: { key: "preguntas", title: "Encuesta de Gestión", sub: "Formulario del producto" },
-    5: { key: "Observaciones", title: "Observación Adicional", sub: "Foto y comentarios de tarea" },
-    6: { key: "Decision", title: "¿Siguiente Producto?", sub: "Registrar y continuar o finalizar" },
-    7: { key: "Salida", title: "Registro de Salida", sub: "Evidencia final de jornada" }
+    1: { key: "foto_fachada", title: "Llegada al Local", sub: "Evidencia de entrada" },
+    2: { key: "foto_gondola_inicio", title: "Góndola Inicial", sub: "Selección y Estado Previo" },
+    3: { key: "escaneo", title: "Escanear Producto", sub: "Registro de EANs en sala" },
+    4: { key: "preguntas", title: "Encuesta de Gestión", sub: "Validación de quiebres/flejes" },
+    5: { key: "foto_gondola_termino", title: "Góndola Término", sub: "Evidencia final y observaciones" },
+    6: { key: "Decision", title: "¿Siguiente Producto?", sub: "Continuar gestionando o salir" },
+    7: { key: "foto_salida", title: "Registro de Salida", sub: "Fin de jornada en local" }
   };
 
   useEffect(() => {
@@ -55,16 +58,16 @@ const VisitFlow = () => {
     };
   }, []);
 
-  // 1. Cargar Marcas y Productos del Catálogo al iniciar
+  // 1. Cargar Marcas y Productos
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
         const [brandsData, productsData] = await Promise.all([
-          api.get("/routes/brands"),   // 🚩 Fix: ruta completa para evitar 404
-          api.get("/routes/products")  // 🚩 Fix: ruta completa para evitar 404
+          api.get("/routes/brands"),
+          api.get("/routes/products")
         ]);
         setBrands(brandsData);
-        setAllProducts(productsData);
+        setProducts(productsData);
       } catch (err) {
         console.error("Error al cargar maestros:", err);
       }
@@ -72,23 +75,25 @@ const VisitFlow = () => {
     fetchMasterData();
   }, []);
 
-  // 2. Filtrar productos cuando cambia la marca seleccionada
+  // 2. Filtrar productos por marca
   useEffect(() => {
     if (selectedBrand) {
       const filtered = allProducts.filter(p => p.brand_id === selectedBrand);
       setFilteredProducts(filtered);
-      setSelectedProduct(""); // Reset al cambiar marca
+      setSelectedProduct(""); 
     } else {
       setFilteredProducts([]);
     }
   }, [selectedBrand, allProducts]);
 
+  // 3. Registrar inicio de tiempo de producto
   useEffect(() => {
     if (step === 2 && !productStartTime) {
       setProductStartTime(new Date().toISOString());
     }
   }, [step, productStartTime]);
 
+  // 4. Cargar preguntas
   useEffect(() => {
     if (step === 4) {
       const loadQuestions = async () => {
@@ -105,6 +110,7 @@ const VisitFlow = () => {
     }
   }, [step]);
 
+  // 📸 PROCESADOR DE CÁMARA
   const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -119,15 +125,16 @@ const VisitFlow = () => {
 
     try {
       const response = await api.post(`/routes/${id}/photo`, formData);
-      // Ajuste para leer image_url que devuelve el backend
       const photoUrl = response?.offline ? URL.createObjectURL(file) : (response.image_url || response.url);
 
+      // Asignar fotos a sus respectivos estados
       if (step === 2) setGondolaInicialPhoto(photoUrl);
-      if (step === 5) setCommentPhoto(photoUrl);
+      if (step === 5) setGondolaTerminoPhoto(photoUrl);
 
       toast.success("Captura guardada", { id: toastId });
       
-      if (step === 1 || step === 2 || step === 7) {
+      // AUTO-AVANCE: Solo en llegada (1) y salida (7)
+      if (step === 1 || step === 7) {
         setStep(prev => prev + 1);
       }
     } catch (err) {
@@ -138,57 +145,57 @@ const VisitFlow = () => {
     }
   };
 
+  // 📦 PROCESADOR DE SCANNER
   const handleScanSuccess = async (decodedText) => {
     if (scannedCodes.includes(decodedText)) return; 
     if (isProcessingScan.current) return;
+    
     isProcessingScan.current = true;
     try {
       await api.post(`/routes/${id}/scans`, { barcode: decodedText });
       setScannedCodes(prev => [decodedText, ...prev]);
-      if (navigator.onLine === false) toast("Escaneo guardado offline", { icon: '📦' });
+      if (!navigator.onLine) toast("Escaneo guardado offline", { icon: '📦' });
       setTimeout(() => { isProcessingScan.current = false; }, 600);
-    } catch (err) { isProcessingScan.current = false; }
+    } catch (err) { 
+      isProcessingScan.current = false; 
+    }
   };
 
+  // 💾 GUARDAR GESTIÓN DEL PRODUCTO (BACKEND)
   const registrarGestionProducto = async (proximoPaso) => {
-    if (!selectedProduct) {
-      toast.error("Seleccione un producto del catálogo");
-      return;
-    }
-
     setLoading(true);
     const toastId = toast.loading("Registrando gestión...");
     
     const taskData = {
-      product_id: selectedProduct, // 🚩 ENVIAMOS EL ID AL BACKEND
+      product_id: selectedProduct, 
       product_codes: scannedCodes,
       start_time: productStartTime,
       end_time: new Date().toISOString(),
       responses: answers,
       comment,
       photo_before: gondolaInicialPhoto,
-      photo_after: commentPhoto
+      photo_after: gondolaTerminoPhoto // Mapeado correctamente para Trazabilidad
     };
 
     try {
       await api.post(`/routes/${id}/task`, taskData);
 
-      // Limpieza total para el siguiente producto
+      // Limpiar estados para el siguiente ciclo
       setScannedCodes([]);
       setAnswers({});
       setComment("");
-      setCommentPhoto(null);
+      setGondolaTerminoPhoto(null);
       setGondolaInicialPhoto(null);
       setProductStartTime(null);
       setSelectedBrand("");
       setSelectedProduct("");
 
-      toast.success("Producto registrado", { id: toastId });
+      toast.success("Producto registrado exitosamente", { id: toastId });
 
       if (proximoPaso === 'NUEVO') {
-        setStep(2); 
+        setStep(2); // Vuelve al selector
       } else {
-        setStep(7); 
+        setStep(7); // Pasa a cerrar visita
       }
     } catch (err) {
       toast.error("Error al registrar tarea", { id: toastId });
@@ -197,12 +204,13 @@ const VisitFlow = () => {
     }
   };
 
+  // 🏁 FINALIZAR VISITA TOTAL
   const finalizarVisitaTotal = async () => {
     setLoading(true);
     const toastId = toast.loading("Finalizando visita...");
     try {
       await api.post(`/routes/${id}/finish`, { status: "completed" });
-      toast.success("¡Visita finalizada exitosamente!", { id: toastId });
+      toast.success("¡Jornada finalizada exitosamente!", { id: toastId });
       navigate("/usuario/home");
     } catch (err) { 
       toast.error("Error al cerrar visita", { id: toastId }); 
@@ -234,44 +242,46 @@ const VisitFlow = () => {
             <p className={`text-[9px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step]?.sub}</p>
         </div>
 
-        {/* 🚩 PASO 2: SELECTORES DE MAESTRO + FOTO INICIAL */}
+        {/* 🚩 PASO 1 Y 7: LLEGADA / SALIDA */}
+        {(step === 1 || step === 7) && (
+          <div className="space-y-4 animate-in zoom-in duration-300">
+             <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
+               {capturing ? <FiLoader className="animate-spin text-[#87be00]" size={44} /> : (
+                 <>
+                   <div className="bg-white p-6 rounded-full shadow-sm mb-4"><FiCamera size={40} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /></div>
+                   <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar {stepsInfo[step].title}</span>
+                 </>
+               )}
+             </div>
+          </div>
+        )}
+
+        {/* 🚩 PASO 2: GÓNDOLA INICIAL Y SELECTORES */}
         {step === 2 && (
           <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-500">
             <div className="grid grid-cols-1 gap-3">
-              {/* Selector Marca */}
               <div className="relative text-left">
                 <FiTag className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
-                <select 
-                  value={selectedBrand} 
-                  onChange={(e) => setSelectedBrand(e.target.value)}
-                  className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none relative"
-                >
+                <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)} className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none">
                   <option value="">Seleccione Marca...</option>
                   {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
 
-              {/* Selector Producto */}
               <div className="relative text-left">
                 <FiBox className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
-                <select 
-                  disabled={!selectedBrand}
-                  value={selectedProduct} 
-                  onChange={(e) => setSelectedProduct(e.target.value)}
-                  className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none disabled:opacity-40"
-                >
+                <select disabled={!selectedBrand} value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none disabled:opacity-40">
                   <option value="">Seleccione Producto...</option>
                   {filteredProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Solo se habilita la cámara si el producto está seleccionado */}
             {selectedProduct && (
               <div className="pt-2 animate-in zoom-in duration-300">
                 {gondolaInicialPhoto ? (
                   <div className="relative rounded-[3rem] overflow-hidden border-4 border-gray-100">
-                      <img src={gondolaInicialPhoto} className="w-full aspect-square object-cover" alt="prev" />
+                      <img src={gondolaInicialPhoto} className="w-full aspect-square object-cover" alt="inicio" />
                       <button onClick={() => setGondolaInicialPhoto(null)} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg"><FiX/></button>
                   </div>
                 ) : (
@@ -284,9 +294,10 @@ const VisitFlow = () => {
                     )}
                   </div>
                 )}
+                
                 {gondolaInicialPhoto && (
                   <button onClick={() => setStep(3)} className="w-full mt-4 bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
-                    Comenzar Tarea <FiArrowRight size={16}/>
+                    Escanear Productos <FiArrowRight size={16}/>
                   </button>
                 )}
               </div>
@@ -294,34 +305,7 @@ const VisitFlow = () => {
           </div>
         )}
 
-        {/* OTROS PASOS DE FOTO: 1, 5, 7 */}
-        {(step === 1 || step === 5 || step === 7) && (
-          <div className="space-y-4">
-             {((step === 5 && commentPhoto) || (step === 2 && gondolaInicialPhoto)) ? (
-                <div className="relative rounded-[3rem] overflow-hidden border-4 border-gray-100">
-                    <img src={step === 5 ? commentPhoto : gondolaInicialPhoto} className="w-full aspect-square object-cover" alt="preview" />
-                    <button onClick={() => step === 5 ? setCommentPhoto(null) : setGondolaInicialPhoto(null)} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg"><FiX/></button>
-                </div>
-             ) : (
-                <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
-                  {capturing ? <FiLoader className="animate-spin text-[#87be00]" size={44} /> : (
-                    <>
-                      <div className="bg-white p-6 rounded-full shadow-sm mb-4"><FiCamera size={40} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /></div>
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar {stepsInfo[step].title}</span>
-                    </>
-                  )}
-                </div>
-             )}
-             {step === 5 && (
-               <>
-                <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentarios sobre este producto..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
-                <button onClick={() => setStep(6)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Finalizar Producto <FiArrowRight size={16}/></button>
-               </>
-             )}
-          </div>
-        )}
-
-        {/* PASO 3: SCANNER */}
+        {/* 🚩 PASO 3: SCANNER */}
         {step === 3 && (
           <div className="space-y-4 animate-in zoom-in duration-300">
             <div className="rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
@@ -338,11 +322,11 @@ const VisitFlow = () => {
                   </div>
                 )) : <p className="text-[10px] text-gray-300 font-bold uppercase py-8">Esperando productos...</p>}
             </div>
-            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Continuar <FiArrowRight size={16}/></button>
+            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Validar Encuesta <FiArrowRight size={16}/></button>
           </div>
         )}
 
-        {/* PASO 4: ENCUESTA */}
+        {/* 🚩 PASO 4: ENCUESTA */}
         {step === 4 && (
            <div className="space-y-4 animate-in slide-in-from-right duration-300">
              <div className="bg-gray-50 p-2 rounded-[2.5rem] space-y-1">
@@ -353,22 +337,58 @@ const VisitFlow = () => {
                  </button>
                ))}
              </div>
-             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Observaciones <FiArrowRight/></button>
+             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Góndola Final <FiArrowRight/></button>
            </div>
         )}
 
-        {/* PASO 6: DECISIÓN */}
+        {/* 🚩 PASO 5: GÓNDOLA TÉRMINO Y OBSERVACIONES */}
+        {step === 5 && (
+          <div className="space-y-4 animate-in slide-in-from-right duration-300">
+             {gondolaTerminoPhoto ? (
+                <div className="relative rounded-[3rem] overflow-hidden border-4 border-gray-100">
+                    <img src={gondolaTerminoPhoto} className="w-full aspect-square object-cover" alt="termino" />
+                    <button onClick={() => setGondolaTerminoPhoto(null)} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg"><FiX/></button>
+                </div>
+             ) : (
+                <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
+                  {capturing ? <FiLoader className="animate-spin text-[#87be00]" size={44} /> : (
+                    <>
+                      <div className="bg-white p-6 rounded-full shadow-sm mb-4"><FiCamera size={40} className="text-gray-400" /></div>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar Góndola Término</span>
+                    </>
+                  )}
+                </div>
+             )}
+             
+             <textarea 
+               value={comment} 
+               onChange={(e) => setComment(e.target.value)} 
+               placeholder="Observaciones adicionales sobre este producto..." 
+               className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" 
+             />
+             
+             <button 
+               onClick={() => setStep(6)} 
+               disabled={!gondolaTerminoPhoto} 
+               className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 disabled:opacity-50 transition-all"
+             >
+               Confirmar Producto <FiArrowRight size={16}/>
+             </button>
+          </div>
+        )}
+
+        {/* 🚩 PASO 6: DECISIÓN */}
         {step === 6 && (
           <div className="py-6 space-y-6 animate-in zoom-in">
             <div className="flex flex-col items-center gap-3">
               <div className="w-16 h-16 bg-[#87be00]/10 rounded-full flex items-center justify-center text-[#87be00] mb-2"><FiCheckCircle size={32} /></div>
-              <h3 className="text-sm font-black uppercase text-gray-900 tracking-tighter italic italic">¿Agregar otro producto?</h3>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Registraremos el tiempo de esta gestión.</p>
+              <h3 className="text-sm font-black uppercase text-gray-900 tracking-tighter italic">¿Agregar otro producto?</h3>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">El tiempo de este producto ha sido registrado.</p>
             </div>
             
             <div className="flex flex-col gap-3">
               <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
-                {loading ? <FiLoader className="animate-spin"/> : <><FiPlusCircle size={18}/> Sí, agregar otro</>}
+                {loading ? <FiLoader className="animate-spin"/> : <><FiPlusCircle size={18}/> Sí, nuevo producto</>}
               </button>
               <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all">
                 <FiLogOut size={18}/> No, finalizar jornada
@@ -377,7 +397,7 @@ const VisitFlow = () => {
           </div>
         )}
 
-        {/* CIERRE FINAL */}
+        {/* 🚩 CIERRE FINAL */}
         {step === 8 && (
           <div className="py-6 space-y-4 animate-in zoom-in">
              <div className="bg-[#87be00]/5 p-8 rounded-[3rem] border border-[#87be00]/10 text-center">
