@@ -37,7 +37,6 @@ import AdminUsers from "./pages/admin/AdminUsers"
 import AdminLocales from "./components/AdminLocales"
 import AdminRoutes from "./pages/admin/AdminRoutes"
 import GpsMonitor from "./pages/admin/GpsMonitor" 
-// 🚩 NUEVA IMPORTACIÓN: GESTOR DE CATÁLOGO
 import CatalogManager from "./pages/admin/CatalogManager"
 
 /* ================= SUPERVISOR ================= */
@@ -47,6 +46,8 @@ import LiveMap from "./pages/supervisor/LiveMap"
 import AlertManager from "./pages/supervisor/AlertManager"
 import AttendanceControl from "./pages/supervisor/AttendanceControl"
 import PhotoValidation from "./pages/supervisor/PhotoValidation"
+// 🚩 NUEVA IMPORTACIÓN: CONTROL DE TAREAS
+import TaskControl from "./pages/supervisor/TaskControl"
 
 /* ================= USUARIO (MERCADERISTA) ================= */
 import UserDashboard from "./pages/user/UserDashboard"
@@ -100,7 +101,6 @@ function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             
-            {/* 🚩 RUTA PÚBLICA PARA CREDENCIAL QR (FUERA DE PROTECTED) */}
             <Route path="/verify/:id" element={<UserCredential />} />
 
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
@@ -122,8 +122,9 @@ function App() {
               <Route path="trazabilidad-global" element={<AlertsHistory userRole="ROOT" />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ROOT" />} />
               <Route path="questions" element={<QuestionsManager />} />
-              {/* 🚩 ACCESO ROOT AL CATÁLOGO */}
               <Route path="catalogo" element={<CatalogManager />} />
+              {/* 🚩 ROOT TAMBIÉN AUDITA TAREAS */}
+              <Route path="control-tareas" element={<TaskControl />} />
             </Route>
 
             {/* 👤 SECCIÓN USUARIO */}
@@ -144,6 +145,8 @@ function App() {
               <Route path="alertas" element={<AlertManager />} />
               <Route path="asistencia" element={<AttendanceControl />} />
               <Route path="ejecucion" element={<PhotoValidation />} />
+              {/* 🚩 NUEVA RUTA: CONTROL DE TAREAS */}
+              <Route path="tareas" element={<TaskControl />} />
               <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
             </Route>
 
@@ -151,12 +154,8 @@ function App() {
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
               <Route index element={<Analytics />} />
               <Route path="users" element={<AdminUsers />} />
-
-              {/* 🚩 FIX: Admin Cultiva ve Locales.jsx, resto ve AdminLocales.jsx */}
               <Route path="locales" element={<AdminLocales />} />
-              
               <Route path="companies" element={<Companies />} />
-              
               <Route path="turnos" element={<TurnosManager />} />
               <Route path="routes" element={<AdminRoutes />} />
               <Route path="gps-monitor" element={<GpsMonitor />} /> 
@@ -164,8 +163,9 @@ function App() {
               <Route path="trazabilidad-alertas" element={<AlertsHistory userRole="ADMIN" />} />
               <Route path="questions" element={<QuestionsManager />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ADMIN" />} />
-              {/* 🚩 ACCESO ADMIN AL CATÁLOGO */}
               <Route path="catalogo" element={<CatalogManager />} />
+              {/* 🚩 ADMIN TAMBIÉN AUDITA TAREAS */}
+              <Route path="tareas" element={<TaskControl />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

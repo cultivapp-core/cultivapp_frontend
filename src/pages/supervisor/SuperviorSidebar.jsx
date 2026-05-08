@@ -7,24 +7,22 @@ import {
   FiCamera, 
   FiLogOut, 
   FiBell,
-  FiX // 🚩 Importamos el ícono de la X
+  FiX,
+  FiPackage // 🚩 Importamos ícono para el módulo de tareas
 } from "react-icons/fi"
 import { useAuth } from "../../context/AuthContext"
 import { useNotificationContext } from "../../context/NotificationContext"
 
-// 🚩 Agregamos la prop onClose para que se pueda cerrar desde móviles
 const SupervisorSidebar = ({ onClose }) => {
   const { user, logout } = useAuth()
   const { unreadCount } = useNotificationContext()
 
-  // Clases homologadas con Admin y User
   const linkBase =
     "flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300"
   const linkInactive = "text-gray-400 hover:bg-gray-50 hover:text-gray-900"
   const linkActive = "bg-[#87be00]/10 text-[#87be00] shadow-sm shadow-[#87be00]/5"
 
   return (
-    // 🚩 Cambiamos 'hidden md:flex' por 'flex'. Ajustamos anchos y forzamos altura completa.
     <aside className="flex flex-col w-64 md:w-72 bg-white border-r border-gray-100 justify-between h-screen p-4 md:p-6 sticky top-0 font-[Outfit] shadow-2xl md:shadow-none">
       
       <div className="overflow-y-auto pr-1 md:pr-2 custom-scrollbar flex-1">
@@ -39,7 +37,6 @@ const SupervisorSidebar = ({ onClose }) => {
             </p>
           </div>
           
-          {/* 🚩 Botón visible solo en móviles para cerrar el sidebar */}
           <button 
             onClick={onClose} 
             className="md:hidden p-2 text-gray-400 hover:text-gray-900 bg-gray-50 rounded-xl transition-colors"
@@ -85,6 +82,11 @@ const SupervisorSidebar = ({ onClose }) => {
 
           <NavLink to="/supervisor/ejecucion" onClick={onClose} className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
             <FiCamera size={18} /> Validación Sala
+          </NavLink>
+
+          {/* 🚩 NUEVO: CONTROL DE TAREAS */}
+          <NavLink to="/supervisor/tareas" onClick={onClose} className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+            <FiPackage size={18} /> Control Tareas
           </NavLink>
         </nav>
       </div>
