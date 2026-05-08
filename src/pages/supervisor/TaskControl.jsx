@@ -2,13 +2,13 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   FiClock, FiSearch, FiRefreshCw, FiCalendar, FiChevronDown,
-  FiPackage, FiBarChart2, FiUser, FiMapPin, FiHash, FiImage,
-  FiFilter, FiX, FiCheckCircle, FiAlertCircle, FiArrowRight
+  FiPackage, FiBarChart2, FiUser, FiMapPin, FiHash,
+  FiFilter, FiX, FiCheckCircle, FiAlertCircle, FiArrowRight, FiMessageSquare
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 
 /* =========================================================
-   UTILITIES (Manteniendo tu lógica)
+   UTILITIES
 ========================================================= */
 const getLocalISODate = () => {
   const tzOffset = (new Date()).getTimezoneOffset() * 60000;
@@ -38,7 +38,6 @@ const TaskControl = () => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState(null);
-  const [expandedPhoto, setExpandedPhoto] = useState(null);
 
   // Filtros
   const [selectedDate, setSelectedDate] = useState(getLocalISODate());
@@ -165,7 +164,7 @@ const TaskControl = () => {
         )}
       </AnimatePresence>
 
-      {/* ── KPIs (Estilo Cultiva) ── */}
+      {/* ── KPIs ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-4 md:px-0">
         {[
           { label: "Total Tareas", value: totalTasks, color: "text-[#87be00]", bg: "bg-[#87be00]/10", icon: FiBarChart2 },
@@ -194,7 +193,8 @@ const TaskControl = () => {
                 <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-center">Producto</th>
                 <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-center">Tiempos</th>
                 <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-center">Gestión</th>
-                <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-center">Evidencia</th>
+                <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-center">Códigos EAN</th>
+                <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-center">Observación</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -216,7 +216,7 @@ const TaskControl = () => {
                       </div>
                     </td>
                     <td className="px-4 py-5">
-                      <p className="text-[10px] font-black text-gray-800 uppercase italic leading-none">{task.local_name}</p>
+                      <p className="text-[10px] font-black text-gray-800 uppercase italic leading-none truncate max-w-[150px]">{task.local_name}</p>
                       <p className="text-[9px] font-black text-[#87be00] mt-1">{task.local_code}</p>
                     </td>
                     <td className="px-4 py-5 text-center">
@@ -233,62 +233,49 @@ const TaskControl = () => {
                     <td className="px-4 py-5 text-center">
                        <DurationBadge minutes={task.duration_minutes} />
                     </td>
-                    <td className="px-4 py-5">
-                      <div className="flex items-center justify-center gap-2">
-                        {task.photo_before && (
-                          <div onClick={(e) => { e.stopPropagation(); setExpandedPhoto(task.photo_before); }} className="w-8 h-8 rounded-xl overflow-hidden border-2 border-white shadow-md hover:scale-110 transition-all">
-                             <img src={task.photo_before} className="w-full h-full object-cover" alt="p1" />
-                          </div>
-                        )}
-                        {task.photo_after && (
-                          <div onClick={(e) => { e.stopPropagation(); setExpandedPhoto(task.photo_after); }} className="w-8 h-8 rounded-xl overflow-hidden border-2 border-white shadow-md hover:scale-110 transition-all">
-                             <img src={task.photo_after} className="w-full h-full object-cover" alt="p2" />
-                          </div>
-                        )}
-                        <motion.div animate={{ rotate: expandedRow === idx ? 180 : 0 }} className="ml-2">
-                           <FiChevronDown className="text-gray-300" />
-                        </motion.div>
-                      </div>
+                    <td className="px-4 py-5 text-center">
+                      <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-600 text-[10px] font-black px-3 py-1 rounded-lg">
+                        <FiHash size={10} /> {task.codes_count || 0}
+                      </span>
+                    </td>
+                    <td className="px-4 py-5 text-center">
+                       <motion.div animate={{ rotate: expandedRow === idx ? 180 : 0 }} className="inline-block">
+                         <button className={`p-2 rounded-full ${task.comment ? 'bg-blue-50 text-blue-500' : 'text-gray-300'}`}>
+                           <FiChevronDown size={16} />
+                         </button>
+                       </motion.div>
                     </td>
                   </motion.tr>
 
-                  {/* ── EXPANDIDO (ADN CULTIVA) ── */}
+                  {/* ── EXPANDIDO (SOLO EAN Y COMENTARIO) ── */}
                   <AnimatePresence>
                     {expandedRow === idx && (
                       <motion.tr initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                        <td colSpan={6} className="bg-gray-50/30 px-10 py-8">
-                           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <td colSpan={7} className="bg-gray-50/30 px-10 py-6">
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               {/* EAN */}
-                              <div className="bg-white p-6 rounded-[2rem] shadow-sm">
-                                <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                              <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100">
+                                <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                                   <FiHash className="text-purple-500"/> EAN Registrados
                                 </h4>
-                                <div className="flex flex-wrap gap-2">
-                                  {task.product_codes?.map((c, i) => (
-                                    <span key={i} className="px-3 py-2 bg-purple-50 text-purple-600 rounded-xl text-[10px] font-black border border-purple-100">{c}</span>
-                                  ))}
-                                </div>
+                                {task.product_codes && task.product_codes.length > 0 ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    {task.product_codes.map((c, i) => (
+                                      <span key={i} className="px-3 py-1.5 bg-purple-50 text-purple-600 rounded-xl text-[10px] font-black border border-purple-100">{c}</span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-[10px] font-bold text-gray-400 italic">No se registraron códigos.</p>
+                                )}
                               </div>
-                              {/* Encuesta */}
-                              <div className="bg-white p-6 rounded-[2rem] shadow-sm">
-                                <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                  <FiCheckCircle className="text-[#87be00]"/> Encuesta Gestión
-                                </h4>
-                                <div className="space-y-2">
-                                  {Object.values(task.responses || {}).map((r, i) => (
-                                    <div key={i} className="flex items-center gap-2 text-[10px] font-black text-gray-700 bg-gray-50 p-2 rounded-xl">
-                                      <FiCheckCircle className="text-[#87be00] shrink-0" /> {r}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
+                              
                               {/* Comentarios */}
-                              <div className="bg-white p-6 rounded-[2rem] shadow-sm">
-                                <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                  <FiAlertCircle className="text-blue-500"/> Observaciones
+                              <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100">
+                                <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                  <FiMessageSquare className="text-blue-500"/> Observaciones
                                 </h4>
-                                <p className="text-[11px] font-bold text-gray-600 leading-relaxed italic italic">
-                                  "{task.comment || 'Sin observaciones registradas'}"
+                                <p className="text-[11px] font-bold text-gray-600 leading-relaxed italic">
+                                  {task.comment ? `"${task.comment}"` : 'Sin observaciones registradas por el mercaderista.'}
                                 </p>
                               </div>
                            </div>
@@ -300,37 +287,34 @@ const TaskControl = () => {
               ))}
             </tbody>
           </table>
+          
+          {!loading && tasks.length === 0 && (
+            <div className="py-16 text-center">
+              <FiAlertCircle className="mx-auto text-gray-200 mb-3" size={32} />
+              <p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Sin tareas para este filtro</p>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── MOBILE (Tarjetas redondeadas) ── */}
       <div className="md:hidden space-y-4 px-4">
         {tasks.map((task, idx) => (
-          <TaskCard key={task.id || idx} task={task} idx={idx} onPhotoClick={setExpandedPhoto} />
+          <TaskCard key={task.id || idx} task={task} idx={idx} />
         ))}
-      </div>
-
-      {/* ── MODAL IMAGEN ── */}
-      <AnimatePresence>
-        {expandedPhoto && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={() => setExpandedPhoto(null)}
-            className="fixed inset-0 bg-gray-900/90 backdrop-blur-sm z-[100] flex items-center justify-center p-6"
-          >
-            <motion.img 
-              initial={{ scale: 0.9, rotate: -2 }} animate={{ scale: 1, rotate: 0 }}
-              src={expandedPhoto} className="max-w-full max-h-full rounded-[2.5rem] shadow-2xl border-8 border-white" 
-            />
-          </motion.div>
+        {!loading && tasks.length === 0 && (
+          <div className="py-16 text-center bg-white rounded-[2rem] border border-gray-100 shadow-sm">
+            <FiAlertCircle className="mx-auto text-gray-200 mb-3" size={32} />
+            <p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Sin resultados</p>
+          </div>
         )}
-      </AnimatePresence>
+      </div>
 
     </div>
   );
 };
 
-/* ── COMPONENTES AUXILIARES ESTILIZADOS ── */
+/* ── COMPONENTES AUXILIARES ── */
 const DurationBadge = ({ minutes }) => {
   const color = minutes <= 10 ? "bg-[#87be00]/10 text-[#87be00]" : "bg-amber-50 text-amber-600";
   return (
@@ -340,7 +324,7 @@ const DurationBadge = ({ minutes }) => {
   );
 };
 
-const TaskCard = ({ task, idx, onPhotoClick }) => {
+const TaskCard = ({ task, idx }) => {
   const [open, setOpen] = useState(false);
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-[2rem] shadow-lg p-5 border border-gray-100">
@@ -357,22 +341,36 @@ const TaskCard = ({ task, idx, onPhotoClick }) => {
           </div>
           <DurationBadge minutes={task.duration_minutes} />
         </div>
-        <div className="bg-gray-50 rounded-2xl p-4">
-           <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">{task.brand_name}</p>
-           <p className="text-[10px] font-black text-gray-800 uppercase italic truncate">{task.product_name}</p>
+        <div className="bg-gray-50 rounded-2xl p-4 flex justify-between items-center">
+           <div>
+             <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">{task.brand_name}</p>
+             <p className="text-[10px] font-black text-gray-800 uppercase italic truncate max-w-[180px]">{task.product_name}</p>
+           </div>
+           <div className="text-right">
+             <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">EAN</p>
+             <span className="text-[11px] font-black text-purple-600">{task.codes_count || 0}</span>
+           </div>
         </div>
       </div>
       <AnimatePresence>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="mt-4 pt-4 border-t border-dashed border-gray-200 space-y-4">
-             <div className="flex gap-2 overflow-x-auto pb-2">
-                {task.photo_before && <img src={task.photo_before} onClick={() => onPhotoClick(task.photo_before)} className="w-20 h-20 rounded-2xl object-cover border-2 border-white shadow-md" />}
-                {task.photo_after && <img src={task.photo_after} onClick={() => onPhotoClick(task.photo_after)} className="w-20 h-20 rounded-2xl object-cover border-2 border-white shadow-md" />}
-             </div>
-             <div className="bg-purple-50 p-3 rounded-xl border border-purple-100">
-                <p className="text-[8px] font-black text-purple-400 uppercase mb-1">EANs</p>
-                <p className="text-[10px] font-bold text-purple-600">{task.product_codes?.join(", ")}</p>
-             </div>
+             {task.product_codes?.length > 0 && (
+               <div className="bg-purple-50 p-3 rounded-xl border border-purple-100">
+                  <p className="text-[8px] font-black text-purple-400 uppercase mb-2">Códigos EAN</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {task.product_codes.map((c, i) => (
+                      <span key={i} className="text-[9px] font-black bg-white px-2 py-1 rounded-lg text-purple-600 shadow-sm">{c}</span>
+                    ))}
+                  </div>
+               </div>
+             )}
+             {task.comment && (
+               <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                  <p className="text-[8px] font-black text-blue-400 uppercase mb-1">Observación</p>
+                  <p className="text-[10px] font-bold text-blue-800 italic">"{task.comment}"</p>
+               </div>
+             )}
           </motion.div>
         )}
       </AnimatePresence>
