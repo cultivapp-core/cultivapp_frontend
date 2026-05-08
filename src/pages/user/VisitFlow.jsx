@@ -60,8 +60,8 @@ const VisitFlow = () => {
     const fetchMasterData = async () => {
       try {
         const [brandsData, productsData] = await Promise.all([
-          api.get("/brands"),
-          api.get("/products")
+          api.get("/routes/brands"),   // 🚩 Fix: ruta completa para evitar 404
+          api.get("/routes/products")  // 🚩 Fix: ruta completa para evitar 404
         ]);
         setBrands(brandsData);
         setAllProducts(productsData);
