@@ -1,296 +1,523 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import api from "../../api/apiClient";
 import ManageRoutesModal from "../../components/ManageRoutesModal";
-import AdminCalendarView from "../../components/AdminCalendarView";
-import WeeklyStatus from "../../components/MiniCalendario";
 import toast from "react-hot-toast";
 import {
   FiPlus,
-  FiEdit2,
-  FiUploadCloud,
   FiRefreshCw,
-  FiList,
-  FiCalendar,
+  FiEdit3,
+  FiUploadCloud,
+  FiCheckCircle,
+  FiAlertCircle,
+  FiPlayCircle,
+  FiUser,
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
+import { motion } from "framer-motion";
 
+// ─────────────────────────────────────────────────────────────
+// 📅 VISUALIZADOR MENSUAL CON TOOLTIP FLOTANTE
+// ─────────────────────────────────────────────────────────────
+const MonthlyStatus = ({ scheduledDays = [] }) => {
+  const weeks = [1, 2, 3, 4];
+  const days = [
+    { id: 1, label: "L" },
+    { id: 2, label: "M" },
+    { id: 3, label: "X" },
+    { id: 4, label: "J" },
+    { id: 5, label: "V" },
+    { id: 6, label: "S" },
+    { id: 0, label: "D" },
+  ];
+
+  const formatTime = (time) => {
+    if (!time || time === "null" || time === null || time === undefined) return "N/A";
+    return String(time).substring(0, 5);
+  };
+
+  return (
+    <div className="flex flex-col gap-2 py-1">
+      {weeks.map((week) => (
+        <div key={week} className="flex items-center gap-2">
+          <span className="text-[9px] font-black text-gray-300 w-4 tracking-tighter shrink-0">
+            S{week}
+          </span>
+          <div className="flex gap-1">
+            {days.map((d) => {
+              const scheduleInfo = scheduledDays.find(
+                (item) =>
+                  parseInt(item.day) === d.id && parseInt(item.week) === week
+              );
+              const isActive = !!scheduleInfo;
+
+              return (
+                <div key={d.id} className="relative group">
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-black transition-all duration-200 cursor-default select-none
+                      ${
+                        isActive
+                          ? "bg-[#87be00] text-white shadow-sm group-hover:scale-110"
+                          : "bg-gray-100 text-gray-300"
+                      }`}
+                  >
+                    {d.label}
+                  </div>
+
+                  {/* TOOLTIP FLOTANTE */}
+                  {isActive && (
+                    <div className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 invisible opacity-0 group-hover:visible group-hover:opacity-100 pointer-events-none transition-all duration-150 z-[99999]">
+                      <div className="bg-gray-900 text-white px-3 py-2 rounded-xl shadow-2xl border border-white/10 whitespace-nowrap flex flex-col items-center gap-0.5 min-w-[110px]">
+                        <span className="font-black text-[#87be00] uppercase text-[8px] tracking-widest leading-none">
+                          {scheduleInfo.turno && scheduleInfo.turno !== "null"
+                            ? scheduleInfo.turno
+                            : "Planificado"}
+                        </span>
+                        <span className="font-bold text-[11px] leading-tight mt-0.5">
+                          {formatTime(scheduleInfo.time)} — {formatTime(scheduleInfo.endTime)}
+                        </span>
+                        {/* Flecha */}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// BADGE DE ESTADO
+// ─────────────────────────────────────────────────────────────
+const getStatusBadge = (status) => {
+  const config = {
+    COMPLETED: {
+      bg: "bg-green-50", text: "text-green-600", border: "border-green-200",
+      icon: <FiCheckCircle size={11} />, label: "Completado",
+    },
+    IN_PROGRESS: {
+      bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200",
+      icon: <FiPlayCircle size={11} className="animate-pulse" />, label: "En Curso",
+    },
+    PARTIAL: {
+      bg: "bg-indigo-50", text: "text-indigo-600", border: "border-indigo-200",
+      icon: <FiRefreshCw size={11} />, label: "Parcial",
+    },
+    PENDING: {
+      bg: "bg-amber-50", text: "text-amber-500", border: "border-amber-200",
+      icon: <FiAlertCircle size={11} />, label: "Pendiente",
+    },
+  };
+  const s = config[status?.toUpperCase()] || config.PENDING;
+  return (
+    <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${s.bg} ${s.text} text-[9px] font-black uppercase tracking-widest border ${s.border} shadow-sm w-max`}>
+      {s.icon} {s.label}
+    </span>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENTE PRINCIPAL
+// ─────────────────────────────────────────────────────────────
 const Planificacion = () => {
-  const [viewMode, setViewMode] = useState("list");
-  const [routes, setRoutes] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [locales, setLocales] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [routes, setRoutes]             = useState([]);
+  const [users, setUsers]               = useState([]);
+  const [locales, setLocales]           = useState([]);
+  const [companies, setCompanies]       = useState([]);
+  const [isModalOpen, setIsModalOpen]   = useState(false);
   const [selectedRoute, setSelectedRoute] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]           = useState(true);
 
   const fileInputRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
+      const [resRoutes, resUsers, resLocales, resCompanies] = await Promise.all([
+        api.get("/routes"),
+        api.get("/users"),
+        api.get("/locales"),
+        api.get("/companies"),
+      ]);
 
-      const [resRoutes, resUsers, resLocales, resCompanies] =
-        await Promise.all([
-          api.get("/routes"),
-          api.get("/users"),
-          api.get("/locales"),
-          api.get("/companies"),
-        ]);
+      const dRoutes    = resRoutes.data    || resRoutes;
+      const dUsers     = resUsers.data     || resUsers;
+      const dLocales   = resLocales.data   || resLocales;
+      const dCompanies = resCompanies.data || resCompanies;
 
-      setRoutes(resRoutes.data || []);
-      setUsers(resUsers.data || []);
-      setLocales(resLocales.data || []);
-      setCompanies(resCompanies.data || []);
+      setRoutes(Array.isArray(dRoutes)       ? dRoutes    : []);
+      setUsers(Array.isArray(dUsers)         ? dUsers     : []);
+      setLocales(Array.isArray(dLocales)     ? dLocales   : []);
+      setCompanies(Array.isArray(dCompanies) ? dCompanies : []);
     } catch (error) {
       console.error("❌ Error en fetchData:", error);
-      if (!error.offline) toast.error("Error al sincronizar datos");
+      toast.error("Error al sincronizar datos");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const getWeekOfMonth = (dateStr) => {
-    const date = new Date(dateStr);
-    return Math.ceil(date.getDate() / 7);
-  };
+  // Rangos de semanas del mes actual
+  const weekRanges = useMemo(() => {
+    const today      = new Date();
+    const year       = today.getFullYear();
+    const month      = today.getMonth();
+    let firstDay     = new Date(year, month, 1);
+    let dow          = firstDay.getDay() === 0 ? 7 : firstDay.getDay();
+    let firstMonday  = new Date(firstDay);
+    if (dow !== 1) firstMonday.setDate(1 + (8 - dow));
 
+    const mesesAbr = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    const ranges = [];
+    for (let i = 0; i < 4; i++) {
+      let start = new Date(firstMonday);
+      start.setDate(firstMonday.getDate() + i * 7);
+      let end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      ranges.push({
+        label: `S${i + 1}`,
+        dates: `${start.getDate()} ${mesesAbr[start.getMonth()]} - ${end.getDate()} ${mesesAbr[end.getMonth()]}`,
+      });
+    }
+    return ranges;
+  }, []);
+
+  // Import Excel
   const handleImportExcel = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    const toastId = toast.loading("Procesando Excel...");
+    const reader  = new FileReader();
+    const toastId = toast.loading("Analizando Excel...");
 
     reader.onload = async (evt) => {
       try {
-        const data = new Uint8Array(evt.target.result);
-
-        const workbook = XLSX.read(data, { type: "array" });
+        const data      = new Uint8Array(evt.target.result);
+        const workbook  = XLSX.read(data, { type: "array" });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawJson   = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
-        const rawJson = XLSX.utils.sheet_to_json(worksheet, {
-          defval: "",
-        });
-
-        console.log("📦 RAW JSON:", rawJson);
-
-        const finalData = rawJson
-          .map((row) => ({
-            Rut_Mercaderista: String(
-              row["Rut_Mercaderista"] || row["rut_mercaderista"] || ""
-            )
-              .trim()
-              .toUpperCase(),
-
-            Codigo: String(
-              row["Codigo"] || row["codigo"] || ""
-            ).trim(),
-
-            "Turno Semana 1": String(
-              row["Turno Semana 1"] || row["turno semana 1"] || ""
-            ).trim(),
-
-            "Turno Semana 2": String(
-              row["Turno Semana 2"] || row["turno semana 2"] || ""
-            ).trim(),
-
-            "Turno Semana 3": String(
-              row["Turno Semana 3"] || row["turno semana 3"] || ""
-            ).trim(),
-
-            "Turno Semana 4": String(
-              row["Turno Semana 4"] || row["turno semana 4"] || ""
-            ).trim(),
-          }))
-          .filter(
-            (row) =>
-              row.Rut_Mercaderista &&
-              row.Codigo
-          );
-
-        console.log("✅ FINAL DATA:", finalData);
-
-        if (!finalData.length) {
-          toast.error("No se encontraron filas válidas en el Excel", {
-            id: toastId,
+        const finalData = rawJson.map((row) => {
+          const obj = {};
+          Object.keys(row).forEach((key) => {
+            const k   = String(key).toLowerCase().trim();
+            const val = String(row[key]).trim();
+            if (k.includes("rut"))                                obj.Rut_Mercaderista = val;
+            else if (k.includes("cod"))                           obj.Codigo = val;
+            else if (k.includes("semana") || k.includes("turno")) obj[key.trim()] = val;
           });
+          return obj;
+        }).filter((f) => f.Rut_Mercaderista && f.Codigo);
+
+        if (finalData.length === 0) {
+          toast.error("Excel sin datos válidos", { id: toastId });
           return;
         }
 
-        const today = new Date();
-
-        const payload = {
-          month: today.getMonth() + 1,
-          year: today.getFullYear(),
-          routes: finalData,
-        };
-
-        console.log("🚀 PAYLOAD:", payload);
-
+        const today    = new Date();
+        const payload  = { month: today.getMonth() + 1, year: today.getFullYear(), routes: finalData };
         const response = await api.post("/routes/bulk-create", payload);
-
-        const resData = response.data;
-
-        console.log("📥 RESPUESTA BACKEND:", resData);
+        const resData  = response.data || response;
 
         if (resData.success) {
-          toast.success(
-            `Éxito: ${resData.count} visitas creadas`,
-            { id: toastId }
-          );
-
+          toast.success(`¡Éxito! ${resData.count} rutas creadas.`, { id: toastId });
           fetchData();
         } else {
-          toast.error(
-            resData.message || "Error en carga masiva",
-            { id: toastId }
-          );
+          toast.error(resData.message || "Error en la carga masiva", { id: toastId });
         }
-      } catch (err) {
-        console.error("❌ ERROR IMPORTANDO EXCEL:", err);
-
-        toast.error(
-          err.response?.data?.message ||
-            "No se pudo procesar el Excel",
-          { id: toastId }
-        );
+      } catch {
+        toast.error("Error al procesar el archivo", { id: toastId });
       }
     };
-
     reader.readAsArrayBuffer(file);
     e.target.value = "";
   };
 
-  /**
-   * 🚀 MEJORA: Agrupación de rutas enriquecida con Horarios para el Tooltip
-   */
+  // ── Agrupar rutas: clave = user_id + local_id ──────────────
   const groupedRoutes = useMemo(() => {
     const groups = {};
 
     routes.forEach((r) => {
       if (!r.user_id || !r.local_id) return;
+      const key     = `${r.user_id}-${r.local_id}`;
+      const weekNum = r.week_number || 1;
 
-      let key;
-
-      if (r.visit_date) {
-        const date = new Date(r.visit_date);
-
-        key = [
-          r.user_id,
-          r.local_id,
-          date.getFullYear(),
-          date.getMonth(),
-          getWeekOfMonth(r.visit_date),
-        ].join("-");
-      } else {
-        key = `${r.user_id}-${r.local_id}-${r.schedule_group_id || "weekly"}`;
-      }
+      // Item para el calendario mensual
+      const schedItem = r.day_of_week !== null ? {
+        day:     r.day_of_week,
+        week:    weekNum,
+        time:    r.start_time   || r.entrada || null,
+        endTime: r.end_time     || r.salida  || null,
+        turno:   r.nombre_turno || null,
+      } : null;
 
       if (!groups[key]) {
         groups[key] = {
           ...r,
-          // Cambiamos el array simple por un array de objetos con info de horario
-          allDays:
-            r.day_of_week !== null &&
-            r.day_of_week !== undefined
-              ? [{ 
-                  day: Number(r.day_of_week), 
-                  time: r.start_time, 
-                  turno: r.nombre_turno 
-                }]
-              : [],
-          groupedVisits: [],
+          scheduled_items: schedItem ? [schedItem] : [],
+          all_statuses:    [r.status],
+          // turnosPorSemana: { 1: "TURNO FULL 2", 2: "TURNO FULL 2", ... }
+          turnosPorSemana: schedItem ? { [weekNum]: r.nombre_turno || null } : {},
         };
       } else {
-        // Si el grupo ya existe, verificamos si el día ya fue agregado
-        if (
-          r.day_of_week !== null &&
-          r.day_of_week !== undefined
-        ) {
-          const exists = groups[key].allDays.some(d => d.day === Number(r.day_of_week));
-          if (!exists) {
-            groups[key].allDays.push({ 
-              day: Number(r.day_of_week), 
-              time: r.start_time, 
-              turno: r.nombre_turno 
-            });
+        if (schedItem) {
+          // Evitar duplicados de día+semana en el calendario
+          const exists = groups[key].scheduled_items.some(
+            (item) =>
+              parseInt(item.day)  === parseInt(r.day_of_week) &&
+              parseInt(item.week) === parseInt(weekNum)
+          );
+          if (!exists) groups[key].scheduled_items.push(schedItem);
+
+          // Guardar el turno de esta semana si aún no existe
+          if (!groups[key].turnosPorSemana[weekNum]) {
+            groups[key].turnosPorSemana[weekNum] = r.nombre_turno || null;
           }
         }
-      }
-
-      if (r.visit_date) {
-        groups[key].groupedVisits.push(r.visit_date);
+        groups[key].all_statuses.push(r.status);
       }
     });
 
-    return Object.values(groups);
+    return Object.values(groups).map((group) => ({
+      ...group,
+      displayStatus:
+        group.all_statuses.includes("IN_PROGRESS") ? "IN_PROGRESS" :
+        group.all_statuses.every((s) => s === "COMPLETED" || s === "OK") ? "COMPLETED" :
+        group.all_statuses.some((s)  => s === "COMPLETED" || s === "OK") ? "PARTIAL"   :
+        "PENDING",
+    }));
   }, [routes]);
 
+  // ── LOADING ─────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="h-screen flex flex-col items-center justify-center space-y-4">
-        <FiRefreshCw className="animate-spin text-[#87be00]" size={42} />
-        <p>Sincronizando Planificación...</p>
+        <FiRefreshCw className="animate-spin text-[#87be00]" size={38} />
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">
+          Sincronizando Planificación...
+        </p>
       </div>
     );
   }
 
+  // ── RENDER ──────────────────────────────────────────────────
   return (
-    <div>
-      <input
-        type="file"
-        ref={fileInputRef}
-        className="hidden"
-        accept=".xlsx, .xls"
-        onChange={handleImportExcel}
-      />
+    <div className="space-y-5 font-[Outfit] pb-20 px-2 sm:px-4">
 
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold">Gestión de Rutas</h2>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => fileInputRef.current.click()}
-            className="flex items-center gap-2 bg-[#87be00] text-white px-4 py-2 rounded-lg hover:bg-[#76a600] transition-all"
-          >
-            <FiUploadCloud /> Cargar Excel
+      {/* ══ HEADER ══════════════════════════════════════════════ */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5 bg-white px-7 py-6 rounded-[2rem] shadow-sm border border-gray-100">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-black text-gray-900 uppercase italic tracking-tight leading-none">
+            Planificación Mensual
+          </h1>
+          <div className="flex gap-2 mt-4 overflow-x-auto pb-1">
+            {weekRanges.map((w, idx) => (
+              <div key={idx} className="flex flex-col gap-0.5 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100 shrink-0 min-w-[110px]">
+                <span className="text-[11px] font-black text-[#87be00]">{w.label}</span>
+                <span className="text-[9px] font-bold text-gray-400 uppercase leading-none">{w.dates}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={fetchData} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 hover:text-[#87be00] border border-gray-100 transition-all">
+            <FiRefreshCw size={17} />
           </button>
-          <button 
-            onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }}
-            className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-all"
-          >
-            <FiPlus /> Nueva Ruta
+          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx,.xls" onChange={handleImportExcel} />
+          <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-2 bg-[#87be00] hover:bg-[#76a600] text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md transition-all">
+            <FiUploadCloud size={15} /> Cargar Excel
+          </button>
+          <button onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }} className="flex items-center gap-2 bg-gray-900 hover:bg-black text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md transition-all">
+            <FiPlus size={15} /> Nueva Ruta
           </button>
         </div>
       </div>
 
-      {/* Aquí iría el resto de tu UI que consume groupedRoutes */}
-      {viewMode === "list" && (
-        <div className="grid gap-4">
-          {groupedRoutes.map((route, idx) => (
-             <div key={idx} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
-                {/* 
-                  Importante: Tu componente WeeklyStatus o el que use los días 
-                  ahora recibirá un array de objetos en 'allDays' en lugar de solo números.
-                */}
-                <WeeklyStatus allDays={route.allDays} />
-             </div>
-          ))}
-        </div>
-      )}
+      {/* ══ TABLA DESKTOP ═══════════════════════════════════════ */}
+      <div className="hidden lg:block bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-visible">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Punto de Venta / Local</th>
+              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Mercaderista Asignado</th>
+              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Calendario Mensual</th>
+              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Estado</th>
+              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-right">Acción</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {groupedRoutes.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-7 py-16 text-center text-sm text-gray-300 font-bold">
+                  No hay rutas planificadas aún.
+                </td>
+              </tr>
+            ) : (
+              groupedRoutes.map((r) => (
+                <tr
+                  key={`${r.user_id}-${r.local_id}-desktop`}
+                  className="hover:bg-gray-50/40 transition-colors"
+                >
+                  {/* LOCAL */}
+                  <td className="px-7 py-6 align-top">
+                    <p className="font-black text-gray-900 uppercase italic text-[13px] leading-none">{r.cadena}</p>
+                    <p className="text-[11px] font-medium text-gray-400 mt-1.5 max-w-[200px] truncate">{r.direccion}</p>
+                    <span className="inline-block mt-2.5 px-2.5 py-1 bg-gray-100 text-gray-500 text-[9px] font-black rounded-lg tracking-widest">
+                      {r.codigo_local}
+                    </span>
+                  </td>
 
-      {isModalOpen && (
-        <ManageRoutesModal 
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onCreated={fetchData}
-          initialData={selectedRoute}
-        />
-      )}
+                  {/* MERCADERISTA + TAGS S1-S4 */}
+                  <td className="px-7 py-6 align-top">
+                    <div className="flex flex-col gap-2.5">
+                      {/* Nombre SIN MODIFICACIONES */}
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
+                          <FiUser size={14} />
+                        </div>
+                        <span className="font-black text-gray-800 text-[11px] leading-none">
+                          {r.first_name} {r.last_name}
+                        </span>
+                      </div>
+
+                      {/* Tags de turno por semana */}
+                      <div className="flex flex-col gap-1 pl-10">
+                        {[1, 2, 3, 4].map((wNum) => {
+                          const tName = r.turnosPorSemana?.[wNum];
+                          return (
+                            <div key={wNum} className="flex items-center gap-1.5">
+                              <span className="text-[8px] font-black text-gray-300 uppercase tracking-tighter w-5 shrink-0">
+                                S{wNum}
+                              </span>
+                              {tName ? (
+                                <span className="text-[9px] font-bold text-gray-600 uppercase bg-gray-100 px-2 py-0.5 rounded-md leading-none">
+                                  {tName}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] text-gray-200 font-bold leading-none">—</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* CALENDARIO MENSUAL */}
+                  <td className="px-7 py-6 align-top">
+                    <div className="bg-gray-50 px-4 py-3 rounded-2xl inline-block overflow-visible">
+                      <MonthlyStatus scheduledDays={r.scheduled_items} />
+                    </div>
+                  </td>
+
+                  {/* ESTADO */}
+                  <td className="px-7 py-6 align-top text-center">
+                    <div className="flex justify-center pt-1">
+                      {getStatusBadge(r.displayStatus)}
+                    </div>
+                  </td>
+
+                  {/* ACCIÓN */}
+                  <td className="px-7 py-6 align-top text-right">
+                    <button
+                      onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }}
+                      className="p-3 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl border border-gray-100 hover:border-transparent transition-all"
+                    >
+                      <FiEdit3 size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ══ TARJETAS MÓVIL ══════════════════════════════════════ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:hidden">
+        {groupedRoutes.map((r) => (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            key={`${r.user_id}-${r.local_id}-mobile`}
+            className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col gap-4"
+          >
+            <div className="flex justify-between items-start">
+              <div className="pr-3 min-w-0">
+                <p className="font-black text-gray-900 uppercase italic text-sm leading-tight">{r.cadena}</p>
+                <p className="text-[11px] font-medium text-gray-400 mt-1 truncate">{r.direccion}</p>
+                <span className="inline-block mt-2 px-2.5 py-1 bg-gray-100 text-gray-500 text-[9px] font-black rounded-lg tracking-widest">
+                  {r.codigo_local}
+                </span>
+              </div>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                {getStatusBadge(r.displayStatus)}
+                <button
+                  onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }}
+                  className="p-2.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl transition-all"
+                >
+                  <FiEdit3 size={15} />
+                </button>
+              </div>
+            </div>
+
+            <hr className="border-gray-100" />
+
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 shrink-0 mt-0.5">
+                <FiUser size={15} />
+              </div>
+              <div className="min-w-0 flex-1">
+                {/* Nombre SIN MODIFICACIONES */}
+                <p className="font-black text-gray-800 text-[11px] leading-none mb-2">
+                  {r.first_name} {r.last_name}
+                </p>
+                {/* Tags S1-S4 móvil */}
+                <div className="flex flex-col gap-1">
+                  {[1, 2, 3, 4].map((wNum) => {
+                    const tName = r.turnosPorSemana?.[wNum];
+                    return (
+                      <div key={wNum} className="flex items-center gap-1.5">
+                        <span className="text-[8px] font-black text-gray-300 uppercase tracking-tighter w-5 shrink-0">
+                          S{wNum}
+                        </span>
+                        {tName ? (
+                          <span className="text-[9px] font-bold text-gray-600 uppercase bg-gray-100 px-2 py-0.5 rounded-md leading-none">
+                            {tName}
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-gray-200 font-bold">—</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 px-4 py-3 rounded-2xl overflow-visible">
+              <MonthlyStatus scheduledDays={r.scheduled_items} />
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* MODAL */}
+      <ManageRoutesModal
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); setSelectedRoute(null); }}
+        users={users}
+        locales={locales}
+        companies={companies}
+        onCreated={fetchData}
+        initialData={selectedRoute}
+      />
     </div>
   );
 };
