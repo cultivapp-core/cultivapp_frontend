@@ -16,7 +16,7 @@ import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
 
 // ─────────────────────────────────────────────────────────────
-// 📅 VISUALIZADOR MENSUAL CON TOOLTIP FLOTANTE
+// 📅 VISUALIZADOR MENSUAL CON TOOLTIP FLOTANTE Y COLORES DINÁMICOS
 // ─────────────────────────────────────────────────────────────
 const MonthlyStatus = ({ scheduledDays = [] }) => {
   const weeks = [1, 2, 3, 4];
@@ -33,6 +33,18 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
   const formatTime = (time) => {
     if (!time || time === "null" || time === null || time === undefined) return "N/A";
     return String(time).substring(0, 5);
+  };
+
+  // 🚩 FIX APLICADO: Estilos nativos para evadir el caché de Tailwind CSS
+  const getCircleStyles = (status) => {
+    const s = (status || "PENDING").toUpperCase();
+    if (s === "COMPLETED" || s === "OK") {
+      return { backgroundColor: "#87be00", color: "#ffffff" }; // Verde (Completado)
+    } else if (s === "PENDING" || s === "IN_PROGRESS") {
+      return { backgroundColor: "#2563eb", color: "#ffffff" }; // Azul (Planificado/En Curso)
+    } else {
+      return { backgroundColor: "#ef4444", color: "#ffffff" }; // Rojo (No completado o Error)
+    }
   };
 
   return (
@@ -53,12 +65,12 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
               return (
                 <div key={d.id} className="relative group">
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-black transition-all duration-200 cursor-default select-none
-                      ${
-                        isActive
-                          ? "bg-[#87be00] text-white shadow-sm group-hover:scale-110"
-                          : "bg-gray-100 text-gray-300"
-                      }`}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-black transition-all duration-200 cursor-default select-none shadow-sm ${isActive ? 'group-hover:scale-110' : ''}`}
+                    style={
+                      isActive 
+                        ? getCircleStyles(scheduleInfo.status) 
+                        : { backgroundColor: "#f3f4f6", color: "#d1d5db" } // Gris para días vacíos
+                    }
                   >
                     {d.label}
                   </div>
@@ -67,7 +79,10 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
                   {isActive && (
                     <div className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 invisible opacity-0 group-hover:visible group-hover:opacity-100 pointer-events-none transition-all duration-150 z-[99999]">
                       <div className="bg-gray-900 text-white px-3 py-2 rounded-xl shadow-2xl border border-white/10 whitespace-nowrap flex flex-col items-center gap-0.5 min-w-[110px]">
-                        <span className="font-black text-[#87be00] uppercase text-[8px] tracking-widest leading-none">
+                        <span 
+                          className="font-black uppercase text-[8px] tracking-widest leading-none"
+                          style={{ color: getCircleStyles(scheduleInfo.status).backgroundColor }}
+                        >
                           {scheduleInfo.turno && scheduleInfo.turno !== "null"
                             ? scheduleInfo.turno
                             : "Planificado"}
@@ -247,13 +262,14 @@ const Planificacion = () => {
       const key     = `${r.user_id}-${r.local_id}`;
       const weekNum = r.week_number || 1;
 
-      // Item para el calendario mensual
+      // 🚩 FIX: Asegurar que se guarde el r.status individual por día
       const schedItem = r.day_of_week !== null ? {
         day:     r.day_of_week,
         week:    weekNum,
         time:    r.start_time   || r.entrada || null,
         endTime: r.end_time     || r.salida  || null,
         turno:   r.nombre_turno || null,
+        status:  r.status || "PENDING", 
       } : null;
 
       if (!groups[key]) {
@@ -261,12 +277,10 @@ const Planificacion = () => {
           ...r,
           scheduled_items: schedItem ? [schedItem] : [],
           all_statuses:    [r.status],
-          // turnosPorSemana: { 1: "TURNO FULL 2", 2: "TURNO FULL 2", ... }
           turnosPorSemana: schedItem ? { [weekNum]: r.nombre_turno || null } : {},
         };
       } else {
         if (schedItem) {
-          // Evitar duplicados de día+semana en el calendario
           const exists = groups[key].scheduled_items.some(
             (item) =>
               parseInt(item.day)  === parseInt(r.day_of_week) &&
@@ -274,7 +288,6 @@ const Planificacion = () => {
           );
           if (!exists) groups[key].scheduled_items.push(schedItem);
 
-          // Guardar el turno de esta semana si aún no existe
           if (!groups[key].turnosPorSemana[weekNum]) {
             groups[key].turnosPorSemana[weekNum] = r.nombre_turno || null;
           }
@@ -364,7 +377,6 @@ const Planificacion = () => {
                   key={`${r.user_id}-${r.local_id}-desktop`}
                   className="hover:bg-gray-50/40 transition-colors"
                 >
-                  {/* LOCAL */}
                   <td className="px-7 py-6 align-top">
                     <p className="font-black text-gray-900 uppercase italic text-[13px] leading-none">{r.cadena}</p>
                     <p className="text-[11px] font-medium text-gray-400 mt-1.5 max-w-[200px] truncate">{r.direccion}</p>
@@ -373,10 +385,8 @@ const Planificacion = () => {
                     </span>
                   </td>
 
-                  {/* MERCADERISTA + TAGS S1-S4 */}
                   <td className="px-7 py-6 align-top">
                     <div className="flex flex-col gap-2.5">
-                      {/* Nombre SIN MODIFICACIONES */}
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
                           <FiUser size={14} />
@@ -386,7 +396,6 @@ const Planificacion = () => {
                         </span>
                       </div>
 
-                      {/* Tags de turno por semana */}
                       <div className="flex flex-col gap-1 pl-10">
                         {[1, 2, 3, 4].map((wNum) => {
                           const tName = r.turnosPorSemana?.[wNum];
@@ -409,21 +418,18 @@ const Planificacion = () => {
                     </div>
                   </td>
 
-                  {/* CALENDARIO MENSUAL */}
                   <td className="px-7 py-6 align-top">
                     <div className="bg-gray-50 px-4 py-3 rounded-2xl inline-block overflow-visible">
                       <MonthlyStatus scheduledDays={r.scheduled_items} />
                     </div>
                   </td>
 
-                  {/* ESTADO */}
                   <td className="px-7 py-6 align-top text-center">
                     <div className="flex justify-center pt-1">
                       {getStatusBadge(r.displayStatus)}
                     </div>
                   </td>
 
-                  {/* ACCIÓN */}
                   <td className="px-7 py-6 align-top text-right">
                     <button
                       onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }}
@@ -474,11 +480,9 @@ const Planificacion = () => {
                 <FiUser size={15} />
               </div>
               <div className="min-w-0 flex-1">
-                {/* Nombre SIN MODIFICACIONES */}
                 <p className="font-black text-gray-800 text-[11px] leading-none mb-2">
                   {r.first_name} {r.last_name}
                 </p>
-                {/* Tags S1-S4 móvil */}
                 <div className="flex flex-col gap-1">
                   {[1, 2, 3, 4].map((wNum) => {
                     const tName = r.turnosPorSemana?.[wNum];
@@ -508,7 +512,6 @@ const Planificacion = () => {
         ))}
       </div>
 
-      {/* MODAL */}
       <ManageRoutesModal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedRoute(null); }}
