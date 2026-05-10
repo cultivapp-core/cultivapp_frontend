@@ -17,6 +17,7 @@ import { motion } from "framer-motion";
 
 /**
  * 📅 COMPONENTE: VISUALIZADOR MENSUAL CON TOOLTIP DINÁMICO
+ * (Actualizado para mostrar el nombre del reponedor en el Tooltip si hay varios)
  */
 const MonthlyStatus = ({ scheduledDays = [] }) => {
   const weeks = [1, 2, 3, 4];
@@ -54,14 +55,17 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
                     {d.label}
                   </div>
 
-                  {/* 🚩 TOOLTIP FLOTANTE (Ahora sí mostrará las horas y no se cortará) */}
+                  {/* 🚩 TOOLTIP FLOTANTE MEJORADO */}
                   {isActive && (
                     <div className="absolute bottom-[110%] left-1/2 -translate-x-1/2 mb-1 invisible opacity-0 group-hover:visible group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[99999]">
                       <div className="bg-gray-900 text-white text-[9px] px-3 py-2 rounded-xl shadow-xl border border-white/10 whitespace-nowrap flex flex-col items-center gap-1">
+                        <span className="font-black text-white uppercase text-[8px] tracking-widest border-b border-gray-700 pb-1 mb-0.5">
+                          {scheduleInfo.userName}
+                        </span>
                         <span className="font-black text-[#87be00] uppercase text-[7px] tracking-widest">
                           {scheduleInfo.turno || 'Planificado'}
                         </span>
-                        <span className="font-bold">
+                        <span className="font-bold text-[8px] text-gray-300">
                           {formatTime(scheduleInfo.time)} — {formatTime(scheduleInfo.endTime)}
                         </span>
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
@@ -186,27 +190,38 @@ const Planificacion = () => {
     e.target.value = "";
   };
 
+  // 🚩 LÓGICA DE AGRUPACIÓN ACTUALIZADA 🚩
   const groupedRoutes = useMemo(() => {
     const groups = {};
     routes.forEach((r) => {
-      if (!r.user_id || !r.local_id) return;
-      const key = `${r.user_id}-${r.local_id}`;
+      if (!r.local_id) return;
+      
+      // Agrupamos por el Grupo Lógico (schedule_group_id) si existe.
+      // Si fue creada individualmente y no tiene grupo, la agrupamos por Local.
+      const key = r.schedule_group_id ? `group-${r.schedule_group_id}` : `local-${r.local_id}`;
       const weekNum = r.week_number || 1; 
 
       if (!groups[key]) {
         groups[key] = {
-          ...r,
-          // 🚩 OJO AQUÍ: Cambiamos a r.start_time y r.end_time para que el Tooltip las reciba correctamente
+          ...r, // Conserva data base (local, dirección, etc)
+          id: r.id, // ID representativo para borrar o editar el grupo
+          users: new Set([`${r.first_name} ${r.last_name}`]), // Guardamos nombres únicos
           scheduled_items: r.day_of_week !== null ? [{ 
             day: r.day_of_week, 
             week: weekNum, 
             time: r.start_time || r.entrada,      
             endTime: r.end_time || r.salida,    
-            turno: r.nombre_turno  
+            turno: r.nombre_turno,
+            userName: `${r.first_name} ${r.last_name}`, // Asociamos el usuario al día
+            user_id: r.user_id,
+            turno_id: r.nombre_turno
           }] : [],
           all_statuses: [r.status],
         };
       } else {
+        // Agregamos el usuario al Set si no existe
+        groups[key].users.add(`${r.first_name} ${r.last_name}`);
+        
         if (r.day_of_week !== null) {
           const exists = groups[key].scheduled_items.some(
             item => parseInt(item.day) === parseInt(r.day_of_week) && parseInt(item.week) === parseInt(weekNum)
@@ -217,7 +232,10 @@ const Planificacion = () => {
               week: weekNum, 
               time: r.start_time || r.entrada,
               endTime: r.end_time || r.salida,
-              turno: r.nombre_turno 
+              turno: r.nombre_turno,
+              userName: `${r.first_name} ${r.last_name}`,
+              user_id: r.user_id,
+              turno_id: r.nombre_turno
             });
           }
         }
@@ -227,6 +245,7 @@ const Planificacion = () => {
 
     return Object.values(groups).map(group => ({
       ...group,
+      users: Array.from(group.users), // Convertimos Set a Array para mapearlo en React
       displayStatus: group.all_statuses.includes('IN_PROGRESS') ? 'IN_PROGRESS' : 
                      group.all_statuses.every(s => s === 'COMPLETED' || s === 'OK') ? 'COMPLETED' : 
                      group.all_statuses.some(s => s === 'COMPLETED' || s === 'OK') ? 'PARTIAL' : 'PENDING'
@@ -299,8 +318,9 @@ const Planificacion = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 text-[11px]">
-              {groupedRoutes.map((r) => {
+              {groupedRoutes.map((r, index) => {
                 const turnsByWeek = {};
+                // Colectamos turnos por semana (mostrando el primero que encontremos para resumen general)
                 r.scheduled_items.forEach(item => {
                   if (!turnsByWeek[item.week]) {
                     turnsByWeek[item.week] = item.turno;
@@ -308,7 +328,7 @@ const Planificacion = () => {
                 });
 
                 return (
-                  <tr key={`${r.user_id}-${r.local_id}-desktop`} className="hover:bg-gray-50/50 transition-colors group/row">
+                  <tr key={`desk-${index}`} className="hover:bg-gray-50/50 transition-colors group/row">
                     <td className="p-6">
                       <div className="min-w-0">
                         <p className="font-black text-gray-900 uppercase italic leading-none text-[13px]">{r.cadena}</p>
@@ -317,14 +337,16 @@ const Planificacion = () => {
                       </div>
                     </td>
                     
-                    {/* 🚩 DISEÑO DE MERCADERISTA MEJORADO (Como en la foto) */}
+                    {/* 🚩 DISEÑO DE MERCADERISTA MEJORADO (Ahora soporta múltiples usuarios: Juan / Gabriel) */}
                     <td className="p-6">
                       <div className="flex flex-col gap-3">
                           <div className="font-black text-gray-800 uppercase flex items-center gap-2.5 leading-none">
                             <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
                               <FiUser size={14}/>
                             </div>
-                            {r.first_name} {r.last_name}
+                            <span className="truncate max-w-[200px]">
+                              {r.users.join(' / ')}
+                            </span>
                           </div>
                           
                           <div className="flex flex-wrap gap-1.5 pl-10">
@@ -342,7 +364,6 @@ const Planificacion = () => {
                       </div>
                     </td>
                     
-                    {/* 🚩 DISEÑO DE CALENDARIO EN CAJA GRIS */}
                     <td className="p-6">
                       <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-50 inline-block">
                         <MonthlyStatus scheduledDays={r.scheduled_items} />
@@ -365,16 +386,16 @@ const Planificacion = () => {
         </div>
       </div>
       
-      {/* 📱 VISTA MÓVIL (TARJETAS PREMIUM) */}
+      {/* 📱 VISTA MÓVIL */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:hidden">
-        {groupedRoutes.map((r) => {
+        {groupedRoutes.map((r, index) => {
           const turnsByWeek = {};
           r.scheduled_items.forEach(item => {
             if (!turnsByWeek[item.week]) turnsByWeek[item.week] = item.turno;
           });
 
           return (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={`${r.user_id}-${r.local_id}-mobile`} className="bg-white p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100 flex flex-col gap-5">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={`mob-${index}`} className="bg-white p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100 flex flex-col gap-5">
               
               <div className="flex justify-between items-start">
                 <div className="pr-4">
@@ -397,7 +418,9 @@ const Planificacion = () => {
                   <FiUser size={16}/>
                 </div>
                 <div>
-                  <p className="font-black text-gray-800 uppercase text-[11px] leading-none mb-1.5">{r.first_name} {r.last_name}</p>
+                  <p className="font-black text-gray-800 uppercase text-[11px] leading-none mb-1.5">
+                    {r.users.join(' / ')}
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
                     {[1, 2, 3, 4].map(wNum => {
                       const tName = turnsByWeek[wNum];
@@ -424,6 +447,7 @@ const Planificacion = () => {
         })}
       </div>
 
+      {/* MODAL PLANIFICADOR VISUAL */}
       <ManageRoutesModal 
         isOpen={isModalOpen} 
         onClose={() => { setIsModalOpen(false); setSelectedRoute(null); }} 
