@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { 
   FiPlus, FiUpload, FiTrash2, FiEdit, FiMapPin, 
-  FiHash, FiEye, FiEyeOff, FiSearch, FiPhone, FiUser, FiBriefcase 
+  FiHash, FiEye, FiEyeOff, FiSearch, FiPhone, FiUser, FiBriefcase,
+  FiShoppingCart // 🚩 Nuevo icono para Cadenas
 } from "react-icons/fi"; 
 import api from "../api/apiClient";
 import toast from "react-hot-toast";
@@ -15,9 +16,11 @@ import { motion, AnimatePresence } from "framer-motion";
 
 const AdminLocales = () => {
   const [locales, setLocales] = useState([]);
-  const [companies, setCompanies] = useState([]); // Para el filtro de empresa
+  const [companies, setCompanies] = useState([]); 
+  const [chains, setChains] = useState([]); // 🚩 Estado para la lista de cadenas únicas
   const [showInactive, setShowInactive] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedChain, setSelectedChain] = useState(""); // 🚩 Estado para el filtro de cadena
   
   const [openCreate, setOpenCreate] = useState(false);
   const [openUpload, setOpenUpload] = useState(false);
@@ -26,10 +29,8 @@ const AdminLocales = () => {
   const [mapSelectedId, setMapSelectedId] = useState(null);
 
   const user = JSON.parse(localStorage.getItem("user"));
-  // Estado para la empresa seleccionada (inicializa con la del usuario)
   const [selectedCompanyId, setSelectedCompanyId] = useState(user.company_id);
 
-  // 1. Cargar empresas (Solo si es ROOT o para llenar el selector)
   const fetchCompanies = async () => {
     try {
       const data = await api.get("/companies");
@@ -39,12 +40,16 @@ const AdminLocales = () => {
     }
   };
 
-  // 2. Cargar locales basado en la empresa seleccionada
   const fetchLocales = useCallback(async () => {
     try {
-      // 🚩 El filtro por empresa ahora usa selectedCompanyId
       const data = await api.get(`/locales?company_id=${selectedCompanyId}`);
       setLocales(data || []);
+      
+      // 🚩 Extraer cadenas únicas de los locales cargados para el selector
+      if (data) {
+        const uniqueChains = [...new Set(data.map(l => l.cadena))].filter(Boolean).sort();
+        setChains(uniqueChains);
+      }
     } catch (error) {
       toast.error("Error al cargar locales");
     }
@@ -55,21 +60,24 @@ const AdminLocales = () => {
     fetchLocales();
   }, [fetchLocales, user.role]);
 
-  // 3. Lógica de búsqueda optimizada (Código + Cadena)
+  // 3. Lógica de filtrado (🚩 Ahora incluye Cadena)
   const filteredLocales = useMemo(() => {
     return locales.filter(l => {
       const matchesActive = showInactive || l.is_active;
       const term = searchTerm.toLowerCase().trim();
       
+      // 🚩 Filtro por Cadena Seleccionada
+      const matchesChain = selectedChain === "" || l.cadena === selectedChain;
+
       const matchesSearch = 
         l.cadena?.toLowerCase().includes(term) ||
-        l.codigo_local?.toString().includes(term) || // Búsqueda por código
+        l.codigo_local?.toString().includes(term) || 
         l.comuna?.toLowerCase().includes(term) ||
         l.direccion?.toLowerCase().includes(term);
 
-      return matchesActive && matchesSearch;
+      return matchesActive && matchesSearch && matchesChain;
     });
-  }, [locales, showInactive, searchTerm]);
+  }, [locales, showInactive, searchTerm, selectedChain]);
 
   const handleEdit = (local) => {
     setSelectedLocal(local);
@@ -118,35 +126,29 @@ const AdminLocales = () => {
         </div>
 
         <div className="flex flex-wrap gap-2 md:gap-3 w-full lg:w-auto">
-          <button
-            onClick={() => setOpenUpload(true)}
-            className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition shadow-sm"
-          >
+          <button onClick={() => setOpenUpload(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition shadow-sm">
             <FiUpload size={16} className="text-gray-400" />
             Carga Masiva
           </button>
-          <button
-            onClick={() => setOpenCreate(true)}
-            className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-[#87be00] text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#76a500] transition shadow-xl shadow-[#87be00]/20 active:scale-95"
-          >
+          <button onClick={() => setOpenCreate(true)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-[#87be00] text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#76a500] transition shadow-xl shadow-[#87be00]/20 active:scale-95">
             <FiPlus size={18} />
             Crear Local
           </button>
         </div>
       </div>
 
-      {/* FILTROS Y SELECTOR DE EMPRESA */}
+      {/* FILTROS Y SELECTORES */}
       <div className="bg-white p-5 md:p-8 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-6">
         <div className="flex flex-col xl:flex-row gap-4">
           
-          {/* SELECTOR DE EMPRESA (🚩 Ahora funcional) */}
+          {/* SELECTOR DE EMPRESA (Solo ROOT) */}
           {user.role === "ROOT" && (
-            <div className="relative min-w-[250px]">
-              <FiBriefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" />
+            <div className="relative min-w-[200px]">
+              <FiBriefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00] z-10" />
               <select
                 value={selectedCompanyId}
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
-                className="w-full bg-gray-50 border-none rounded-xl pl-11 pr-4 py-3.5 text-xs font-black uppercase tracking-wider outline-none focus:ring-2 focus:ring-[#87be00]/20 transition shadow-inner appearance-none"
+                className="w-full bg-gray-50 border-none rounded-xl pl-11 pr-4 py-3.5 text-xs font-black uppercase tracking-wider outline-none focus:ring-2 focus:ring-[#87be00]/20 transition shadow-inner appearance-none cursor-pointer"
               >
                 {companies.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -155,12 +157,27 @@ const AdminLocales = () => {
             </div>
           )}
 
-          {/* BUSCADOR POR CÓDIGO O CADENA */}
+          {/* 🚩 NUEVO: SELECTOR DE CADENAS */}
+          <div className="relative min-w-[200px]">
+            <FiShoppingCart className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00] z-10" />
+            <select
+              value={selectedChain}
+              onChange={(e) => setSelectedChain(e.target.value)}
+              className="w-full bg-gray-50 border-none rounded-xl pl-11 pr-4 py-3.5 text-xs font-black uppercase tracking-wider outline-none focus:ring-2 focus:ring-[#87be00]/20 transition shadow-inner appearance-none cursor-pointer"
+            >
+              <option value="">TODAS LAS CADENAS</option>
+              {chains.map(chain => (
+                <option key={chain} value={chain}>{chain.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* BUSCADOR */}
           <div className="relative flex-1">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input 
               type="text"
-              placeholder="Buscar por código (#) o nombre de cadena..."
+              placeholder="Buscar por código (#) o nombre..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-gray-50 border-none rounded-xl pl-11 pr-4 py-3.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#87be00]/20 transition shadow-inner"
@@ -184,7 +201,7 @@ const AdminLocales = () => {
         </div>
       </div>
 
-      {/* VISTA DESKTOP: TABLA UNIFICADA */}
+      {/* TABLA DESKTOP */}
       <div className="hidden md:block bg-white rounded-[3rem] shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -200,7 +217,7 @@ const AdminLocales = () => {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filteredLocales.length === 0 ? (
-                <tr><td colSpan="6" className="p-24 text-center font-black italic text-gray-300 uppercase text-xs tracking-widest">No se encontraron locales en esta empresa</td></tr>
+                <tr><td colSpan="6" className="p-24 text-center font-black italic text-gray-300 uppercase text-xs tracking-widest">No se encontraron locales con estos filtros</td></tr>
               ) : (
                 filteredLocales.map(local => (
                   <tr 
@@ -210,7 +227,6 @@ const AdminLocales = () => {
                   >
                     <td className="p-8">
                       <div className="flex items-center gap-4">
-                        {/* 🚩 CÓDIGO A LA IZQUIERDA DE CADENA */}
                         <div className="bg-gray-900 text-[#87be00] w-12 h-12 rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-gray-200">
                           <span className="text-[7px] font-black leading-none opacity-50 mb-0.5">ID</span>
                           <span className="text-[11px] font-black leading-none">{local.codigo_local || '—'}</span>
@@ -255,7 +271,7 @@ const AdminLocales = () => {
         </div>
       </div>
 
-      {/* VISTA MÓVIL (Mismo diseño pero condensado) */}
+      {/* VISTA MÓVIL */}
       <div className="md:hidden space-y-4 px-1">
         {filteredLocales.map((local, idx) => (
           <motion.div 
@@ -279,9 +295,6 @@ const AdminLocales = () => {
                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 italic">
                   <FiMapPin className="text-[#87be00] shrink-0"/> {local.direccion}
                </div>
-               <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500">
-                  <FiUser className="text-[#87be00] shrink-0"/> {local.gerente || 'Sin Gerente'}
-               </div>
             </div>
 
             <div className="flex justify-between items-center" onClick={(e) => e.stopPropagation()}>
@@ -297,7 +310,6 @@ const AdminLocales = () => {
         ))}
       </div>
 
-      {/* MODALES */}
       <CreateLocalModal isOpen={openCreate} onClose={() => setOpenCreate(false)} onCreated={fetchLocales} autoCompanyId={selectedCompanyId} />
       <UploadLocalesModal isOpen={openUpload} onClose={() => setOpenUpload(false)} onUploaded={fetchLocales} companyId={selectedCompanyId} />
       {selectedLocal && (
