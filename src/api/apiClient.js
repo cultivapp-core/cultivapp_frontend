@@ -34,11 +34,22 @@ const request = async (endpoint, options = {}) => {
   try {
     const response = await fetch(finalUrl, config);
 
-    // Manejo de Sesión Expirada
+    // 🚩 MANEJO DE SESIÓN EXPIRADA (SUAVIZADO)
     if (response.status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("user"); 
-      if (window.location.pathname !== "/") window.location.href = "/?error=session_expired";
+      
+      // Disparamos un evento por si algún componente de React quiere reaccionar
+      window.dispatchEvent(new Event("session_expired"));
+
+      if (window.location.pathname !== "/") {
+        // Le damos un "tiempo de gracia" de 1.5s para que los procesos
+        // de sincronización en segundo plano (useOfflineSync) puedan pausarse
+        // limpiamente sin ser asesinados por la recarga de página.
+        setTimeout(() => {
+          window.location.href = "/?error=session_expired";
+        }, 1500);
+      }
       throw { status: 401, message: "Sesión expirada" };
     }
 
@@ -56,17 +67,17 @@ const request = async (endpoint, options = {}) => {
     const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(options.method);
 
     /**
-     * 🚩 MEJORA SAAS: Filtro de Rutas Offline
-     * Solo permitimos modo offline para operaciones de terreno (VisitFlow).
-     * El Bulk-Create (Excel) NO entra aquí, evitando que se corrompa la cola.
+     * 🚩 MEJORA: Filtro de Rutas Offline actualizado con Tareas y Fotos
      */
     const isTerrainRoute = 
       endpoint.includes("/reports/") || 
       endpoint.includes("/scans") || 
-      endpoint.includes("/finish");
+      endpoint.includes("/finish") ||
+      endpoint.includes("/photo") ||  // Añadido
+      endpoint.includes("/task");     // Añadido
 
     if (isNetworkError && isMutation && isTerrainRoute) {
-      // Delegamos la responsabilidad al nuevo componente independiente
+      // Delegamos la responsabilidad al componente de base de datos local
       return await OfflineManager.save(cleanEndpoint, options.method, options.body);
     }
     

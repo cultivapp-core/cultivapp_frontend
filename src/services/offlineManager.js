@@ -1,63 +1,54 @@
 import { addToSyncQueue } from "../utils/db";
 
-/**
- * 🛠️ SERIALIZAR BODY
- * Mantenemos tu lógica de conversión aquí para que el Manager 
- * se encargue de preparar los datos para IndexedDB.
- */
-const serializeBody = (body) => {
+// Convierte archivos (fotos) a Base64
+const fileToBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = error => reject(error);
+});
+
+const serializeBody = async (body) => {
   if (!body) return null;
   
   if (body instanceof FormData) {
     const serialized = {};
     for (let [key, value] of body.entries()) {
-      serialized[key] = value;
+      // Si es una foto, la transformamos para que sobreviva offline
+      if (value instanceof File || value instanceof Blob) {
+        serialized[key] = await fileToBase64(value);
+      } else {
+        serialized[key] = value;
+      }
     }
     return { __type: "FormData", data: serialized };
   }
   
   if (typeof body === "string") {
-    try {
-      return JSON.parse(body);
-    } catch (e) {
-      return body;
-    }
+    try { return JSON.parse(body); } catch (e) { return body; }
   }
   return body;
 };
 
 const OfflineManager = {
-  /**
-   * Guarda una operación en la cola de sincronización.
-   * @param {string} endpoint - La URL de la API
-   * @param {string} method - POST, PUT, PATCH, etc.
-   * @param {any} body - Los datos de la petición
-   */
   save: async (endpoint, method, body) => {
     console.warn(`🌐 [OfflineManager] Guardando en cola: ${method} ${endpoint}`);
     
-    // Identificar el tipo de operación para la cola
     const type = endpoint.includes("/finish") ? "FINISH" : 
-                 endpoint.includes("/photo") ? "PHOTO" : "OTHER";
+                 endpoint.includes("/photo") ? "PHOTO" : 
+                 endpoint.includes("/task") ? "TASK" : "OTHER";
 
-    // Extraer ID de ruta si está presente en el endpoint
     const routeMatch = endpoint.match(/\/routes\/([^/]+)/);
     const routeId = routeMatch ? routeMatch[1] : null;
 
-    // Guardar en la base de datos local (IndexedDB)
+    const payload = await serializeBody(body);
+
     await addToSyncQueue({
-      type,
-      endpoint,
-      method,
-      routeId,
-      payload: serializeBody(body),
+      type, endpoint, method, routeId, payload,
       createdAt: new Date().toISOString(),
     });
 
-    return { 
-      offline: true, 
-      message: "Operación guardada localmente por OfflineManager" 
-    };
+    return { offline: true, message: "Guardado localmente" };
   }
 };
 
