@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { FiClock, FiSearch, FiRefreshCw, FiCalendar, FiMapPin, FiArrowRight } from "react-icons/fi";
+import { FiClock, FiSearch, FiRefreshCw, FiCalendar, FiMapPin, FiArrowRight, FiHash, FiClipboard } from "react-icons/fi";
 import api from "../../api/apiClient";
 
-// Función segura para obtener la fecha local YYYY-MM-DD
 const getLocalISODate = () => {
   const tzOffset = (new Date()).getTimezoneOffset() * 60000;
   return new Date(Date.now() - tzOffset).toISOString().split('T')[0];
@@ -37,7 +36,6 @@ const AttendanceControl = () => {
     return () => clearTimeout(delayDebounce);
   }, [selectedDate, searchTerm]);
 
-  // 🎨 REGLA: COLOR DEL AVATAR (RETRASO EN INICIO)
   const getAvatarStyles = (delay) => {
     if (delay === null || delay === undefined) return 'bg-gray-900 text-white';
     if (delay <= 0) return 'bg-[#87be00] text-white'; 
@@ -45,7 +43,6 @@ const AttendanceControl = () => {
     return 'bg-red-500 text-white'; 
   };
 
-  // 🎨 REGLA: LÓGICA DE ESTADO (SALIDA ANTICIPADA / EXTRA / PENDIENTE)
   const getStatusBadge = (diff, status) => {
     if (status !== 'COMPLETED') {
         return { 
@@ -53,7 +50,6 @@ const AttendanceControl = () => {
           style: status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'
         };
     }
-    // Solo aplica diff si status es COMPLETED
     if (diff < -5) return { label: 'SALIDA ANTICIPADA', style: 'bg-red-50 text-red-600 border-red-100' };
     if (diff > 5) return { label: 'HORAS EXTRA', style: 'bg-indigo-50 text-indigo-600 border-indigo-100' };
     return { label: 'FINALIZADO', style: 'bg-green-50 text-green-600 border-green-100' };
@@ -94,7 +90,7 @@ const AttendanceControl = () => {
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input 
               type="text" 
-              placeholder="COLABORADOR, LOCAL, CÓDIGO..."
+              placeholder="N° VISITA, LOCAL, MERCADERISTA..."
               className="w-full pl-10 pr-4 py-3 md:py-4 bg-white border border-gray-100 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black outline-none shadow-sm transition-all uppercase"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -107,7 +103,7 @@ const AttendanceControl = () => {
         </div>
       </div>
 
-      {/* 🚩 VISTA MÓVIL: TARJETAS */}
+      {/* 🚩 VISTA MÓVIL */}
       <div className="md:hidden space-y-4 px-2">
         {attendance.map((row, idx) => {
           const statusInfo = getStatusBadge(row.exit_diff, row.status);
@@ -127,14 +123,19 @@ const AttendanceControl = () => {
                 <span className={`text-[8px] font-black px-2 py-1 rounded-md border ${statusInfo.style}`}>{statusInfo.label}</span>
               </div>
 
-              {/* 🚩 AGREGADO: Turno Planificado en la vista móvil */}
-              <div className="bg-gray-50 p-3 rounded-2xl mb-3 flex justify-between items-center">
-                  <p className="text-[10px] font-black text-gray-800 uppercase italic truncate pr-2">{row.local_name}</p>
-                  <div className="text-right shrink-0">
-                     <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Planificado</p>
-                     <p className="text-[10px] font-black text-gray-600 flex items-center gap-1">
-                        {row.plan_in || '--:--'} <FiArrowRight size={8} /> {row.plan_out || '--:--'}
-                     </p>
+              {/* 🚩 MÓVIL: N° Visita y Local */}
+              <div className="bg-gray-50 p-4 rounded-2xl mb-3 space-y-2">
+                  <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                    <span className="text-[8px] font-black text-gray-400 uppercase">N° Visita:</span>
+                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100 italic">{row.visit_number || 'S/N'}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <p className="text-[10px] font-black text-gray-800 uppercase italic truncate pr-2">{row.local_name}</p>
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] font-black text-gray-600 flex items-center gap-1 leading-none">
+                          {row.plan_in || '--:--'} <FiArrowRight size={8} /> {row.plan_out || '--:--'}
+                      </p>
+                    </div>
                   </div>
               </div>
 
@@ -160,21 +161,22 @@ const AttendanceControl = () => {
         })}
       </div>
 
-      {/* 🚩 VISTA DESKTOP: TABLA */}
+      {/* 🚩 VISTA DESKTOP */}
       <div className="hidden md:block bg-white rounded-[2.5rem] shadow-sm border border-gray-50 overflow-hidden mx-2 lg:mx-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-gray-900 text-white">
-                <th className="px-6 py-5 text-[9px] font-black uppercase tracking-widest italic">Mercaderista</th>
-                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic text-center">Local / Cod</th>
-                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic text-center">Fecha</th>
-                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic text-center">Ingreso Planificado</th>
-                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic text-center">Salida Planificada</th>
-                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic text-center">Entrada Real</th>
-                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic text-center">Salida Real</th>
-                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic text-center">Tiempo Trabajo</th>
-                <th className="px-6 py-5 text-[9px] font-black uppercase tracking-widest italic text-center">Estado</th>
+              <tr className="bg-gray-900 text-white text-center">
+                <th className="px-6 py-5 text-[9px] font-black uppercase tracking-widest italic text-left">Mercaderista</th>
+                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic">N° Visita</th>
+                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic">Local / Cod</th>
+                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic">Fecha</th>
+                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic">Ingreso Plan.</th>
+                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic">Salida Plan.</th>
+                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic">Entrada Real</th>
+                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic">Salida Real</th>
+                <th className="px-4 py-5 text-[9px] font-black uppercase tracking-widest italic">Tiempo Trabajo</th>
+                <th className="px-6 py-5 text-[9px] font-black uppercase tracking-widest italic">Estado</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -182,53 +184,58 @@ const AttendanceControl = () => {
                 const statusInfo = getStatusBadge(row.exit_diff, row.status);
                 const displayDate = row.visit_date || selectedDate;
                 return (
-                  <motion.tr initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} key={row.id || idx} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-5">
+                  <motion.tr initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} key={row.id || idx} className="hover:bg-gray-50/50 transition-colors text-center">
+                    <td className="px-6 py-5 text-left">
                       <div className="flex items-center gap-3">
-                        <div className={`h-10 w-10 rounded-full ${getAvatarStyles(row.entry_delay)} flex items-center justify-center text-[10px] font-black shadow-md`}>
+                        <div className={`h-10 w-10 rounded-xl ${getAvatarStyles(row.entry_delay)} flex items-center justify-center text-[10px] font-black shadow-md shrink-0`}>
                           {row.first_name?.[0]}{row.last_name?.[0]}
                         </div>
                         <div>
                           <p className="text-xs font-black text-gray-900 leading-none uppercase">{row.first_name} {row.last_name}</p>
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">ID: {row.worker_id}</p>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase mt-1 tracking-tighter">RUT: {row.worker_id}</p>
                         </div>
                       </div>
                     </td>
 
-                    <td className="px-4 py-5 text-center">
-                      <p className="text-[10px] font-black text-gray-800 uppercase italic truncate max-w-[120px]">{row.local_name}</p>
+                    {/* 🚩 NUEVA COLUMNA: N° Visita */}
+                    <td className="px-4 py-5">
+                      <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 italic tracking-tighter">
+                        {row.visit_number || 'S/N'}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-5">
+                      <p className="text-[10px] font-black text-gray-800 uppercase italic truncate max-w-[120px] mx-auto">{row.local_name}</p>
                       <p className="text-[9px] font-bold text-[#87be00] uppercase tracking-tighter">{row.local_code}</p>
                     </td>
 
-                    <td className="px-4 py-5 text-center">
+                    <td className="px-4 py-5">
                       <span className="text-[10px] font-black text-gray-900 uppercase">
                         {formatDate(displayDate)}
                       </span>
                     </td>
 
-                    <td className="px-4 py-5 text-center text-xs font-black text-gray-400">{row.plan_in || '--:--'}</td>
-                    
-                    {/* 🚩 Columna Salida Planificada */}
-                    <td className="px-4 py-5 text-center text-xs font-black text-gray-400">{row.plan_out || '--:--'}</td>
+                    <td className="px-4 py-5 text-xs font-black text-gray-400">{row.plan_in || '--:--'}</td>
+                    <td className="px-4 py-5 text-xs font-black text-gray-400">{row.plan_out || '--:--'}</td>
 
-                    <td className="px-4 py-5 text-center">
+                    <td className="px-4 py-5">
                       <span className={`text-xs font-black ${row.entry_delay > 10 ? 'text-red-500' : 'text-gray-900'}`}>{row.check_in || '--:--'}</span>
                     </td>
 
-                    <td className="px-4 py-5 text-center">
+                    <td className="px-4 py-5">
                       <span className={`text-xs font-black ${row.check_out ? 'text-green-600' : 'text-gray-300'}`}>{row.check_out || '--:--'}</span>
                     </td>
 
-                    <td className="px-4 py-5 text-center">
+                    <td className="px-4 py-5">
                       {row.total_work_time ? (
-                        <div className="flex flex-col">
+                        <div className="flex flex-col items-center">
                           <span className="text-xs font-black text-gray-900">{row.total_work_time} min</span>
                           <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter italic leading-none">Efectivos</span>
                         </div>
                       ) : <span className="text-xs font-black text-gray-300 italic">--</span>}
                     </td>
 
-                    <td className="px-6 py-5 text-center">
+                    <td className="px-6 py-5">
                       <span className={`text-[9px] font-black px-3 py-1.5 rounded-md italic border ${statusInfo.style}`}>
                         {statusInfo.label}
                       </span>
