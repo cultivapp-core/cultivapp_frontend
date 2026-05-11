@@ -34,9 +34,9 @@ const CatalogManager = () => {
     try {
       setLoading(true);
       const [resBrands, resProducts, resCategories] = await Promise.all([
-        api.get("/brands"),
-        api.get("/products"),
-        api.get("/categories")
+        api.get("/routes/brands"),
+        api.get("/routes/products"),
+        api.get("/routes/categories")
       ]);
       setBrands(resBrands || []);
       setProducts(resProducts || []);
