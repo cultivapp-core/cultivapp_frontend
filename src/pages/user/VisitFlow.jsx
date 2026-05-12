@@ -87,7 +87,6 @@ const VisitFlow = () => {
         try {
           const data = await api.get("/questions");
           setQuestions(data);
-          localStorage.setItem("cultivapp_questions_cache", JSON.stringify(data));
         } catch (err) {
           const cached = localStorage.getItem("cultivapp_questions_cache");
           if (cached) setQuestions(JSON.parse(cached));
@@ -110,14 +109,13 @@ const VisitFlow = () => {
       formData.append("foto", file); 
       
       const response = await api.post(`/routes/${id}/photo`, formData);
-      const photoUrl = response?.offline ? URL.createObjectURL(file) : (response.image_url || response.url);
+      // 🚩 MEJORA: Aseguramos que la URL sea válida incluso si la API tarda
+      const photoUrl = response?.offline ? URL.createObjectURL(file) : (response.image_url || response.url || URL.createObjectURL(file));
 
       if (step === 2) setGondolaInicialPhoto(photoUrl);
       if (step === 5) setGondolaTerminoPhoto(photoUrl);
       
-      if (response?.offline) toast.success("Foto guardada offline ✈️", { id: toastId });
-      else toast.success("Captura guardada", { id: toastId });
-      
+      toast.success("Captura guardada", { id: toastId });
       if (step === 1 || step === 7) setStep(prev => prev + 1);
     } catch (err) {
       toast.error("Error al procesar imagen", { id: toastId });
@@ -133,9 +131,7 @@ const VisitFlow = () => {
     
     isProcessingScan.current = true;
     try {
-      const response = await api.post(`/routes/${id}/scans`, { barcode: decodedText });
-      if (response?.offline) toast("Escaneo guardado offline", { icon: '📦' });
-      
+      await api.post(`/routes/${id}/scans`, { barcode: decodedText });
       setScannedCodes(prev => [decodedText, ...prev]);
       setTimeout(() => { isProcessingScan.current = false; }, 600);
     } catch (err) { isProcessingScan.current = false; }
@@ -153,10 +149,8 @@ const VisitFlow = () => {
     };
 
     try {
-      const response = await api.post(`/routes/${id}/task`, taskData);
-      
-      if (response?.offline) toast.success("Producto guardado offline 🔄", { id: toastId });
-      else toast.success("Producto registrado exitosamente", { id: toastId });
+      await api.post(`/routes/${id}/task`, taskData);
+      toast.success("Producto registrado exitosamente", { id: toastId });
 
       setScannedCodes([]); setAnswers({}); setComment("");
       setGondolaTerminoPhoto(null); setGondolaInicialPhoto(null);
@@ -172,11 +166,8 @@ const VisitFlow = () => {
     setLoading(true);
     const toastId = toast.loading("Finalizando visita...");
     try {
-      const response = await api.post(`/routes/${id}/finish`, { status: "completed" });
-      
-      if (response?.offline) toast.success("Visita guardada offline. Sincroniza pronto.", { id: toastId });
-      else toast.success("¡Jornada finalizada exitosamente!", { id: toastId });
-      
+      await api.post(`/routes/${id}/finish`, { status: "completed" });
+      toast.success("¡Jornada finalizada!", { id: toastId });
       navigate("/usuario/home");
     } catch (err) { toast.error("Error al cerrar visita", { id: toastId }); } 
     finally { setLoading(false); }
@@ -238,10 +229,21 @@ const VisitFlow = () => {
 
             {selectedProduct && (
               <div className="pt-2 animate-in zoom-in duration-300">
+                {/* 🚩 CORRECCIÓN VISUAL DE IMAGEN */}
                 {gondolaInicialPhoto ? (
-                  <div className="relative rounded-[3rem] overflow-hidden border-4 border-gray-100">
-                      <img src={gondolaInicialPhoto} className="w-full aspect-square object-cover" alt="inicio" />
-                      <button onClick={() => setGondolaInicialPhoto(null)} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg"><FiX/></button>
+                  <div className="relative w-full aspect-square bg-gray-100 rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-inner group">
+                      <img 
+                        src={gondolaInicialPhoto} 
+                        className="w-full h-full object-cover transition-opacity duration-500" 
+                        alt="inicio"
+                        onLoad={(e) => e.target.classList.add('opacity-100')}
+                      />
+                      <button 
+                        onClick={() => setGondolaInicialPhoto(null)} 
+                        className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10"
+                      >
+                        <FiX size={18}/>
+                      </button>
                   </div>
                 ) : (
                   <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
@@ -296,10 +298,15 @@ const VisitFlow = () => {
 
         {step === 5 && (
           <div className="space-y-4 animate-in slide-in-from-right duration-300">
+             {/* 🚩 CORRECCIÓN VISUAL DE IMAGEN TÉRMINO */}
              {gondolaTerminoPhoto ? (
-                <div className="relative rounded-[3rem] overflow-hidden border-4 border-gray-100">
-                    <img src={gondolaTerminoPhoto} className="w-full aspect-square object-cover" alt="termino" />
-                    <button onClick={() => setGondolaTerminoPhoto(null)} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg"><FiX/></button>
+                <div className="relative w-full aspect-square bg-gray-100 rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-inner">
+                    <img 
+                      src={gondolaTerminoPhoto} 
+                      className="w-full h-full object-cover transition-opacity duration-500" 
+                      alt="termino" 
+                    />
+                    <button onClick={() => setGondolaTerminoPhoto(null)} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10"><FiX size={18}/></button>
                 </div>
              ) : (
                 <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
@@ -316,6 +323,7 @@ const VisitFlow = () => {
           </div>
         )}
 
+        {/* ... Resto de los pasos 6, 8 y footer igual ... */}
         {step === 6 && (
           <div className="py-6 space-y-6 animate-in zoom-in">
             <div className="flex flex-col items-center gap-3">

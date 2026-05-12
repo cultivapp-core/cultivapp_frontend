@@ -167,7 +167,12 @@ const ManageRoutesModal = ({
     return matchCompany && matchCadena && matchCodigo;
   }), [locales, isRoot, companyId, cadenaFilter, codigoFilter]);
 
-  // ── MANEJADORES DEL PINCEL ──
+  useEffect(() => {
+    if (filteredLocales.length === 1 && localId !== filteredLocales[0].id) {
+      setLocalId(filteredLocales[0].id);
+    }
+  }, [filteredLocales, localId]);
+
   const handleTurnoChange = (e) => {
     const tName = e.target.value;
     const tData = turnosAgrupados.find(t => t.nombre === tName);
@@ -202,10 +207,8 @@ const ManageRoutesModal = ({
     }
   };
 
-  // ── MANEJADORES DEL LIENZO ──
   const handleCellClick = (w, d) => {
     const key = `${w}-${d}`;
-    
     if (!brush.user_id || !brush.turno_id) {
       toast.error("Configura tu pincel (Reponedor y Turno) antes de pintar", { icon: "🖌️" });
       return;
@@ -214,27 +217,23 @@ const ManageRoutesModal = ({
     setMatrix(prev => {
       const currentCellArray = prev[key] || [];
       const userIndex = currentCellArray.findIndex(a => a.user_id === brush.user_id);
-      
       let newCellArray;
       if (userIndex >= 0) {
         newCellArray = currentCellArray.filter((_, idx) => idx !== userIndex);
       } else {
         newCellArray = [...currentCellArray, { ...brush }];
       }
-
       if (newCellArray.length === 0) {
         const newState = { ...prev };
         delete newState[key];
         return newState;
       }
-
       return { ...prev, [key]: newCellArray };
     });
   };
 
   const fillTargetWeek = (fillAllMonth = false) => {
     if (!brush.user_id || !brush.turno_id) return toast.error("Configura tu pincel primero.");
-    
     const tData = turnosAgrupados.find(t => t.nombre === brush.turno_id);
     const diasObjetivo = tData && tData.dias.length > 0 ? tData.dias : [1, 2, 3, 4, 5];
     const semanasObjetivo = fillAllMonth ? [1, 2, 3, 4] : [targetWeek];
@@ -261,7 +260,6 @@ const ManageRoutesModal = ({
     if (window.confirm("¿Borrar todo el calendario para todos los usuarios?")) setMatrix({});
   };
 
-  // ── SUBMIT ──
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!localId) return toast.error("Selecciona un Local.");
@@ -314,7 +312,6 @@ const ManageRoutesModal = ({
   if (!isOpen) return null;
 
   return (
-    // CONTENEDOR PRINCIPAL DEL MODAL - Adaptado a Mobile
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center z-[150] sm:p-4 font-[Outfit]">
       <div className="bg-white w-full h-full sm:h-auto sm:max-w-4xl rounded-none sm:rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[100vh] sm:max-h-[95vh]">
         
@@ -336,10 +333,10 @@ const ManageRoutesModal = ({
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
             
-            {/* COLUMNA IZQUIERDA: HERRAMIENTAS */}
+            {/* HERRAMIENTAS */}
             <div className="lg:col-span-4 space-y-4 sm:space-y-6">
               
-              {/* PASO 1 */}
+              {/* PASO 1: DÓNDE */}
               <div className="bg-gray-900 p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] text-white shadow-xl">
                  <div className="flex items-center gap-2 text-[9px] font-black text-[#87be00] uppercase tracking-widest mb-3">
                     <FiMapPin size={12} /> 1. Dónde (Local)
@@ -375,35 +372,51 @@ const ManageRoutesModal = ({
                  </div>
 
                  <select 
-                   required className="w-full bg-white/10 rounded-xl px-4 py-3 text-xs font-bold border border-white/10 outline-none focus:bg-white/20 transition-all h-12"
+                   required className={`w-full rounded-xl px-4 py-3 text-xs font-bold border outline-none transition-all h-12 ${localId ? 'bg-[#87be00]/20 border-[#87be00] text-white' : 'bg-white/10 border-white/10 text-gray-900'}`}
                    value={localId} onChange={(e) => setLocalId(e.target.value)}
                  >
-                    <option value="" className="text-gray-900">Elegir Local ({filteredLocales.length} ref.)</option>
-                    {filteredLocales.map(l => <option key={l.id} value={l.id} className="text-gray-900">{l.cadena} - {l.direccion} ({l.codigo_local})</option>)}
+                    <option value="" className="text-gray-900">
+                      {filteredLocales.length === 1 ? "✅ Local Encontrado" : `Elegir Local (${filteredLocales.length} ref.)`}
+                    </option>
+                    {filteredLocales.map(l => (
+                      <option key={l.id} value={l.id} className="text-gray-900">
+                        {l.cadena} - {l.direccion} ({l.codigo_local})
+                      </option>
+                    ))}
                  </select>
               </div>
 
-              {/* PASO 2 */}
-              <div className="bg-blue-50/50 p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] border border-blue-100 shadow-sm space-y-3 sm:space-y-4">
+              {/* PASO 2: QUIÉN Y CUÁNDO (PINCEL) */}
+              <div className="bg-blue-50/50 p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] border border-blue-100 shadow-sm space-y-4">
                  <div className="flex items-center gap-2 text-[9px] font-black text-blue-600 uppercase tracking-widest">
                     <FiEdit3 size={12} /> 2. Quién y Cuándo (Pincel)
                  </div>
 
-                 <div className="bg-white border border-blue-100 rounded-xl p-2 flex items-center justify-between gap-2 shadow-sm">
-                   <span className="text-[10px] font-bold text-gray-400 pl-2 uppercase tracking-tighter shrink-0">Cargar a:</span>
-                   <select 
-                     className="bg-blue-50 text-blue-600 rounded-lg px-3 py-2 text-xs font-black outline-none border border-transparent focus:border-blue-200 transition-all cursor-pointer w-full text-right"
-                     value={targetWeek} onChange={(e) => setTargetWeek(Number(e.target.value))}
-                   >
-                     <option value={1}>Semana 1</option>
-                     <option value={2}>Semana 2</option>
-                     <option value={3}>Semana 3</option>
-                     <option value={4}>Semana 4</option>
-                   </select>
+                 {/* 🚩 NUEVO SELECTOR DE SEMANA ELEGANTE (Segmented Control) */}
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <FiCalendar /> Semana objetivo de carga:
+                    </label>
+                    <div className="bg-gray-200/50 p-1 rounded-2xl flex gap-1 shadow-inner">
+                        {WEEKS.map((w) => (
+                            <button
+                                key={w}
+                                type="button"
+                                onClick={() => setTargetWeek(w)}
+                                className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all duration-300 ${
+                                    targetWeek === w 
+                                    ? "bg-white text-gray-900 shadow-md scale-[1.02]" 
+                                    : "text-gray-400 hover:text-gray-600"
+                                }`}
+                            >
+                                S{w}
+                            </button>
+                        ))}
+                    </div>
                  </div>
                  
                  <select 
-                    className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all cursor-pointer h-12"
+                    className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12"
                     value={brush.user_id} onChange={(e) => setBrush({...brush, user_id: e.target.value})}
                   >
                     <option value="">1º Elige Reponedor...</option>
@@ -411,7 +424,7 @@ const ManageRoutesModal = ({
                  </select>
 
                  <select 
-                    className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all cursor-pointer h-12"
+                    className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12"
                     value={brush.rol} onChange={(e) => setBrush({...brush, rol: e.target.value, turno_id: ""})}
                   >
                     <option value="">2º Elige Rol...</option>
@@ -420,7 +433,7 @@ const ManageRoutesModal = ({
                  </select>
 
                  <select 
-                    className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all disabled:opacity-50 cursor-pointer h-12"
+                    className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all disabled:opacity-50 h-12"
                     value={brush.turno_id} onChange={handleTurnoChange} disabled={!brush.rol}
                   >
                     <option value="">3º Elige Turno (Auto-carga)</option>
@@ -436,20 +449,19 @@ const ManageRoutesModal = ({
               </div>
             </div>
 
-            {/* COLUMNA DERECHA: LIENZO CALENDARIO */}
+            {/* CALENDARIO */}
             <div className="lg:col-span-8 flex flex-col mt-2 lg:mt-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 px-1 gap-3">
                 <div className="flex items-center gap-2 text-[10px] font-black text-gray-500 uppercase tracking-widest">
                   <FiCalendar size={14} className="shrink-0" /> 3. Calendario
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => fillTargetWeek(false)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2.5 sm:py-2 rounded-lg transition-all flex items-center justify-center gap-1.5"><FiCopy/> Llenar S{targetWeek}</button>
-                  <button type="button" onClick={() => fillTargetWeek(true)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2.5 sm:py-2 rounded-lg transition-all">Llenar Mes</button>
-                  <button type="button" onClick={clearMatrix} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-red-50 hover:bg-red-100 text-red-500 px-3 py-2.5 sm:py-2 rounded-lg transition-all">Limpiar</button>
+                  <button type="button" onClick={() => fillTargetWeek(false)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5"><FiCopy/> Llenar S{targetWeek}</button>
+                  <button type="button" onClick={() => fillTargetWeek(true)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2.5 rounded-lg transition-all">Llenar Mes</button>
+                  <button type="button" onClick={clearMatrix} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-red-50 hover:bg-red-100 text-red-500 px-3 py-2.5 rounded-lg transition-all">Limpiar</button>
                 </div>
               </div>
 
-              {/* CONTENEDOR CON SCROLL HORIZONTAL PARA MÓVILES */}
               <div className="bg-gray-50 rounded-[1.5rem] sm:rounded-[2.5rem] p-3 sm:p-6 border border-gray-100 flex-1 overflow-x-auto relative">
                 <div className="min-w-[500px] sm:min-w-0 grid grid-cols-8 gap-1.5 sm:gap-2 h-full">
                   
@@ -476,7 +488,7 @@ const ManageRoutesModal = ({
                             key={`cell-${w}-${d.id}`}
                             onClick={() => handleCellClick(w, d.id)}
                             className={`
-                              relative min-h-[4rem] sm:h-20 rounded-xl sm:rounded-2xl flex flex-col items-center justify-start p-1 cursor-pointer transition-all border-2 overflow-y-auto custom-scrollbar
+                              relative min-h-[4rem] h-20 rounded-xl sm:rounded-2xl flex flex-col items-center justify-start p-1 cursor-pointer transition-all border-2 overflow-y-auto custom-scrollbar
                               ${isActive 
                                 ? "bg-[#87be00] border-[#87be00] text-white shadow-lg sm:scale-[1.02]" 
                                 : isTargetWeek ? "bg-white border-blue-200 hover:border-blue-400 shadow-sm" : "bg-white border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50"}
@@ -489,7 +501,7 @@ const ManageRoutesModal = ({
                                 const tLabel = assign.turno_id === "INDIVIDUAL" ? assign.start_time : assign.turno_id;
                                 
                                 return (
-                                  <div key={idx} className="w-full bg-black/20 rounded mb-1 py-0.5 px-0.5 sm:px-1 flex flex-col items-center shrink-0">
+                                  <div key={idx} className="w-full bg-black/20 rounded mb-1 py-0.5 px-1 flex flex-col items-center shrink-0">
                                     <span className="text-[7px] sm:text-[9px] font-black uppercase leading-tight truncate w-full text-center">
                                       {uName}
                                     </span>
@@ -513,7 +525,7 @@ const ManageRoutesModal = ({
               <div className="mt-4 flex items-start gap-2 text-[9px] sm:text-[10px] text-gray-400 font-medium px-2">
                 <FiInfo className="text-blue-500 shrink-0 mt-0.5" /> 
                 <p>
-                  <strong>Tip:</strong> Selecciona la semana en el Paso 2. Si necesitas hacer scroll en el calendario (teléfonos), desliza hacia la izquierda.
+                  <strong>Tip:</strong> Selecciona la semana en el Paso 2 (S1-S4). Los cambios que pintes se aplicarán a la semana activa.
                 </p>
               </div>
 
@@ -521,7 +533,7 @@ const ManageRoutesModal = ({
           </div>
         </div>
 
-        {/* FOOTER ACCIONES - Adaptado a Mobile */}
+        {/* FOOTER */}
         <div className="p-4 sm:p-6 bg-white border-t border-gray-50 shrink-0 flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 pb-8 sm:pb-6">
           {isEditing && (
             <button
