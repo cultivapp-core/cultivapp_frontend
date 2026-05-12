@@ -10,7 +10,9 @@ import {
   FiBell,
   FiClock,
   FiBriefcase,
-  FiBox // 🚩 NUEVO ICONO PARA EL CATÁLOGO
+  FiBox,
+  FiClipboard, // 🚩 NUEVO ICONO PARA TAREAS
+  FiUserCheck  // 🚩 NUEVO ICONO PARA ASISTENCIA
 } from "react-icons/fi"
 import { useAuth } from "../context/AuthContext"
 import { useNotificationContext } from "../context/NotificationContext" 
@@ -156,7 +158,7 @@ const AdminSidebar = () => {
             Red de Locales
           </NavLink>
 
-          {/* 🚩 NUEVO: ACCESO AL CATÁLOGO MAESTRO */}
+          {/* ACCESO AL CATÁLOGO MAESTRO */}
           <NavLink
             to="/admin/catalogo"
             className={({ isActive }) =>
@@ -165,6 +167,28 @@ const AdminSidebar = () => {
           >
             <FiBox size={18} />
             Catálogo Maestro
+          </NavLink>
+
+          {/* 🚩 NUEVO: CONTROL DE TAREAS */}
+          <NavLink
+            to="/admin/task-control"
+            className={({ isActive }) =>
+              `${linkBase} ${isActive ? linkActive : linkInactive}`
+            }
+          >
+            <FiClipboard size={18} />
+            Control de Tareas
+          </NavLink>
+
+          {/* 🚩 NUEVO: CONTROL DE ASISTENCIA */}
+          <NavLink
+            to="/admin/attendance-control"
+            className={({ isActive }) =>
+              `${linkBase} ${isActive ? linkActive : linkInactive}`
+            }
+          >
+            <FiUserCheck size={18} />
+            Asistencia / Reporte
           </NavLink>
 
           {/* SOPORTE */}

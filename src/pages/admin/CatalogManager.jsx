@@ -60,10 +60,12 @@ const CatalogManager = () => {
     e.preventDefault();
     try {
       if (isEditing) {
-        await api.put(`/products/${selectedId}`, productData);
+        // 🚩 CORRECCIÓN: Prefijo /routes añadido
+        await api.put(`/routes/products/${selectedId}`, productData);
         toast.success("Producto actualizado");
       } else {
-        await api.post("/products", productData);
+        // 🚩 CORRECCIÓN: Prefijo /routes añadido
+        await api.post("/routes/products", productData);
         toast.success("Producto creado");
       }
       setIsModalOpen(false);
@@ -74,7 +76,8 @@ const CatalogManager = () => {
   const handleDeleteProduct = async (id) => {
     if (!window.confirm("¿Eliminar este SKU del maestro?")) return;
     try {
-      await api.delete(`/products/${id}`);
+      // 🚩 CORRECCIÓN: Prefijo /routes añadido
+      await api.delete(`/routes/products/${id}`);
       toast.success("Producto eliminado");
       loadData();
     } catch (err) { toast.error("Error al eliminar"); }
@@ -92,10 +95,12 @@ const CatalogManager = () => {
     e.preventDefault();
     try {
       if (isEditing) {
-        await api.put(`/brands/${selectedId}`, { name: brandName });
+        // 🚩 CORRECCIÓN: Prefijo /routes añadido
+        await api.put(`/routes/brands/${selectedId}`, { name: brandName });
         toast.success("Marca actualizada");
       } else {
-        await api.post("/brands", { name: brandName });
+        // 🚩 CORRECCIÓN: Prefijo /routes añadido
+        await api.post("/routes/brands", { name: brandName });
         toast.success("Marca creada");
       }
       setIsBrandModalOpen(false);
@@ -103,7 +108,7 @@ const CatalogManager = () => {
     } catch (err) { toast.error("Error en la operación"); }
   };
 
-  // --- LÓGICA DE CATEGORÍAS (LA MEJORA QUE FALTABA) ---
+  // --- LÓGICA DE CATEGORÍAS ---
   const handleOpenCategoryModal = (cat = null) => {
     setIsEditing(!!cat);
     setSelectedId(cat?.id || null);
@@ -115,10 +120,12 @@ const CatalogManager = () => {
     e.preventDefault();
     try {
       if (isEditing) {
-        await api.put(`/categories/${selectedId}`, { name: categoryName });
+        // 🚩 CORRECCIÓN: Prefijo /routes añadido
+        await api.put(`/routes/categories/${selectedId}`, { name: categoryName });
         toast.success("Categoría actualizada");
       } else {
-        await api.post("/categories", { name: categoryName });
+        // 🚩 CORRECCIÓN: Prefijo /routes añadido
+        await api.post("/routes/categories", { name: categoryName });
         toast.success("Categoría creada");
       }
       setIsCategoryModalOpen(false);
@@ -129,7 +136,8 @@ const CatalogManager = () => {
   const handleDeleteCategory = async (id) => {
     if (!window.confirm("¿Eliminar esta categoría? Esto podría afectar a los productos vinculados.")) return;
     try {
-      await api.delete(`/categories/${id}`);
+      // 🚩 CORRECCIÓN: Prefijo /routes añadido
+      await api.delete(`/routes/categories/${id}`);
       toast.success("Categoría eliminada");
       loadData();
     } catch (err) { toast.error("No se pudo eliminar (verifique si tiene productos)"); }
@@ -189,7 +197,8 @@ const CatalogManager = () => {
                 </div>
                 <div className="flex items-center gap-4">
                   <button onClick={() => handleOpenBrandModal(brand)} className="p-2 text-gray-400 hover:text-black"><FiEdit2 size={18} /></button>
-                  <button onClick={() => { if(window.confirm("¿Eliminar marca?")) api.delete(`/brands/${brand.id}`).then(()=>loadData()) }} className="p-2 text-gray-400 hover:text-red-500"><FiTrash2 size={18} /></button>
+                  {/* 🚩 CORRECCIÓN: Prefijo /routes añadido en el delete de marca rápido */}
+                  <button onClick={() => { if(window.confirm("¿Eliminar marca?")) api.delete(`/routes/brands/${brand.id}`).then(()=>loadData()) }} className="p-2 text-gray-400 hover:text-red-500"><FiTrash2 size={18} /></button>
                   {isExpanded ? <FiChevronDown size={24} className="text-[#87be00]" /> : <FiChevronRight size={24} className="text-gray-300" />}
                 </div>
               </div>
@@ -216,7 +225,7 @@ const CatalogManager = () => {
         })}
       </div>
 
-      {/* MODAL CATEGORÍA (NUEVO / EDITAR) */}
+      {/* MODAL CATEGORÍA */}
       {isCategoryModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 relative shadow-2xl">
@@ -232,7 +241,7 @@ const CatalogManager = () => {
         </div>
       )}
 
-      {/* ... (Modales de Producto y Marca que ya funcionan bien) ... */}
+      {/* MODAL PRODUCTO */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-xl rounded-[3.5rem] p-12 relative shadow-2xl">
@@ -257,6 +266,7 @@ const CatalogManager = () => {
         </div>
       )}
 
+      {/* MODAL MARCA */}
       {isBrandModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 relative shadow-2xl">
@@ -264,7 +274,7 @@ const CatalogManager = () => {
             <form onSubmit={handleBrandSubmit} className="space-y-4">
               <input required className="w-full bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none focus:ring-2 focus:ring-[#87be00]" placeholder="Nombre..." value={brandName} onChange={(e) => setBrandName(e.target.value)} />
               <div className="flex gap-2">
-                <button type="submit" className="flex-1 bg-black text-[#87be00] py-4 rounded-xl font-black uppercase text-[10px]">Guardar</button>
+                <button type="submit" className="flex-1 bg-black text-[#87be00] py-4 rounded-xl font-black uppercase text-[10px]">{isEditing ? "Actualizar" : "Guardar"}</button>
                 <button type="button" onClick={() => setIsBrandModalOpen(false)} className="flex-1 bg-gray-100 py-4 rounded-xl font-black uppercase text-[10px]">Cerrar</button>
               </div>
             </form>

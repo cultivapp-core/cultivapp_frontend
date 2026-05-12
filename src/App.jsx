@@ -46,7 +46,6 @@ import LiveMap from "./pages/supervisor/LiveMap"
 import AlertManager from "./pages/supervisor/AlertManager"
 import AttendanceControl from "./pages/supervisor/AttendanceControl"
 import PhotoValidation from "./pages/supervisor/PhotoValidation"
-// 🚩 NUEVA IMPORTACIÓN: CONTROL DE TAREAS
 import TaskControl from "./pages/supervisor/TaskControl"
 
 /* ================= USUARIO (MERCADERISTA) ================= */
@@ -122,9 +121,12 @@ function App() {
               <Route path="trazabilidad-global" element={<AlertsHistory userRole="ROOT" />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ROOT" />} />
               <Route path="questions" element={<QuestionsManager />} />
-              <Route path="catalogo" element={<CatalogManager />} />
-              {/* 🚩 ROOT TAMBIÉN AUDITA TAREAS */}
-              <Route path="control-tareas" element={<TaskControl />} />
+              
+              {/* 🚩 NUEVAS RUTAS DE CONTROL Y MAESTROS (Sincronizadas con Sidebar) */}
+              <Route path="catalog" element={<CatalogManager />} />
+              <Route path="attendance" element={<AttendanceControl />} />
+              <Route path="tasks" element={<TaskControl />} />
+              <Route path="photo-validation" element={<PhotoValidation />} />
             </Route>
 
             {/* 👤 SECCIÓN USUARIO */}
@@ -145,7 +147,6 @@ function App() {
               <Route path="alertas" element={<AlertManager />} />
               <Route path="asistencia" element={<AttendanceControl />} />
               <Route path="ejecucion" element={<PhotoValidation />} />
-              {/* 🚩 NUEVA RUTA: CONTROL DE TAREAS */}
               <Route path="tareas" element={<TaskControl />} />
               <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
             </Route>
@@ -154,7 +155,7 @@ function App() {
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
               <Route index element={<Analytics />} />
               <Route path="users" element={<AdminUsers />} />
-              <Route path="locales" element={<AdminLocales />} />
+              <Route path="locales" element={<AdminLocalesRouter />} />
               <Route path="companies" element={<Companies />} />
               <Route path="turnos" element={<TurnosManager />} />
               <Route path="routes" element={<AdminRoutes />} />
@@ -163,9 +164,10 @@ function App() {
               <Route path="trazabilidad-alertas" element={<AlertsHistory userRole="ADMIN" />} />
               <Route path="questions" element={<QuestionsManager />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ADMIN" />} />
-              <Route path="catalogo" element={<CatalogManager />} />
-              {/* 🚩 ADMIN TAMBIÉN AUDITA TAREAS */}
-              <Route path="tareas" element={<TaskControl />} />
+              <Route path="catalog" element={<CatalogManager />} />
+              
+              <Route path="attendance" element={<AttendanceControl />} />
+              <Route path="tasks" element={<TaskControl />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

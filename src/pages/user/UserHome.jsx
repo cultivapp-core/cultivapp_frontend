@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom"; 
-import { FiMapPin, FiPlay, FiClock, FiCalendar, FiSend, FiChevronLeft, FiChevronRight, FiLoader, FiCheckCircle } from "react-icons/fi";
+import { useNavigate } from "react-router-dom"; 
+import { FiMapPin, FiPlay, FiClock, FiSend, FiCheckCircle } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
@@ -20,6 +20,7 @@ const UserHome = () => {
     try {
       setLoading(true);
       const dateStr = selectedDate.toLocaleDateString('en-CA');
+      // 🚩 La API debe devolver 'visit_number' en este endpoint
       const data = await api.get(`/routes/my-tasks?date=${dateStr}`);
       setAllTasks(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -86,7 +87,6 @@ const UserHome = () => {
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] pb-24 font-[Outfit]">
-      {/* HEADER MÓVIL */}
       <header className="bg-white px-5 pt-10 pb-5 flex items-center justify-between sticky top-0 z-30 border-b border-gray-100">
         <div>
           <p className="text-[10px] font-black text-[#87be00] uppercase tracking-widest">Cultiva</p>
@@ -99,7 +99,7 @@ const UserHome = () => {
       </header>
 
       <main className="p-4 space-y-6 max-w-md mx-auto">
-        {/* CALENDARIO 7 DÍAS */}
+        {/* CALENDARIO */}
         <section className="bg-white p-3 rounded-3xl shadow-sm border border-gray-50">
           <div className="grid grid-cols-7 gap-1">
             {getWeekDays().map((date, idx) => {
@@ -114,7 +114,7 @@ const UserHome = () => {
           </div>
         </section>
 
-        {/* LISTADO DE VISITAS */}
+        {/* LISTADO */}
         <section className="space-y-4">
           {displayTasks.length === 0 ? (
             <div className="text-center py-20 text-gray-300 uppercase text-[10px] font-bold tracking-widest">No hay visitas</div>
@@ -134,7 +134,16 @@ const UserHome = () => {
                         </span>
                         {isCompleted && <span className="text-[8px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-bold uppercase">Completado</span>}
                       </div>
+                      
                       <h2 className="text-lg font-black text-gray-800 uppercase leading-none truncate">{task.cadena}</h2>
+                      
+                      {/* 🚩 VISUALIZACIÓN DEL NÚMERO DE VISITA (ESTILO BLUE BADGE) */}
+                      <div className="mt-2 mb-1">
+                        <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 italic tracking-tighter">
+                          N° de Visita: {task.visit_number || 'S/N'}
+                        </span>
+                      </div>
+                      
                       <p className="text-[9px] font-bold text-gray-400 uppercase mt-2 truncate">{task.direccion}</p>
                     </div>
                     <div className={`w-3 h-3 rounded-full ${isPending ? 'bg-orange-400' : isInProgress ? 'bg-blue-500 animate-pulse' : 'bg-[#87be00]'}`}></div>
@@ -155,7 +164,12 @@ const UserHome = () => {
                       </button>
                     )}
                     
-                    <a href={`https://www.google.com/maps/search/?api=1&query=${task.direccion}`} target="_blank" rel="noopener noreferrer" className="bg-gray-100 text-gray-900 p-4 rounded-2xl active:bg-black active:text-white">
+                    <a 
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.direccion)}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="bg-gray-100 text-gray-900 p-4 rounded-2xl active:bg-black active:text-white"
+                    >
                       <FiMapPin size={18}/>
                     </a>
                   </div>

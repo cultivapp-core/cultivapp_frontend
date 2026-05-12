@@ -9,8 +9,11 @@ import {
   FiBell,  
   FiClock,
   FiNavigation,
-  FiCalendar,
-  FiMap // 🚩 Importamos FiMap para las rutas
+  FiMap,
+  FiPackage,    // 🚩 Para CatalogManager
+  FiCheckSquare, // 🚩 Para TaskControl
+  FiUserCheck,   // 🚩 Para AttendanceControl
+  FiCamera       // 🚩 Para photoValidation
 } from "react-icons/fi"
 import { useNotificationContext } from "../context/NotificationContext"
 
@@ -56,18 +59,33 @@ const Sidebar = () => {
           Mi Bandeja
         </NavLink>
 
-        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Logística</p>
-      
-        {/* 🚩 NUEVO: RUTAS EN ROOT */}
+        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Logística y Rutas</p>
         <NavLink to="/root/routes" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiMap size={18} /> Gestión de Rutas
         </NavLink>
-
         <NavLink to="/root/turnos" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiClock size={18} /> Configurar Turnos
         </NavLink>
         <NavLink to="/root/gps-monitor" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiNavigation size={18} /> Monitoreo GPS
+        </NavLink>
+
+        {/* 🚩 NUEVA SECCIÓN: OPERACIONES / CONTROL */}
+        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Auditoría y Control</p>
+        <NavLink to="/root/attendance" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiUserCheck size={18} /> Control Asistencia
+        </NavLink>
+        <NavLink to="/root/tasks" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiCheckSquare size={18} /> Control de Tareas
+        </NavLink>
+        <NavLink to="/root/photo-validation" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiCamera size={18} /> Validar Fotos
+        </NavLink>
+
+        {/* 🚩 NUEVA SECCIÓN: MAESTROS / CATÁLOGO */}
+        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Maestros</p>
+        <NavLink to="/root/catalog" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiPackage size={18} /> Catálogo SKU
         </NavLink>
 
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Estructura</p>
