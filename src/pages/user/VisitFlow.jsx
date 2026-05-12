@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { 
   FiCamera, FiLoader, FiMapPin, FiArrowRight, 
-  FiX, FiCheckCircle, FiWifiOff, FiTrash2, FiPlusCircle, FiLogOut, FiSend, FiTag, FiBox 
+  FiX, FiCheckCircle, FiWifiOff, FiTrash2, FiPlusCircle, FiLogOut, FiSend, FiTag, FiBox, FiAlertCircle 
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
@@ -13,6 +13,9 @@ const VisitFlow = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const isProcessingScan = useRef(false);
+
+  // 🚩 CONFIGURACIÓN DE URL (Ajusta esto a tu backend)
+  const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [step, setStep] = useState(1); 
@@ -31,6 +34,7 @@ const VisitFlow = () => {
   const [answers, setAnswers] = useState({});
   const [comment, setComment] = useState("");
   
+  const [fachadaPhoto, setFachadaPhoto] = useState(null);
   const [gondolaInicialPhoto, setGondolaInicialPhoto] = useState(null);
   const [gondolaTerminoPhoto, setGondolaTerminoPhoto] = useState(null); 
 
@@ -43,6 +47,14 @@ const VisitFlow = () => {
     6: { key: "Decision", title: "¿Siguiente Producto?", sub: "Continuar gestionando o salir" },
     7: { key: "foto_salida", title: "Registro de Salida", sub: "Fin de jornada en local" },
     8: { key: "cierre", title: "Visita Finalizada", sub: "Proceso completo" } 
+  };
+
+  // 🚩 UTILIDAD: Formatear URL de imagen
+  const formatImageUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('blob:') || url.startsWith('http')) return url;
+    // Si la ruta es relativa (ej: /uploads/xxx.jpg), le concatenamos la base
+    return `${BASE_URL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
   };
 
   useEffect(() => {
@@ -101,7 +113,7 @@ const VisitFlow = () => {
     if (!file) return;
 
     setCapturing(true);
-    const toastId = toast.loading("Procesando imagen...");
+    const toastId = toast.loading("Subiendo imagen...");
     
     try {
       const formData = new FormData();
@@ -109,16 +121,20 @@ const VisitFlow = () => {
       formData.append("foto", file); 
       
       const response = await api.post(`/routes/${id}/photo`, formData);
-      // 🚩 MEJORA: Aseguramos que la URL sea válida incluso si la API tarda
-      const photoUrl = response?.offline ? URL.createObjectURL(file) : (response.image_url || response.url || URL.createObjectURL(file));
+      
+      // Si estamos offline usamos el blob local, si no, lo que devuelva la API
+      const photoPath = response?.offline 
+        ? URL.createObjectURL(file) 
+        : (response.image_url || response.url || URL.createObjectURL(file));
 
-      if (step === 2) setGondolaInicialPhoto(photoUrl);
-      if (step === 5) setGondolaTerminoPhoto(photoUrl);
+      if (step === 1) setFachadaPhoto(photoPath);
+      if (step === 2) setGondolaInicialPhoto(photoPath);
+      if (step === 5) setGondolaTerminoPhoto(photoPath);
       
       toast.success("Captura guardada", { id: toastId });
-      if (step === 1 || step === 7) setStep(prev => prev + 1);
+      if (step === 1) setStep(prev => prev + 1);
     } catch (err) {
-      toast.error("Error al procesar imagen", { id: toastId });
+      toast.error("Error al subir imagen", { id: toastId });
     } finally {
       setCapturing(false);
       e.target.value = "";
@@ -173,6 +189,59 @@ const VisitFlow = () => {
     finally { setLoading(false); }
   };
 
+  // 🚩 FUNCIÓN REUTILIZABLE PARA EL CONTENEDOR DE FOTO
+  const renderPhotoContainer = (photoUrl, setPhotoUrl, placeholderText) => {
+    if (photoUrl) {
+      return (
+        <div className="relative w-full aspect-square bg-gray-50 rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-xl group animate-in fade-in zoom-in duration-300">
+          <img 
+            src={formatImageUrl(photoUrl)} 
+            className="w-full h-full object-cover" 
+            alt={placeholderText}
+            onError={(e) => {
+              // Si falla la carga, ocultamos la imagen y mostramos un error visual
+              e.target.style.display = 'none';
+              e.target.nextSibling.style.display = 'flex';
+            }}
+          />
+          {/* Placeholder de Error (oculto por defecto) */}
+          <div className="hidden absolute inset-0 flex-col items-center justify-center bg-gray-50 text-red-400 p-4">
+            <FiAlertCircle size={40} className="mb-2" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
+          </div>
+
+          <button 
+            onClick={(e) => { e.stopPropagation(); setPhotoUrl(null); }} 
+            className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10"
+          >
+            <FiX size={18}/>
+          </button>
+        </div>
+      );
+    }
+    
+    return (
+      <div 
+        onClick={() => !capturing && fileInputRef.current.click()} 
+        className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 hover:border-[#87be00]/50 transition-all group"
+      >
+        {capturing ? (
+          <div className="flex flex-col items-center">
+            <FiLoader className="animate-spin text-[#87be00] mb-2" size={44} />
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Procesando...</span>
+          </div>
+        ) : (
+          <>
+            <div className="bg-white p-6 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform">
+                <FiCamera size={40} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} />
+            </div>
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar {placeholderText}</span>
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className={`min-h-screen font-[Outfit] p-4 pb-24 flex flex-col items-center transition-colors duration-500 ${isOnline ? 'bg-gray-50' : 'bg-orange-50/40'}`}>
       
@@ -197,14 +266,16 @@ const VisitFlow = () => {
 
         {(step === 1 || step === 7) && (
           <div className="space-y-4 animate-in zoom-in duration-300">
-             <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
-               {capturing ? <FiLoader className="animate-spin text-[#87be00]" size={44} /> : (
-                 <>
-                   <div className="bg-white p-6 rounded-full shadow-sm mb-4"><FiCamera size={40} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /></div>
-                   <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar {stepsInfo[step].title}</span>
-                 </>
-               )}
-             </div>
+             {renderPhotoContainer(
+               step === 1 ? fachadaPhoto : null, 
+               step === 1 ? setFachadaPhoto : () => {}, 
+               stepsInfo[step].title
+             )}
+             {step === 7 && fachadaPhoto && (
+                 <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-lg hover:bg-[#76a500]">
+                   Confirmar y Finalizar Visita <FiArrowRight size={16}/>
+                 </button>
+             )}
           </div>
         )}
 
@@ -228,33 +299,8 @@ const VisitFlow = () => {
             </div>
 
             {selectedProduct && (
-              <div className="pt-2 animate-in zoom-in duration-300">
-                {/* 🚩 CORRECCIÓN VISUAL DE IMAGEN */}
-                {gondolaInicialPhoto ? (
-                  <div className="relative w-full aspect-square bg-gray-100 rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-inner group">
-                      <img 
-                        src={gondolaInicialPhoto} 
-                        className="w-full h-full object-cover transition-opacity duration-500" 
-                        alt="inicio"
-                        onLoad={(e) => e.target.classList.add('opacity-100')}
-                      />
-                      <button 
-                        onClick={() => setGondolaInicialPhoto(null)} 
-                        className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10"
-                      >
-                        <FiX size={18}/>
-                      </button>
-                  </div>
-                ) : (
-                  <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
-                    {capturing ? <FiLoader className="animate-spin text-[#87be00]" size={44} /> : (
-                      <>
-                        <div className="bg-white p-6 rounded-full shadow-sm mb-4"><FiCamera size={40} className="text-[#87be00]" /></div>
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar Foto Inicial</span>
-                      </>
-                    )}
-                  </div>
-                )}
+              <div className="pt-2 animate-in zoom-in duration-300 space-y-4">
+                {renderPhotoContainer(gondolaInicialPhoto, setGondolaInicialPhoto, "Foto Inicial")}
                 {gondolaInicialPhoto && (
                   <button onClick={() => setStep(3)} className="w-full mt-4 bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
                     Escanear Productos <FiArrowRight size={16}/>
@@ -270,15 +316,15 @@ const VisitFlow = () => {
             <div className="rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
               <Scanner onScanSuccess={handleScanSuccess} />
             </div>
-            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto px-1 custom-scrollbar border-y border-gray-50 py-3">
+            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto px-1 custom-scrollbar border-y border-gray-50 py-3 text-left">
                 {scannedCodes.length > 0 ? scannedCodes.map((code, idx) => (
                   <div key={idx} className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100">
                     <div className="flex items-center gap-3"><FiCheckCircle className="text-[#87be00]" size={14}/><span className="text-[10px] font-bold text-gray-700">{code}</span></div>
-                    <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-gray-300"><FiTrash2 size={14}/></button>
+                    <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-red-400 p-1 hover:bg-red-50 rounded-lg"><FiTrash2 size={14}/></button>
                   </div>
-                )) : <p className="text-[10px] text-gray-300 font-bold uppercase py-8">Esperando productos...</p>}
+                )) : <p className="text-[10px] text-gray-300 font-black uppercase py-8 text-center tracking-widest">Esperando escaneo...</p>}
             </div>
-            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Validar Encuesta <FiArrowRight size={16}/></button>
+            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-lg">Validar Encuesta <FiArrowRight size={16}/></button>
           </div>
         )}
 
@@ -286,9 +332,9 @@ const VisitFlow = () => {
            <div className="space-y-4 animate-in slide-in-from-right duration-300">
              <div className="bg-gray-50 p-2 rounded-[2.5rem] space-y-1">
                {questions.map((q) => (
-                 <button key={q.id} onClick={() => setAnswers({...answers, [q.id]: q.question})} className={`w-full flex items-center justify-between p-4 rounded-[1.8rem] transition-all ${answers[q.id] ? 'bg-white shadow-sm' : ''}`}>
+                 <button key={q.id} onClick={() => setAnswers({...answers, [q.id]: q.question})} className={`w-full flex items-center justify-between p-4 rounded-[1.8rem] transition-all ${answers[q.id] ? 'bg-white shadow-sm ring-2 ring-[#87be00]/20' : ''}`}>
                    <span className={`text-[10px] font-bold text-left leading-tight pr-2 ${answers[q.id] ? 'text-[#87be00]' : 'text-gray-500'}`}>{q.question}</span>
-                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${answers[q.id] ? 'border-[#87be00] bg-[#87be00]' : 'border-gray-200'}`}>{answers[q.id] && <div className="w-1.5 h-1.5 bg-white rounded-full" />}</div>
+                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${answers[q.id] ? 'border-[#87be00] bg-[#87be00]' : 'border-gray-200'}`}>{answers[q.id] && <FiCheckCircle className="text-white" size={12} />}</div>
                  </button>
                ))}
              </div>
@@ -298,32 +344,12 @@ const VisitFlow = () => {
 
         {step === 5 && (
           <div className="space-y-4 animate-in slide-in-from-right duration-300">
-             {/* 🚩 CORRECCIÓN VISUAL DE IMAGEN TÉRMINO */}
-             {gondolaTerminoPhoto ? (
-                <div className="relative w-full aspect-square bg-gray-100 rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-inner">
-                    <img 
-                      src={gondolaTerminoPhoto} 
-                      className="w-full h-full object-cover transition-opacity duration-500" 
-                      alt="termino" 
-                    />
-                    <button onClick={() => setGondolaTerminoPhoto(null)} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10"><FiX size={18}/></button>
-                </div>
-             ) : (
-                <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all">
-                  {capturing ? <FiLoader className="animate-spin text-[#87be00]" size={44} /> : (
-                    <>
-                      <div className="bg-white p-6 rounded-full shadow-sm mb-4"><FiCamera size={40} className="text-gray-400" /></div>
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar Góndola Término</span>
-                    </>
-                  )}
-                </div>
-             )}
-             <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre este producto..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
+             {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, "Foto Final")}
+             <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre este producto..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner focus:ring-2 ring-[#87be00]/20" />
              <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 disabled:opacity-50 transition-all">Confirmar Producto <FiArrowRight size={16}/></button>
           </div>
         )}
 
-        {/* ... Resto de los pasos 6, 8 y footer igual ... */}
         {step === 6 && (
           <div className="py-6 space-y-6 animate-in zoom-in">
             <div className="flex flex-col items-center gap-3">
@@ -332,7 +358,7 @@ const VisitFlow = () => {
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">El tiempo de este producto ha sido registrado.</p>
             </div>
             <div className="flex flex-col gap-3">
-              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">{loading ? <FiLoader className="animate-spin"/> : <><FiPlusCircle size={18}/> Sí, nuevo producto</>}</button>
+              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all hover:bg-[#76a500]">{loading ? <FiLoader className="animate-spin"/> : <><FiPlusCircle size={18}/> Sí, nuevo producto</>}</button>
               <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all"><FiLogOut size={18}/> No, finalizar jornada</button>
             </div>
           </div>
@@ -351,7 +377,7 @@ const VisitFlow = () => {
           </div>
         )}
 
-        <div className="pt-4 border-t border-gray-50 flex items-center justify-center gap-2 text-gray-300 text-[8px] font-bold uppercase tracking-[0.3em]">
+        <div className="pt-4 border-t border-gray-50 flex items-center justify-center gap-2 text-gray-300 text-[8px] font-black uppercase tracking-[0.3em]">
             <FiMapPin className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /> LOCAL ID: {id?.slice(0,8).toUpperCase()}
         </div>
       </div>
