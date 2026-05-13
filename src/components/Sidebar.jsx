@@ -72,10 +72,10 @@ const Sidebar = () => {
 
         {/* 🚩 NUEVA SECCIÓN: OPERACIONES / CONTROL */}
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Auditoría y Control</p>
-        <NavLink to="/root/attendance" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+        <NavLink to="/root/attendance-control" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiUserCheck size={18} /> Control Asistencia
         </NavLink>
-        <NavLink to="/root/tasks" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+        <NavLink to="/root/task-control" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiCheckSquare size={18} /> Control de Tareas
         </NavLink>
         <NavLink to="/root/photo-validation" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
@@ -84,7 +84,7 @@ const Sidebar = () => {
 
         {/* 🚩 NUEVA SECCIÓN: MAESTROS / CATÁLOGO */}
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Maestros</p>
-        <NavLink to="/root/catalog" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+        <NavLink to="/root/catalogo" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiPackage size={18} /> Catálogo SKU
         </NavLink>
 

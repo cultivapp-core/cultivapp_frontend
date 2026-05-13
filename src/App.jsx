@@ -61,12 +61,12 @@ import QuestionsManager from "./pages/admin/QuestionsManager"
 import "./App.css"
 import { useAuth } from "./context/AuthContext"
 
-// 🚩 ROUTER: Admin de Cultiva ve Locales.jsx (acceso elevado), resto ve AdminLocales.jsx
+// 🚩 ROUTER MEJORADO: ROOT y Admin de Cultiva ven vista elevada (Locales.jsx)
 const ID_CULTIVA = '0e342e01-d213-4353-b210-39a12ac335cf';
 const AdminLocalesRouter = () => {
   const { user } = useAuth();
-  const isCultivaAdmin = user?.company_id === ID_CULTIVA;
-  return isCultivaAdmin ? <Locales /> : <AdminLocales />;
+  const isElevated = user?.company_id === ID_CULTIVA || user?.role === 'ROOT';
+  return isElevated ? <Locales /> : <AdminLocales />;
 };
 
 const OfflineMonitor = () => {
@@ -104,7 +104,7 @@ function App() {
 
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
 
-            {/* 👑 SECCIÓN ROOT */}
+            {/* 👑 SECCIÓN ROOT: Acceso Maestro Global */}
             <Route path="/root" element={<ProtectedRoute role="ROOT"><RootDashboard /></ProtectedRoute>}>
               <Route index element={<Analytics />} /> 
               <Route path="analytics" element={<Analytics />} />
@@ -121,15 +121,15 @@ function App() {
               <Route path="trazabilidad-global" element={<AlertsHistory userRole="ROOT" />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ROOT" />} />
               <Route path="questions" element={<QuestionsManager />} />
+              <Route path="catalogo" element={<CatalogManager />} />
               
-              {/* 🚩 NUEVAS RUTAS DE CONTROL Y MAESTROS (Sincronizadas con Sidebar) */}
-              <Route path="catalog" element={<CatalogManager />} />
-              <Route path="attendance" element={<AttendanceControl />} />
-              <Route path="tasks" element={<TaskControl />} />
+              {/* 🚩 Gestión y Auditoría Global para ROOT */}
+              <Route path="task-control" element={<TaskControl />} />
+              <Route path="attendance-control" element={<AttendanceControl />} />
               <Route path="photo-validation" element={<PhotoValidation />} />
             </Route>
 
-            {/* 👤 SECCIÓN USUARIO */}
+            {/* 👤 SECCIÓN USUARIO (MERCADERISTA) */}
             <Route path="/usuario" element={<ProtectedRoute role="USUARIO"><UserDashboard /></ProtectedRoute>}>
               <Route index element={<UserHome />} />
               <Route path="home" element={<UserHome />} />
@@ -151,11 +151,11 @@ function App() {
               <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
             </Route>
 
-            {/* 💼 SECCIÓN ADMIN CLIENTE */}
+            {/* 💼 SECCIÓN ADMIN CLIENTE: Soporta ADMIN y ROOT */}
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
               <Route index element={<Analytics />} />
               <Route path="users" element={<AdminUsers />} />
-              <Route path="locales" element={<AdminLocalesRouter />} />
+              <Route path="locales" element={<AdminLocales />} />
               <Route path="companies" element={<Companies />} />
               <Route path="turnos" element={<TurnosManager />} />
               <Route path="routes" element={<AdminRoutes />} />
@@ -164,10 +164,12 @@ function App() {
               <Route path="trazabilidad-alertas" element={<AlertsHistory userRole="ADMIN" />} />
               <Route path="questions" element={<QuestionsManager />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ADMIN" />} />
-              <Route path="catalog" element={<CatalogManager />} />
+              <Route path="catalogo" element={<CatalogManager />} />
               
-              <Route path="attendance" element={<AttendanceControl />} />
-              <Route path="tasks" element={<TaskControl />} />
+              {/* 🚩 Control Operativo Multitenant */}
+              <Route path="task-control" element={<TaskControl />} />
+              <Route path="attendance-control" element={<AttendanceControl />} />
+              <Route path="photo-validation" element={<PhotoValidation />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

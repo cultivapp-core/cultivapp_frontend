@@ -17,7 +17,6 @@ const AlertManager = () => {
   const [searchLocal, setSearchLocal] = useState("");
 
   const [users, setUsers] = useState([]);
-  const [chains, setChains] = useState([]);
   const [allMyLocales, setAllMyLocales] = useState([]); 
 
   const [form, setForm] = useState({
@@ -25,7 +24,6 @@ const AlertManager = () => {
     message: "",
     type: "OPERATIVA",
     scope: "TODOS",
-    chainId: "",
     localId: "",
     selectedZone: "",
     selectedTargets: [] 
@@ -33,28 +31,41 @@ const AlertManager = () => {
 
   useEffect(() => {
     const loadInitialData = async () => {
-      if (!currentUser?.company_id || !currentUser?.id) return;
+      if (!currentUser?.id) return; 
+      
       try {
         setFetchingData(true);
-        const [uRes, cRes, lRes] = await Promise.all([
-          api.get(`/users?company_id=${currentUser.company_id}`),
-          api.get(`/chains?company_id=${currentUser.company_id}`),
-          api.get(`/locales/supervisor/${currentUser.id}`)
-        ]);
+        
+        const isElevated = currentUser.role === 'ROOT' || currentUser.role === 'ADMIN_CLIENTE';
+        
+        // 🚩 CORRECCIÓN: Eliminamos la petición a /chains que daba error 500
+        const promises = [
+          api.get(isElevated ? `/users` : `/users?company_id=${currentUser.company_id}`)
+        ];
 
-        const userData = uRes.data || uRes || [];
-        const chainData = cRes.data || cRes || [];
-        const localeData = lRes.data || lRes || [];
+        // Si es elevado (ROOT o Admin), traemos todos los locales. 
+        if (isElevated) {
+          promises.push(api.get('/locales')); 
+        } else {
+          promises.push(api.get(`/locales/supervisor/${currentUser.id}`));
+        }
+
+        const [uRes, lRes] = await Promise.all(promises);
+
+        const userData = uRes?.data || uRes || [];
+        const localeData = lRes?.data || lRes || [];
 
         setUsers(Array.isArray(userData) ? userData.filter(u => u.id !== currentUser.id && !u.deleted_at) : []);
-        setChains(Array.isArray(chainData) ? chainData : []);
         setAllMyLocales(Array.isArray(localeData) ? localeData : []);
+        
       } catch (error) {
+        console.error("Detalle del error:", error.response?.data || error.message);
         toast.error("Error al sincronizar datos");
       } finally {
         setFetchingData(false);
       }
     };
+    
     loadInitialData();
   }, [currentUser]);
 
@@ -106,7 +117,6 @@ const AlertManager = () => {
         title: "", 
         message: "", 
         selectedTargets: [], 
-        chainId: "", 
         localId: "", 
         selectedZone: "" 
       }));
@@ -118,10 +128,8 @@ const AlertManager = () => {
   };
 
   return (
-    // 🚩 Añadido padding horizontal general para móviles (px-3 sm:px-6)
     <div className="space-y-6 md:space-y-8 font-[Outfit] max-w-7xl mx-auto pb-10 px-3 sm:px-6">
       
-      {/* HEADER RESPONSIVO */}
       <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6">
         <div className="flex items-center gap-3 md:gap-5 w-full md:w-auto">
             <div className="w-12 h-12 md:w-14 md:h-14 shrink-0 bg-gray-900 rounded-xl md:rounded-[1.5rem] flex items-center justify-center text-[#87be00] shadow-xl">
@@ -138,14 +146,13 @@ const AlertManager = () => {
         <div className="w-full md:w-auto flex items-center gap-2 bg-gray-50 px-4 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl border border-gray-100 italic justify-center md:justify-start">
             <FiBriefcase className="text-gray-400 shrink-0" size={14} />
             <span className="text-[9px] md:text-[10px] font-black uppercase text-gray-500 tracking-widest truncate">
-                Supervisor: {currentUser?.first_name}
+                {currentUser?.role === 'ROOT' ? 'Root Admin: ' : 'Supervisor: '} {currentUser?.first_name}
             </span>
         </div>
       </div>
 
       <form onSubmit={handleSend} className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
         
-        {/* IZQUIERDA */}
         <div className="lg:col-span-8 space-y-6">
           <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-gray-100 shadow-sm space-y-5 md:space-y-6">
             
@@ -167,7 +174,6 @@ const AlertManager = () => {
 
             {(form.scope === 'individual' || form.scope === 'local') && (
               <div className="space-y-4 pt-5 md:pt-6 border-t border-gray-100 animate-in fade-in slide-in-from-top-4">
-                {/* Buscador responsivo (Pasa a columna en celulares pequeños) */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-2">
                   <p className="text-[9px] md:text-[10px] font-black text-gray-900 uppercase italic tracking-widest flex items-center gap-2">
                     {form.scope === 'individual' ? <FiUsers className="text-[#87be00]" /> : <FiMapPin className="text-[#87be00]" />}
@@ -231,7 +237,6 @@ const AlertManager = () => {
           </div>
         </div>
 
-        {/* DERECHA */}
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-white p-5 md:p-7 rounded-[2rem] md:rounded-[3rem] border border-gray-100 shadow-sm space-y-5 md:space-y-6">
             <p className="text-[8px] md:text-[9px] font-black uppercase text-[#87be00] tracking-[0.2em] italic text-center">Configuración de Alcance</p>
@@ -242,7 +247,7 @@ const AlertManager = () => {
                  { id: 'local', label: 'Punto Venta', icon: <FiMapPin size={16}/> },
                  { id: 'ZONA', label: 'Zona', icon: <FiTarget size={16}/> }
                ].map(opt => (
-                 <button key={opt.id} type="button" onClick={() => setForm({...form, scope: opt.id, selectedTargets: [], localId: "", chainId: "", selectedZone: ""})}
+                 <button key={opt.id} type="button" onClick={() => setForm({...form, scope: opt.id, selectedTargets: [], localId: "", selectedZone: ""})}
                     className={`p-3 md:p-4 rounded-xl md:rounded-[1.8rem] flex flex-col items-center gap-1.5 md:gap-2 border-2 transition-all duration-300 ${form.scope === opt.id ? 'border-[#87be00] bg-[#87be00]/5 text-gray-900 shadow-sm' : 'border-transparent bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
                  >
                     <div className="md:scale-110">{opt.icon}</div>
