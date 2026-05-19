@@ -64,12 +64,15 @@ const ManageRoutesModal = ({
     end_time: "16:00",
   });
 
-  // 3. EL LIENZO
+  // 3. EL LIENZO Y HERRAMIENTAS DE LIMPIEZA
   const [matrix, setMatrix] = useState({});
+  const [showClearMenu, setShowClearMenu] = useState(false);
+  const [eraserMode, setEraserMode] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setTargetWeek(getCurrentWeekNumber()); 
+      setEraserMode(false);
       
       if (initialData) {
         setLocalId(initialData.local_id || "");
@@ -86,23 +89,27 @@ const ManageRoutesModal = ({
             const d = parseInt(item.day, 10);
             const key = `${w}-${d}`;
             
+            // 🚩 FIX RECUPERADO DE CLAUDE: Aseguramos la existencia del ID individual
+            const itemUserId = item.user_id;
+            if (!itemUserId) return; 
+            
             const cellData = {
-              user_id: item.user_id || initialData.user_id, 
+              user_id: String(itemUserId), 
               turno_id: item.turno_id || item.turno || (item.turno && item.turno !== "null" ? item.turno : "INDIVIDUAL"),
-              start_time: item.time?.slice(0,5) || "08:00",
-              end_time: item.endTime?.slice(0,5) || "16:00",
-              rol: initialData.nombre_turno?.includes("PT") ? "MERCADERISTA PT" : "MERCADERISTA FULL"
+              start_time: item.time ? item.time.slice(0, 5) : "08:00",
+              end_time: item.endTime ? item.endTime.slice(0, 5) : "16:00",
+              rol: item.rol || (initialData.nombre_turno?.includes("PT") ? "MERCADERISTA PT" : "MERCADERISTA FULL")
             };
 
             if (!newMatrix[key]) newMatrix[key] = [];
-            if (!newMatrix[key].some(a => a.user_id === cellData.user_id)) {
+            if (!newMatrix[key].some(a => String(a.user_id) === String(cellData.user_id))) {
               newMatrix[key].push(cellData);
             }
             if (!firstBrush) firstBrush = cellData;
           });
         }
         setMatrix(newMatrix);
-        if (firstBrush) setBrush(firstBrush);
+        if (firstBrush) setBrush(prev => prev.user_id ? prev : firstBrush);
       } else {
         setLocalId("");
         setCompanyId(currentUser?.company_id || "");
@@ -133,12 +140,7 @@ const ManageRoutesModal = ({
     
     const agrupados = filtrados.reduce((acc, curr) => {
       if (!acc[curr.nombre_turno]) {
-        acc[curr.nombre_turno] = { 
-          nombre: curr.nombre_turno, 
-          entrada: curr.entrada, 
-          salida: curr.salida,
-          dias: [] 
-        };
+        acc[curr.nombre_turno] = { nombre: curr.nombre_turno, entrada: curr.entrada, salida: curr.salida, dias: [] };
       }
       if (curr.day_of_week !== null && curr.day_of_week !== undefined) {
         acc[curr.nombre_turno].dias.push(parseInt(curr.day_of_week, 10));
@@ -195,20 +197,31 @@ const ManageRoutesModal = ({
           const key = `${targetWeek}-${d}`;
           const currentCellArray = newState[key] || [];
           
-          if (!currentCellArray.some(a => a.user_id === newBrush.user_id)) {
+          if (!currentCellArray.some(a => String(a.user_id) === String(newBrush.user_id))) {
             newState[key] = [...currentCellArray, { ...newBrush }];
           } else {
-            newState[key] = currentCellArray.map(a => a.user_id === newBrush.user_id ? { ...newBrush } : a);
+            newState[key] = currentCellArray.map(a => String(a.user_id) === String(newBrush.user_id) ? { ...newBrush } : a);
           }
         });
         return newState;
       });
-      toast.success(`Turno cargado en S${targetWeek} según sus días configurados`, { icon: "⚡" });
+      toast.success(`Turno cargado en S${targetWeek}`, { icon: "⚡" });
     }
   };
 
   const handleCellClick = (w, d) => {
     const key = `${w}-${d}`;
+
+    // 🚩 LÓGICA DEL MODO BORRADOR
+    if (eraserMode) {
+      setMatrix(prev => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
+      return;
+    }
+
     if (!brush.user_id || !brush.turno_id) {
       toast.error("Configura tu pincel (Reponedor y Turno) antes de pintar", { icon: "🖌️" });
       return;
@@ -216,7 +229,7 @@ const ManageRoutesModal = ({
 
     setMatrix(prev => {
       const currentCellArray = prev[key] || [];
-      const userIndex = currentCellArray.findIndex(a => a.user_id === brush.user_id);
+      const userIndex = currentCellArray.findIndex(a => String(a.user_id) === String(brush.user_id));
       let newCellArray;
       if (userIndex >= 0) {
         newCellArray = currentCellArray.filter((_, idx) => idx !== userIndex);
@@ -244,10 +257,10 @@ const ManageRoutesModal = ({
         diasObjetivo.forEach(d => { 
           const key = `${w}-${d}`;
           const currentCellArray = newState[key] || [];
-          if (!currentCellArray.some(a => a.user_id === brush.user_id)) {
+          if (!currentCellArray.some(a => String(a.user_id) === String(brush.user_id))) {
             newState[key] = [...currentCellArray, { ...brush }];
           } else {
-            newState[key] = currentCellArray.map(a => a.user_id === brush.user_id ? { ...brush } : a);
+            newState[key] = currentCellArray.map(a => String(a.user_id) === String(brush.user_id) ? { ...brush } : a);
           }
         });
       });
@@ -256,10 +269,30 @@ const ManageRoutesModal = ({
     toast.success(fillAllMonth ? "Copiado a todo el mes" : `S${targetWeek} rellenada`);
   };
 
-  const clearMatrix = () => {
-    if (window.confirm("¿Borrar todo el calendario para todos los usuarios?")) setMatrix({});
+  // 🚩 NUEVAS FUNCIONES DE LIMPIEZA
+  const clearWeek = () => {
+    if (window.confirm(`¿Seguro que deseas borrar TODA la planificación de la Semana ${targetWeek}?`)) {
+      setMatrix(prev => {
+        const newState = { ...prev };
+        Object.keys(newState).forEach(key => {
+          if (key.startsWith(`${targetWeek}-`)) delete newState[key];
+        });
+        return newState;
+      });
+      setShowClearMenu(false);
+      toast.success(`Semana ${targetWeek} limpiada`);
+    }
   };
 
+  const clearMonth = () => {
+    if (window.confirm("¿Seguro que deseas borrar TODO el calendario del mes para todos los usuarios?")) {
+      setMatrix({});
+      setShowClearMenu(false);
+      toast.success("Calendario mensual limpiado");
+    }
+  };
+
+  // 🚩 FIX RECUPERADO: Guardado dinámico para múltiples reponedores
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!localId) return toast.error("Selecciona un Local.");
@@ -267,29 +300,54 @@ const ManageRoutesModal = ({
 
     setLoading(true);
     try {
-      const assignments = [];
+      const assignmentsByUser = {};
       Object.entries(matrix).forEach(([key, userArray]) => {
         const [w, d] = key.split('-');
         userArray.forEach(data => {
-          assignments.push({ week: parseInt(w), day: parseInt(d), ...data });
+          const uId = String(data.user_id);
+          if (!assignmentsByUser[uId]) assignmentsByUser[uId] = [];
+          assignmentsByUser[uId].push({ week: parseInt(w), day: parseInt(d), ...data });
         });
       });
 
-      const dataToSubmit = {
-        local_id: localId,
-        company_id: companyId,
-        is_recurring: true,
-        origin: "TURNO",
-        assignments_data: assignments, 
-        user_id: assignments[0].user_id,
-        categoria_rol: assignments[0].rol,
-        start_time: assignments[0].start_time,
-        end_time: assignments[0].end_time,
-        selectedDays: [...new Set(assignments.map(a => a.day))],
-      };
+      const promises = [];
+      const usersToSave = Object.keys(assignmentsByUser);
 
-      if (isEditing) await api.put(`/routes/${initialData.id}`, dataToSubmit);
-      else await api.post("/routes", dataToSubmit);
+      for (const userId of usersToSave) {
+        const userAssignments = assignmentsByUser[userId];
+        const dataToSubmit = {
+          local_id: localId,
+          company_id: companyId,
+          is_recurring: true,
+          origin: "TURNO",
+          assignments_data: userAssignments, 
+          user_id: userId,
+          categoria_rol: userAssignments[0].rol,
+          start_time: userAssignments[0].start_time,
+          end_time: userAssignments[0].end_time,
+          selectedDays: [...new Set(userAssignments.map(a => a.day))],
+        };
+
+        const existingRouteId = initialData?.route_ids_by_user?.[userId];
+        
+        if (existingRouteId && isEditing) {
+          promises.push(api.put(`/routes/${existingRouteId}`, dataToSubmit));
+        } else {
+          promises.push(api.post("/routes", dataToSubmit));
+        }
+      }
+
+      if (isEditing && initialData?.route_ids_by_user) {
+        const existingUsers = Object.keys(initialData.route_ids_by_user);
+        const usersToDelete = existingUsers.filter(u => !usersToSave.includes(u));
+        
+        usersToDelete.forEach(uId => {
+          const idToDelete = initialData.route_ids_by_user[uId];
+          promises.push(api.delete(`/routes/${idToDelete}`));
+        });
+      }
+
+      await Promise.all(promises);
       
       onCreated();
       onClose();
@@ -300,11 +358,16 @@ const ManageRoutesModal = ({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("¿Eliminar completamente esta planificación agrupada?")) return;
+    if (!window.confirm("¿Eliminar completamente esta planificación agrupada para TODOS los mercaderistas?")) return;
     setIsDeleting(true);
     try {
-      await api.delete(`/routes/${initialData.id}`);
-      onCreated(); onClose(); toast.success("Ruta eliminada");
+      const idsToDelete = initialData?.route_ids_by_user 
+        ? Object.values(initialData.route_ids_by_user) 
+        : [initialData.id];
+
+      await Promise.all(idsToDelete.map(id => api.delete(`/routes/${id}`)));
+      
+      onCreated(); onClose(); toast.success("Rutas eliminadas");
     } catch { toast.error("Error al eliminar"); } 
     finally { setIsDeleting(false); }
   };
@@ -392,7 +455,6 @@ const ManageRoutesModal = ({
                     <FiEdit3 size={12} /> 2. Quién y Cuándo (Pincel)
                  </div>
 
-                 {/* 🚩 NUEVO SELECTOR DE SEMANA ELEGANTE (Segmented Control) */}
                  <div className="space-y-2">
                     <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                         <FiCalendar /> Semana objetivo de carga:
@@ -455,10 +517,44 @@ const ManageRoutesModal = ({
                 <div className="flex items-center gap-2 text-[10px] font-black text-gray-500 uppercase tracking-widest">
                   <FiCalendar size={14} className="shrink-0" /> 3. Calendario
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => fillTargetWeek(false)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5"><FiCopy/> Llenar S{targetWeek}</button>
-                  <button type="button" onClick={() => fillTargetWeek(true)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2.5 rounded-lg transition-all">Llenar Mes</button>
-                  <button type="button" onClick={clearMatrix} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-red-50 hover:bg-red-100 text-red-500 px-3 py-2.5 rounded-lg transition-all">Limpiar</button>
+                <div className="flex flex-wrap gap-2 relative">
+                  <button type="button" disabled={eraserMode} onClick={() => fillTargetWeek(false)} className={`flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${eraserMode ? 'opacity-50 cursor-not-allowed' : ''}`}><FiCopy/> Llenar S{targetWeek}</button>
+                  <button type="button" disabled={eraserMode} onClick={() => fillTargetWeek(true)} className={`flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2.5 rounded-lg transition-all ${eraserMode ? 'opacity-50 cursor-not-allowed' : ''}`}>Llenar Mes</button>
+
+                  {/* 🚩 NUEVO MENÚ DE LIMPIEZA */}
+                  {eraserMode ? (
+                    <button type="button" onClick={() => setEraserMode(false)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 bg-red-500 text-white shadow-md hover:bg-red-600">
+                      <FiX size={12} /> Quitar Borrador
+                    </button>
+                  ) : (
+                    <div className="relative">
+                      <button type="button" onClick={() => setShowClearMenu(!showClearMenu)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-500">
+                        <FiTrash2 size={12} /> Limpiar ▾
+                      </button>
+                      
+                      {showClearMenu && (
+                        <>
+                          <div className="fixed inset-0 z-[150]" onClick={() => setShowClearMenu(false)}></div>
+                          <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-100 rounded-2xl shadow-2xl z-[160] overflow-hidden flex flex-col">
+                            <button
+                              type="button"
+                              onClick={() => { setEraserMode(true); setShowClearMenu(false); toast('Modo Borrador activado. Haz clic en un día para limpiarlo.', { icon: '🧽' }); }}
+                              className="px-4 py-3.5 text-[10px] font-black uppercase text-left hover:bg-gray-50 text-gray-700 transition-all border-b border-gray-50 flex items-center gap-2"
+                            >
+                              <FiMapPin size={12}/> 1. Limpiar Día (Borrador)
+                            </button>
+                            <button type="button" onClick={clearWeek} className="px-4 py-3.5 text-[10px] font-black uppercase text-left hover:bg-red-50 text-gray-700 hover:text-red-600 transition-all border-b border-gray-50 flex items-center gap-2">
+                              <FiLayers size={12}/> 2. Limpiar S{targetWeek}
+                            </button>
+                            <button type="button" onClick={clearMonth} className="px-4 py-3.5 text-[10px] font-black uppercase text-left hover:bg-red-50 text-red-600 transition-all flex items-center gap-2">
+                              <FiCalendar size={12}/> 3. Limpiar Todo el Mes
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                 </div>
               </div>
 
@@ -483,20 +579,27 @@ const ManageRoutesModal = ({
                         const isActive = cellArray.length > 0;
                         const isTargetWeek = w === targetWeek;
                         
+                        // 🚩 Clases dinámicas para manejar el Modo Borrador visualmente
+                        let baseClass = "relative min-h-[4rem] h-20 rounded-xl sm:rounded-2xl flex flex-col items-center justify-start p-1 cursor-pointer transition-all border-2 overflow-y-auto custom-scrollbar";
+                        
+                        if (eraserMode) {
+                          if (isActive) baseClass += " bg-[#87be00] border-[#87be00] text-white shadow-lg hover:!bg-red-500 hover:!border-red-600 hover:!text-white";
+                          else baseClass += " bg-white border-dashed border-gray-200 hover:!border-red-200 hover:!bg-red-50";
+                        } else {
+                          if (isActive) baseClass += " bg-[#87be00] border-[#87be00] text-white shadow-lg sm:scale-[1.02]";
+                          else if (isTargetWeek) baseClass += " bg-white border-blue-200 hover:border-blue-400 shadow-sm";
+                          else baseClass += " bg-white border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50";
+                        }
+
                         return (
                           <div 
                             key={`cell-${w}-${d.id}`}
                             onClick={() => handleCellClick(w, d.id)}
-                            className={`
-                              relative min-h-[4rem] h-20 rounded-xl sm:rounded-2xl flex flex-col items-center justify-start p-1 cursor-pointer transition-all border-2 overflow-y-auto custom-scrollbar
-                              ${isActive 
-                                ? "bg-[#87be00] border-[#87be00] text-white shadow-lg sm:scale-[1.02]" 
-                                : isTargetWeek ? "bg-white border-blue-200 hover:border-blue-400 shadow-sm" : "bg-white border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50"}
-                            `}
+                            className={baseClass}
                           >
                             {isActive ? (
                               cellArray.map((assign, idx) => {
-                                const user = filteredUsers.find(u => u.id === assign.user_id);
+                                const user = filteredUsers.find(u => String(u.id) === String(assign.user_id));
                                 const uName = user ? user.first_name : "User";
                                 const tLabel = assign.turno_id === "INDIVIDUAL" ? assign.start_time : assign.turno_id;
                                 
