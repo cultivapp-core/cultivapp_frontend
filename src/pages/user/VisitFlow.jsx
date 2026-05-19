@@ -96,7 +96,8 @@ const VisitFlow = () => {
     if (step === 4) {
       const loadQuestions = async () => {
         try {
-          const data = await api.get("/questions");
+          // 🚩 MEJORA: Filtramos el endpoint para recuperar solo las preguntas del flujo reponedor
+          const data = await api.get("/questions?flow=reponedor");
           setQuestions(data);
         } catch (err) {
           const cached = localStorage.getItem("cultivapp_questions_cache");
@@ -431,7 +432,7 @@ const VisitFlow = () => {
              <div className="bg-[#87be00]/5 p-8 rounded-[3rem] border border-[#87be00]/10 text-center mb-6">
                <FiCheckCircle className="text-[#87be00] mx-auto mb-3" size={40} />
                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Gestión Finalizada</p>
-               <p className="text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight">Has registrado todos los productos y tu salida del local.</p>
+               <p className="text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight">Has registrado todos los productos and tu salida del local.</p>
              </div>
              <button onClick={finalizarVisitaTotal} disabled={loading} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-2xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
                {loading ? <FiLoader className="animate-spin" /> : <><FiSend size={20}/> Enviar y Cerrar Visita</>}

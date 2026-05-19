@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { FiX, FiHelpCircle } from "react-icons/fi"
+import { FiX, FiHelpCircle, FiUser, FiEye } from "react-icons/fi"
 import api from "../../api/apiClient"
 
 const EditQuestionModal = ({
@@ -12,6 +12,7 @@ const EditQuestionModal = ({
   const [form, setForm] = useState({
     question: "",
     type: "TEXTO", 
+    target_flow: "REPONEDOR", // 🚩 Nuevo campo para controlar el flujo en el formulario
     is_required: false
   })
 
@@ -23,10 +24,15 @@ const EditQuestionModal = ({
       // Normalizamos el tipo que viene de la base de datos a mayúsculas para la interfaz visual del modal
       const rawType = String(question.type || "TEXTO").toUpperCase().trim();
       const currentType = (rawType === "BOOLEAN" || rawType === "SI_NO" || rawType === "SI/NO") ? "BOOLEAN" : "TEXTO";
+      
+      // Normalizamos el flujo destino que viene de la base de datos
+      const rawFlow = String(question.target_flow || "REPONEDOR").toUpperCase().trim();
+      const currentFlow = (rawFlow === "SUPERVISOR") ? "SUPERVISOR" : "REPONEDOR";
 
       setForm({
         question: question.question || "",
         type: currentType, 
+        target_flow: currentFlow,
         is_required: question.is_required || false
       })
     }
@@ -57,18 +63,27 @@ const EditQuestionModal = ({
     }))
   }
 
+  // 🚩 Función auxiliar para cambiar el flujo destino al hacer clic en las pastillas
+  const handleFlowSelect = (selectedFlow) => {
+    setForm(prev => ({
+      ...prev,
+      target_flow: selectedFlow
+    }))
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError("")
 
-    // 🚩 CLAVE DE PERSISTENCIA: Enviamos el tipo tanto en mayúsculas como en minúsculas en el payload
-    // para asegurar que el backend lo capture sin importar cómo esté definido su modelo o ENUM.
+    // 🚩 CLAVE DE PERSISTENCIA EXPANDIDA: Enviamos tanto los tipos como los flujos 
+    // formateados en minúsculas consistentes tal como los procesa ahora tu backend.
     const payload = {
       question: form.question,
       is_required: form.is_required,
-      type: form.type.toLowerCase(), // Mandamos "boolean" o "texto"
-      question_type: form.type,       // Como respaldo por si tu columna se llama diferente
+      type: form.type.toLowerCase(),          // "boolean" o "texto"
+      question_type: form.type,               // Respaldo
+      target_flow: form.target_flow.toLowerCase() // "reponedor" o "supervisor"
     }
 
     try {
@@ -109,6 +124,29 @@ const EditQuestionModal = ({
               {error}
             </div>
           )}
+
+          {/* 🚩 NUEVO SECTOR: ASIGNACIÓN DE FLUJO DESTINO (ESTILO PASTILLAS PREMIUM CULTIVAAPP) */}
+          <div className="space-y-2">
+            <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-2">
+              Asignación del Flujo Destino
+            </label>
+            <div className="grid grid-cols-2 gap-2 bg-gray-100 p-1.5 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => handleFlowSelect("REPONEDOR")}
+                className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${form.target_flow === "REPONEDOR" ? "bg-white text-[#87be00] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+              >
+                <FiUser size={13}/> Flujo Reponedor
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFlowSelect("SUPERVISOR")}
+                className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${form.target_flow === "SUPERVISOR" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+              >
+                <FiEye size={13}/> Flujo Supervisor
+              </button>
+            </div>
+          </div>
 
           {/* INPUT: ENUNCIADO DE PREGUNTA */}
           <div className="space-y-1.5">
