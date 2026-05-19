@@ -24,6 +24,15 @@ const Companies = () => {
   const isCultivaAdmin = user?.role === "ADMIN_CLIENTE" && user?.company_id === ID_CULTIVA
   const hasFullAccess = isRoot || isCultivaAdmin
 
+  // 🛡️ REGLA DE SEGURIDAD: Define si el usuario actual puede apagar esta empresa específica
+  const canToggle = (companyId) => {
+    if (!hasFullAccess) return false;
+    // Si es el Admin de Cultiva y la empresa en la fila es Cultiva, bloqueamos la acción
+    if (isCultivaAdmin && companyId === ID_CULTIVA) return false;
+    // El Root siempre puede, o el Admin de Cultiva sobre otras empresas
+    return true;
+  }
+
   useEffect(() => {
     fetchCompanies()
   }, [])
@@ -51,7 +60,8 @@ const Companies = () => {
   }
 
   const toggleCompany = async (id) => {
-    if (!hasFullAccess) return toast.error("No tienes permisos para esta acción")
+    // 🛡️ Doble validación en la función por seguridad
+    if (!canToggle(id)) return toast.error("No tienes permisos para cambiar el estado de la empresa principal")
     try {
       await api.patch(`/companies/${id}/toggle`)
       toast.success("Estado de empresa actualizado")
@@ -116,62 +126,66 @@ const Companies = () => {
         {loading ? (
           <div className="py-20 text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-[#87be00] border-t-transparent"></div></div>
         ) : (
-          companies.map((company, idx) => (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}
-              key={company.id}
-              className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col gap-4 relative"
-            >
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3 min-w-0">
-                  
-                  {/* INTEGRACIÓN QUICK VIEW EN MÓVIL */}
-                  <EmpresaQuickView 
-                    company={company}
-                    isActive={activePopover === `mob-${company.id}`}
-                    onToggle={() => setActivePopover(activePopover === `mob-${company.id}` ? null : `mob-${company.id}`)}
-                  />
+          companies.map((company, idx) => {
+            const disableToggle = !canToggle(company.id);
 
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-gray-800 uppercase italic truncate tracking-tight">{company.name}</p>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase font-mono">{company.rut}</p>
+            return (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}
+                key={company.id}
+                className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col gap-4 relative"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-3 min-w-0">
+                    
+                    {/* INTEGRACIÓN QUICK VIEW EN MÓVIL */}
+                    <EmpresaQuickView 
+                      company={company}
+                      isActive={activePopover === `mob-${company.id}`}
+                      onToggle={() => setActivePopover(activePopover === `mob-${company.id}` ? null : `mob-${company.id}`)}
+                    />
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-gray-800 uppercase italic truncate tracking-tight">{company.name}</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase font-mono">{company.rut}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                     <button onClick={() => handleEdit(company)} className="p-2.5 bg-gray-50 text-gray-400 rounded-xl"><FiEdit3 size={14}/></button>
+                     {isRoot && <button onClick={() => handleDelete(company)} className="p-2.5 bg-red-50 text-red-400 rounded-xl"><FiTrash2 size={14}/></button>}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                   <button onClick={() => handleEdit(company)} className="p-2.5 bg-gray-50 text-gray-400 rounded-xl"><FiEdit3 size={14}/></button>
-                   {isRoot && <button onClick={() => handleDelete(company)} className="p-2.5 bg-red-50 text-red-400 rounded-xl"><FiTrash2 size={14}/></button>}
+
+                {/* LIMITES EN GRID */}
+                <div className="grid grid-cols-3 gap-2 bg-gray-50 p-4 rounded-[1.5rem] border border-gray-100">
+                  <StatSimple label="SUPS" value={company.max_supervisors} icon={<FiActivity size={10} />} />
+                  <StatSimple label="MERCS" value={company.max_users} icon={<FiUsers size={10} />} isBorder />
+                  <StatSimple label="VIEWS" value={company.max_view} icon={<FiEye size={10} />} />
                 </div>
-              </div>
 
-              {/* LIMITES EN GRID */}
-              <div className="grid grid-cols-3 gap-2 bg-gray-50 p-4 rounded-[1.5rem] border border-gray-100">
-                <StatSimple label="SUPS" value={company.max_supervisors} icon={<FiActivity size={10} />} />
-                <StatSimple label="MERCS" value={company.max_users} icon={<FiUsers size={10} />} isBorder />
-                <StatSimple label="VIEWS" value={company.max_view} icon={<FiEye size={10} />} />
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                 <span className="text-[8px] font-black text-gray-300 italic uppercase tracking-widest">ID: {company.id.split('-')[0]}</span>
-                 <div className="flex items-center gap-3">
-                    <span className={`text-[8px] font-black uppercase italic tracking-widest ${company.is_active ? 'text-[#87be00]' : 'text-gray-400'}`}>
-                      {company.is_active ? 'Activo' : 'Inactivo'}
-                    </span>
-                    <button
-                      onClick={() => hasFullAccess && toggleCompany(company.id)}
-                      disabled={!hasFullAccess}
-                      className={`relative inline-flex h-5 w-10 items-center rounded-full transition-all ${
-                        !hasFullAccess ? "opacity-30" : ""
-                      } ${company.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}
-                    >
-                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-all ${
-                          company.is_active ? "translate-x-5" : "translate-x-1"
-                        }`}
-                      />
-                    </button>
-                 </div>
-              </div>
-            </motion.div>
-          ))
+                <div className="flex items-center justify-between pt-2">
+                   <span className="text-[8px] font-black text-gray-300 italic uppercase tracking-widest">ID: {company.id.split('-')[0]}</span>
+                   <div className="flex items-center gap-3">
+                      <span className={`text-[8px] font-black uppercase italic tracking-widest ${company.is_active ? 'text-[#87be00]' : 'text-gray-400'}`}>
+                        {company.is_active ? 'Activo' : 'Inactivo'}
+                      </span>
+                      <button
+                        onClick={() => !disableToggle && toggleCompany(company.id)}
+                        disabled={disableToggle}
+                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition-all ${
+                          disableToggle ? "opacity-30 cursor-not-allowed" : ""
+                        } ${company.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-all ${
+                            company.is_active ? "translate-x-5" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                   </div>
+                </div>
+              </motion.div>
+            )
+          })
         )}
       </div>
 
@@ -192,55 +206,59 @@ const Companies = () => {
               {loading ? (
                 <tr><td colSpan="4" className="p-20 text-center"><div className="inline-block animate-spin rounded-full h-10 w-10 border-[6px] border-[#87be00] border-t-transparent"></div></td></tr>
               ) : (
-                companies.map(company => (
-                  <tr key={company.id} className="hover:bg-gray-50/50 transition-all group">
-                    <td className="p-8">
-                      <div className="flex items-center gap-5">
-                        
-                        {/* 🚩 INTEGRACIÓN DEL COMPONENTE REUTILIZABLE */}
-                        <EmpresaQuickView 
-                          company={company}
-                          isActive={activePopover === company.id}
-                          onToggle={() => setActivePopover(activePopover === company.id ? null : company.id)}
-                        />
+                companies.map(company => {
+                  const disableToggle = !canToggle(company.id);
 
-                        <div>
-                          <p className="text-base font-black text-gray-900 uppercase tracking-tighter leading-none italic truncate">{company.name}</p>
-                          <p className="text-[9px] text-gray-400 mt-2 uppercase font-bold italic tracking-widest">ID: {company.id.split('-')[0]}</p>
+                  return (
+                    <tr key={company.id} className="hover:bg-gray-50/50 transition-all group">
+                      <td className="p-8">
+                        <div className="flex items-center gap-5">
+                          
+                          {/* 🚩 INTEGRACIÓN DEL COMPONENTE REUTILIZABLE */}
+                          <EmpresaQuickView 
+                            company={company}
+                            isActive={activePopover === company.id}
+                            onToggle={() => setActivePopover(activePopover === company.id ? null : company.id)}
+                          />
+
+                          <div>
+                            <p className="text-base font-black text-gray-900 uppercase tracking-tighter leading-none italic truncate">{company.name}</p>
+                            <p className="text-[9px] text-gray-400 mt-2 uppercase font-bold italic tracking-widest">ID: {company.id.split('-')[0]}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-8">
-                      <span className="bg-gray-50 px-4 py-2 rounded-xl text-[11px] font-black text-gray-700 uppercase font-mono border border-gray-100 shadow-sm">
-                        {company.rut}
-                      </span>
-                    </td>
-                    <td className="p-8">
-                      <div className="flex gap-6">
-                        <LimitBadge label="Sups" value={company.max_supervisors} icon={<FiActivity size={12}/>} />
-                        <LimitBadge label="Mercs" value={company.max_users} icon={<FiUsers size={12}/>} />
-                        <LimitBadge label="Views" value={company.max_view} icon={<FiEye size={12}/>} />
-                      </div>
-                    </td>
-                    <td className="p-8">
-                      <div className="flex items-center justify-center gap-4">
-                        <button onClick={() => handleEdit(company)} className="p-3 bg-gray-50 text-gray-400 rounded-2xl hover:bg-gray-900 hover:text-[#87be00] transition-all shadow-sm border border-gray-100"><FiEdit3 size={18} /></button>
-                        
-                        <button
-                          onClick={() => hasFullAccess && toggleCompany(company.id)}
-                          disabled={!hasFullAccess}
-                          className={`relative inline-flex h-7 w-14 items-center rounded-full transition-all duration-500 shadow-inner ${!hasFullAccess ? "opacity-20 cursor-not-allowed" : ""} ${company.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}
-                        >
-                          <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-all duration-500 ${company.is_active ? "translate-x-8" : "translate-x-1"}`}/>
-                        </button>
+                      </td>
+                      <td className="p-8">
+                        <span className="bg-gray-50 px-4 py-2 rounded-xl text-[11px] font-black text-gray-700 uppercase font-mono border border-gray-100 shadow-sm">
+                          {company.rut}
+                        </span>
+                      </td>
+                      <td className="p-8">
+                        <div className="flex gap-6">
+                          <LimitBadge label="Sups" value={company.max_supervisors} icon={<FiActivity size={12}/>} />
+                          <LimitBadge label="Mercs" value={company.max_users} icon={<FiUsers size={12}/>} />
+                          <LimitBadge label="Views" value={company.max_view} icon={<FiEye size={12}/>} />
+                        </div>
+                      </td>
+                      <td className="p-8">
+                        <div className="flex items-center justify-center gap-4">
+                          <button onClick={() => handleEdit(company)} className="p-3 bg-gray-50 text-gray-400 rounded-2xl hover:bg-gray-900 hover:text-[#87be00] transition-all shadow-sm border border-gray-100"><FiEdit3 size={18} /></button>
+                          
+                          <button
+                            onClick={() => !disableToggle && toggleCompany(company.id)}
+                            disabled={disableToggle}
+                            className={`relative inline-flex h-7 w-14 items-center rounded-full transition-all duration-500 shadow-inner ${disableToggle ? "opacity-20 cursor-not-allowed" : ""} ${company.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}
+                          >
+                            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-all duration-500 ${company.is_active ? "translate-x-8" : "translate-x-1"}`}/>
+                          </button>
 
-                        {isRoot && (
-                          <button onClick={() => handleDelete(company)} className="p-3 bg-red-50 text-red-300 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm border border-red-50"><FiTrash2 size={18} /></button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          {isRoot && (
+                            <button onClick={() => handleDelete(company)} className="p-3 bg-red-50 text-red-300 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm border border-red-50"><FiTrash2 size={18} /></button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>

@@ -153,7 +153,7 @@ function App() {
 
             {/* 💼 SECCIÓN ADMIN CLIENTE: Soporta ADMIN y ROOT */}
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
-              <Route index element={<Analytics />} />
+              <Route index element={<AdminOverview />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="locales" element={<AdminLocales />} />
               <Route path="companies" element={<Companies />} />
