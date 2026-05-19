@@ -53,7 +53,6 @@ const VisitFlow = () => {
   const formatImageUrl = (url) => {
     if (!url) return null;
     if (url.startsWith('blob:') || url.startsWith('http')) return url;
-    // Si la ruta es relativa (ej: /uploads/xxx.jpg), le concatenamos la base
     return `${BASE_URL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
   };
 
@@ -122,7 +121,6 @@ const VisitFlow = () => {
       
       const response = await api.post(`/routes/${id}/photo`, formData);
       
-      // Si estamos offline usamos el blob local, si no, lo que devuelva la API
       const photoPath = response?.offline 
         ? URL.createObjectURL(file) 
         : (response.image_url || response.url || URL.createObjectURL(file));
@@ -154,6 +152,13 @@ const VisitFlow = () => {
   };
 
   const registrarGestionProducto = async (proximoPaso) => {
+    const missingRequired = questions.some(q => q.is_required && !answers[q.id]);
+    if (missingRequired) {
+      toast.error("Por favor responde todas las preguntas obligatorias");
+      setStep(4);
+      return;
+    }
+
     setLoading(true);
     const toastId = toast.loading("Registrando gestión...");
     
@@ -189,7 +194,6 @@ const VisitFlow = () => {
     finally { setLoading(false); }
   };
 
-  // 🚩 FUNCIÓN REUTILIZABLE PARA EL CONTENEDOR DE FOTO
   const renderPhotoContainer = (photoUrl, setPhotoUrl, placeholderText) => {
     if (photoUrl) {
       return (
@@ -199,12 +203,10 @@ const VisitFlow = () => {
             className="w-full h-full object-cover" 
             alt={placeholderText}
             onError={(e) => {
-              // Si falla la carga, ocultamos la imagen y mostramos un error visual
               e.target.style.display = 'none';
               e.target.nextSibling.style.display = 'flex';
             }}
           />
-          {/* Placeholder de Error (oculto por defecto) */}
           <div className="hidden absolute inset-0 flex-col items-center justify-center bg-gray-50 text-red-400 p-4">
             <FiAlertCircle size={40} className="mb-2" />
             <span className="text-[10px] font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
@@ -328,17 +330,77 @@ const VisitFlow = () => {
           </div>
         )}
 
+        {/* 🚩 OPTIMIZACIÓN PASO 4: FORMULARIO INTERACTIVO MULTI-TIPO ULTRA-FLEXIBLE */}
         {step === 4 && (
-           <div className="space-y-4 animate-in slide-in-from-right duration-300">
-             <div className="bg-gray-50 p-2 rounded-[2.5rem] space-y-1">
-               {questions.map((q) => (
-                 <button key={q.id} onClick={() => setAnswers({...answers, [q.id]: q.question})} className={`w-full flex items-center justify-between p-4 rounded-[1.8rem] transition-all ${answers[q.id] ? 'bg-white shadow-sm ring-2 ring-[#87be00]/20' : ''}`}>
-                   <span className={`text-[10px] font-bold text-left leading-tight pr-2 ${answers[q.id] ? 'text-[#87be00]' : 'text-gray-500'}`}>{q.question}</span>
-                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${answers[q.id] ? 'border-[#87be00] bg-[#87be00]' : 'border-gray-200'}`}>{answers[q.id] && <FiCheckCircle className="text-white" size={12} />}</div>
-                 </button>
-               ))}
+           <div className="space-y-5 animate-in slide-in-from-right duration-300 text-left">
+             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
+               {questions.map((q) => {
+                 // 🚩 FIX: Normalizamos el string a minúsculas para que acepte tanto "boolean", "BOOLEAN", "si_no", etc.
+                 const normalizedType = String(q.type || 'TEXTO').toLowerCase().trim();
+                 const isBoolean = normalizedType === "boolean" || normalizedType === "si_no" || normalizedType === "si/no";
+                 const currentAnswer = answers[q.id];
+
+                 return (
+                   <div key={q.id} className="bg-gray-50/70 p-5 rounded-[2rem] border border-gray-100 space-y-3.5 shadow-sm">
+                     
+                     {/* Enunciado de la Pregunta */}
+                     <p className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-tighter leading-tight">
+                       {q.question} {q.is_required && <span className="text-red-500 font-black ml-0.5">*</span>}
+                     </p>
+
+                     {/* Renderizado Condicional */}
+                     {isBoolean ? (
+                       <div className="grid grid-cols-2 gap-4 pt-1">
+                         
+                         {/* Control Sí */}
+                         <label className="flex items-center gap-3 cursor-pointer group select-none">
+                           <input
+                             type="radio"
+                             name={`question-${q.id}`}
+                             value="SI"
+                             checked={currentAnswer === "SI"}
+                             onChange={() => setAnswers({ ...answers, [q.id]: "SI" })}
+                             className="w-5 h-5 rounded-full border-2 border-gray-300 text-[#87be00] focus:ring-[#87be00]/20 checked:border-[#87be00] accent-[#87be00] cursor-pointer transition-all"
+                           />
+                           <span className={`text-xs font-black uppercase tracking-wider transition-colors ${currentAnswer === "SI" ? "text-[#87be00]" : "text-gray-500 group-hover:text-gray-800"}`}>
+                             Sí
+                           </span>
+                         </label>
+
+                         {/* Control No */}
+                         <label className="flex items-center gap-3 cursor-pointer group select-none">
+                           <input
+                             type="radio"
+                             name={`question-${q.id}`}
+                             value="NO"
+                             checked={currentAnswer === "NO"}
+                             onChange={() => setAnswers({ ...answers, [q.id]: "NO" })}
+                             className="w-5 h-5 rounded-full border-2 border-gray-300 text-[#87be00] focus:ring-[#87be00]/20 checked:border-[#87be00] accent-[#87be00] cursor-pointer transition-all"
+                           />
+                           <span className={`text-xs font-black uppercase tracking-wider transition-colors ${currentAnswer === "NO" ? "text-red-500" : "text-gray-500 group-hover:text-gray-800"}`}>
+                             No
+                           </span>
+                         </label>
+
+                       </div>
+                     ) : (
+                       /* Campo de entrada de Texto Abierto */
+                       <input
+                         type="text"
+                         placeholder="Escribe tu respuesta aquí..."
+                         value={currentAnswer || ""}
+                         onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                         className="w-full bg-white border border-gray-200/60 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-[#87be00]/50 focus:ring-4 focus:ring-[#87be00]/5 transition-all text-gray-800 shadow-inner"
+                       />
+                     )}
+                   </div>
+                 );
+               })}
              </div>
-             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3">Góndola Final <FiArrowRight/></button>
+             
+             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all">
+               Góndola Final <FiArrowRight/>
+             </button>
            </div>
         )}
 
@@ -358,8 +420,8 @@ const VisitFlow = () => {
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">El tiempo de este producto ha sido registrado.</p>
             </div>
             <div className="flex flex-col gap-3">
-              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all hover:bg-[#76a500]">{loading ? <FiLoader className="animate-spin"/> : <><FiPlusCircle size={18}/> Sí, nuevo producto</>}</button>
-              <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all"><FiLogOut size={18}/> No, finalizar jornada</button>
+              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-[0.98] transition-all hover:bg-[#76a500]">{loading ? <FiLoader className="animate-spin"/> : <><FiPlusCircle size={18}/> Sí, nuevo producto</>}</button>
+              <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all"><FiLogOut size={18}/> No, finalizar jornada</button>
             </div>
           </div>
         )}
@@ -371,7 +433,7 @@ const VisitFlow = () => {
                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Gestión Finalizada</p>
                <p className="text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight">Has registrado todos los productos y tu salida del local.</p>
              </div>
-             <button onClick={finalizarVisitaTotal} disabled={loading} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+             <button onClick={finalizarVisitaTotal} disabled={loading} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-2xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
                {loading ? <FiLoader className="animate-spin" /> : <><FiSend size={20}/> Enviar y Cerrar Visita</>}
              </button>
           </div>

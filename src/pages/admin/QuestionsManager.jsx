@@ -47,15 +47,55 @@ const QuestionsManager = () => {
     setEditOpen(true)
   }
 
+  // 🚩 INTERFAZ VISUAL IGUAL A TU CAPTURA DE PANTALLA
+  const renderTypePreview = (type) => {
+    const t = String(type).toUpperCase();
+    
+    if (t === "BOOLEAN" || t === "SI_NO" || t === "SI/NO") {
+      return (
+        <div className="mt-4 space-y-3 pl-2" onClick={(e) => e.stopPropagation()}>
+          {/* Opción Sí */}
+          <div className="flex items-center gap-3 group/radio cursor-pointer w-max">
+            <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center transition-all group-hover/radio:border-[#87be00]">
+              <div className="w-2.5 h-2.5 rounded-full bg-[#87be00] opacity-0 group-hover/radio:opacity-100 transition-opacity" />
+            </div>
+            <span className="text-xs font-black text-gray-700 uppercase tracking-wide">Sí</span>
+          </div>
+
+          {/* Opción No */}
+          <div className="flex items-center gap-3 group/radio cursor-pointer w-max">
+            <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center transition-all group-hover/radio:border-[#87be00]">
+              <div className="w-2.5 h-2.5 rounded-full bg-[#87be00] opacity-0 transition-opacity" />
+            </div>
+            <span className="text-xs font-black text-gray-700 uppercase tracking-wide">No</span>
+          </div>
+
+          {/* Pequeño texto decorativo de pie de formulario */}
+          <p className="text-[10px] font-medium text-gray-400 italic pt-1 tracking-wide">
+            Gracias por tu respuesta
+          </p>
+        </div>
+      );
+    }
+
+    // Input normal si es de tipo texto libre
+    return (
+      <div className="w-full max-w-sm mt-4" onClick={(e) => e.stopPropagation()}>
+        <div className="w-full bg-gray-50 border border-dashed border-gray-200 rounded-2xl px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest select-none shadow-inner">
+          Escribir respuesta libre...
+        </div>
+      </div>
+    );
+  };
+
   return (
-    // 🚩 Ajustamos padding lateral para móviles (px-2 md:px-0)
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-700 font-[Outfit] pb-20 px-2 sm:px-0">
       
       {/* HEADER RESPONSIVO */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-2 md:px-4">
         <div className="min-w-0">
           <h2 className="text-3xl md:text-4xl font-black text-gray-800 tracking-tighter uppercase italic leading-none truncate">
-            Formulario
+            Encuesta
           </h2>
           <p className="text-[9px] md:text-[10px] font-bold text-[#87be00] uppercase tracking-[0.2em] md:tracking-[0.3em] mt-2 md:mt-3 leading-tight">
             Configuración de preguntas para mercaderistas
@@ -101,17 +141,19 @@ const QuestionsManager = () => {
                   key={q.id}
                   className="group flex flex-col md:flex-row justify-between items-start md:items-center bg-white border border-gray-100 rounded-[1.5rem] md:rounded-[2rem] p-4 md:p-6 hover:border-[#87be00] hover:shadow-md transition-all duration-300 gap-4"
                 >
-                  <div className="flex items-center gap-4 md:gap-6 min-w-0 w-full">
+                  <div className="flex items-start gap-4 md:gap-6 min-w-0 w-full">
                     {/* Indicador de número */}
-                    <div className="w-9 h-9 md:w-10 md:h-10 shrink-0 bg-gray-50 rounded-xl md:rounded-2xl flex items-center justify-center text-gray-400 font-black italic group-hover:bg-[#87be00]/10 group-hover:text-[#87be00] transition-colors text-xs md:text-base">
+                    <div className="w-9 h-9 md:w-10 md:h-10 shrink-0 bg-gray-50 rounded-xl md:rounded-2xl flex items-center justify-center text-gray-400 font-black italic group-hover:bg-[#87be00]/10 group-hover:text-[#87be00] transition-colors text-xs md:text-base mt-1 md:mt-0">
                       {index + 1}
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-tighter leading-tight mb-1 md:mb-1.5 break-words">
+                      {/* Enunciado de la pregunta */}
+                      <p className="text-sm md:text-base font-black text-gray-800 uppercase tracking-tighter leading-tight mb-2 break-words">
                         {q.question}
                       </p>
-                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      
+                      <div className="flex items-center flex-wrap gap-x-3 gap-y-1">
                         {q.is_required ? (
                           <span className="text-[8px] md:text-[9px] font-black text-red-400 uppercase tracking-widest flex items-center gap-1">
                             <FiCheckCircle className="shrink-0" size={10} /> Obligatoria
@@ -123,15 +165,18 @@ const QuestionsManager = () => {
                         )}
                         <span className="hidden md:inline text-[9px] font-bold text-gray-300 uppercase tracking-widest">|</span>
                         <span className="text-[8px] md:text-[9px] font-black text-[#87be00] uppercase tracking-widest bg-[#87be00]/5 px-2 py-0.5 rounded-md">
-                           {q.type || 'Texto'}
+                           {q.type || 'TEXTO'}
                         </span>
                       </div>
+
+                      {/* RENDEREADO DE LA ENCUESTA TIPO BOTONES DE RADIO */}
+                      {renderTypePreview(q.type)}
+
                     </div>
                   </div>
 
                   {/* Acciones */}
-                  {/* 🚩 En móviles (md:hidden) las acciones son siempre visibles para evitar problemas táctiles */}
-                  <div className="flex gap-2 w-full md:w-auto justify-end md:opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="flex gap-2 w-full md:w-auto justify-end md:opacity-0 group-hover:opacity-100 transition-opacity duration-300 shrink-0 self-end md:self-center">
                     <button
                       onClick={() => handleEdit(q)}
                       className="flex-1 md:flex-none p-2.5 md:p-3 bg-gray-50 text-gray-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-all shadow-sm flex items-center justify-center"
@@ -170,4 +215,4 @@ const QuestionsManager = () => {
   )
 }
 
-export default QuestionsManager
+export default QuestionsManager;
