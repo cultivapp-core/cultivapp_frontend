@@ -11,13 +11,16 @@ import {
   FiAlertCircle,
   FiPlayCircle,
   FiUser,
+  FiSearch,
+  FiX,
+  FiUsers,
+  FiCalendar
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
 
 /**
  * 📅 COMPONENTE: VISUALIZADOR MENSUAL CON TOOLTIP DINÁMICO
- * (Actualizado para mostrar el nombre del reponedor en el Tooltip si hay varios)
  */
 const MonthlyStatus = ({ scheduledDays = [] }) => {
   const weeks = [1, 2, 3, 4];
@@ -55,7 +58,6 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
                     {d.label}
                   </div>
 
-                  {/* 🚩 TOOLTIP FLOTANTE MEJORADO */}
                   {isActive && (
                     <div className="absolute bottom-[110%] left-1/2 -translate-x-1/2 mb-1 invisible opacity-0 group-hover:visible group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[99999]">
                       <div className="bg-gray-900 text-white text-[9px] px-3 py-2 rounded-xl shadow-xl border border-white/10 whitespace-nowrap flex flex-col items-center gap-1">
@@ -82,7 +84,7 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
   );
 };
 
-const Planificacion = () => {
+const AdminRoutes = () => {
   const [routes, setRoutes] = useState([]);
   const [users, setUsers] = useState([]);
   const [locales, setLocales] = useState([]);
@@ -90,6 +92,11 @@ const Planificacion = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // ESTADOS PARA LOS BUSCADORES Y FILTROS
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterUser, setFilterUser] = useState("");
+  const [filterDate, setFilterDate] = useState("");
 
   const fileInputRef = useRef(null);
 
@@ -124,6 +131,7 @@ const Planificacion = () => {
     fetchData();
   }, [fetchData]);
 
+  // CALCULO DE RANGOS DE SEMANA
   const weekRanges = useMemo(() => {
     const today = new Date();
     const year = today.getFullYear();
@@ -141,10 +149,42 @@ const Planificacion = () => {
       start.setDate(firstMonday.getDate() + (i * 7));
       let end = new Date(start);
       end.setDate(start.getDate() + 6);
-      ranges.push({ label: `S${i+1}`, dates: `${start.getDate()} ${mesesAbr[start.getMonth()]} - ${end.getDate()} ${mesesAbr[end.getMonth()]}` });
+      ranges.push({ weekNum: i+1, label: `S${i+1}`, dates: `${start.getDate()} ${mesesAbr[start.getMonth()]} - ${end.getDate()} ${mesesAbr[end.getMonth()]}` });
     }
     return ranges;
   }, []);
+
+  // 🚩 LÓGICA DE CÁLCULO DE FECHA EXACTA (SEMANA Y DÍA)
+  const targetDateInfo = useMemo(() => {
+    if (!filterDate) return null;
+    const selected = new Date(filterDate + "T12:00:00");
+    
+    const year = selected.getFullYear();
+    const month = selected.getMonth();
+    let firstDay = new Date(year, month, 1);
+    let dow = firstDay.getDay() === 0 ? 7 : firstDay.getDay(); 
+    let firstMonday = new Date(firstDay);
+    if (dow !== 1) firstMonday.setDate(1 + (8 - dow));
+
+    const diffDays = Math.floor((selected.getTime() - firstMonday.getTime()) / (1000 * 60 * 60 * 24));
+    const diffWeeks = Math.floor(diffDays / 7);
+    const calculatedWeek = diffWeeks < 0 ? 1 : Math.min(diffWeeks + 1, 4);
+    
+    return {
+      weekNum: calculatedWeek,
+      dayId: selected.getDay() // 0 = Domingo, 1 = Lunes, etc.
+    };
+  }, [filterDate]);
+
+  // Define la semana activa para el diseño del header
+  const activeWeekByDate = targetDateInfo ? targetDateInfo.weekNum : null;
+
+  const uniqueMercaderistas = useMemo(() => {
+    const names = routes
+      .filter(r => r.first_name && r.last_name)
+      .map(r => `${r.first_name} ${r.last_name}`);
+    return [...new Set(names)].sort();
+  }, [routes]);
 
   const handleImportExcel = async (e) => {
     const file = e.target.files[0];
@@ -190,41 +230,53 @@ const Planificacion = () => {
     e.target.value = "";
   };
 
-  // 🚩 LÓGICA DE AGRUPACIÓN ACTUALIZADA 🚩
+  // 🚩 AGRUPACIÓN Y FILTRADO (AHORA CON FECHA)
   const groupedRoutes = useMemo(() => {
     const groups = {};
+    const search = searchTerm.toLowerCase();
+
     routes.forEach((r) => {
       if (!r.local_id) return;
       
-      // Agrupamos por el Grupo Lógico (schedule_group_id) si existe.
-      // Si fue creada individualmente y no tiene grupo, la agrupamos por Local.
+      const fullName = `${r.first_name} ${r.last_name}`;
+
+      // 1. Text Filters
+      const matchText = 
+        r.cadena?.toLowerCase().includes(search) ||
+        r.direccion?.toLowerCase().includes(search) ||
+        r.codigo_local?.toString().includes(search) ||
+        fullName.toLowerCase().includes(search);
+        
+      const matchUser = !filterUser || fullName === filterUser;
+
+      if (!matchText || !matchUser) return;
+
       const key = r.schedule_group_id ? `group-${r.schedule_group_id}` : `local-${r.local_id}`;
       const weekNum = r.week_number || 1; 
 
       if (!groups[key]) {
         groups[key] = {
-          ...r, // Conserva data base (local, dirección, etc)
-          id: r.id, // ID representativo para borrar o editar el grupo
-          users: new Set([`${r.first_name} ${r.last_name}`]), // Guardamos nombres únicos
+          ...r, 
+          id: r.id, 
+          users: new Set([fullName]), 
           scheduled_items: r.day_of_week !== null ? [{ 
             day: r.day_of_week, 
             week: weekNum, 
             time: r.start_time || r.entrada,      
             endTime: r.end_time || r.salida,    
             turno: r.nombre_turno,
-            userName: `${r.first_name} ${r.last_name}`, // Asociamos el usuario al día
+            userName: fullName,
             user_id: r.user_id,
             turno_id: r.nombre_turno
           }] : [],
           all_statuses: [r.status],
         };
       } else {
-        // Agregamos el usuario al Set si no existe
-        groups[key].users.add(`${r.first_name} ${r.last_name}`);
+        groups[key].users.add(fullName);
         
         if (r.day_of_week !== null) {
           const exists = groups[key].scheduled_items.some(
-            item => parseInt(item.day) === parseInt(r.day_of_week) && parseInt(item.week) === parseInt(weekNum)
+            item => parseInt(item.day) === parseInt(r.day_of_week) && parseInt(item.week) === parseInt(weekNum) && String(item.user_id) === String(r.user_id)
           );
           if (!exists) {
             groups[key].scheduled_items.push({ 
@@ -233,7 +285,7 @@ const Planificacion = () => {
               time: r.start_time || r.entrada,
               endTime: r.end_time || r.salida,
               turno: r.nombre_turno,
-              userName: `${r.first_name} ${r.last_name}`,
+              userName: fullName,
               user_id: r.user_id,
               turno_id: r.nombre_turno
             });
@@ -243,14 +295,23 @@ const Planificacion = () => {
       }
     });
 
+    // 2. Filter by Target Date (if selected)
     return Object.values(groups).map(group => ({
       ...group,
-      users: Array.from(group.users), // Convertimos Set a Array para mapearlo en React
+      users: Array.from(group.users), 
       displayStatus: group.all_statuses.includes('IN_PROGRESS') ? 'IN_PROGRESS' : 
                      group.all_statuses.every(s => s === 'COMPLETED' || s === 'OK') ? 'COMPLETED' : 
                      group.all_statuses.some(s => s === 'COMPLETED' || s === 'OK') ? 'PARTIAL' : 'PENDING'
-    }));
-  }, [routes]);
+    })).filter(group => {
+      // 🚩 Si hay una fecha filtrada, obligar a que el grupo tenga visitas ese día
+      if (!targetDateInfo) return true;
+      return group.scheduled_items.some(item => 
+        parseInt(item.week) === targetDateInfo.weekNum &&
+        parseInt(item.day) === targetDateInfo.dayId
+      );
+    });
+
+  }, [routes, searchTerm, filterUser, targetDateInfo]);
 
   const getStatusBadge = (status) => {
     const config = {
@@ -275,36 +336,75 @@ const Planificacion = () => {
   return (
     <div className="space-y-6 font-[Outfit] pb-20 px-2 sm:px-4">
       {/* HEADER PREMIUM */}
-      <div className="flex flex-col lg:flex-row justify-between gap-6 bg-white p-6 md:p-8 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100">
-        <div className="flex-1 w-full overflow-hidden">
-          <h1 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic leading-none">Planificación Mensual</h1>
-          <div className="flex overflow-x-auto gap-3 mt-5 pb-2 custom-scrollbar">
-            {weekRanges.map((w, idx) => (
-              <div key={idx} className="flex flex-col gap-1 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100/50 shrink-0 min-w-[110px]">
-                <span className="text-[10px] font-black text-gray-900">{w.label}</span>
-                <span className="text-[9px] font-bold text-gray-400 uppercase leading-none">{w.dates}</span>
-              </div>
-            ))}
+      <div className="flex flex-col bg-white p-6 md:p-8 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100 gap-6">
+        
+        <div className="flex flex-col lg:flex-row justify-between gap-6">
+          <div className="flex-1 w-full overflow-hidden">
+            <h1 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic leading-none">Planificación Mensual</h1>
+            <div className="flex overflow-x-auto gap-3 mt-5 pb-2 custom-scrollbar">
+              {weekRanges.map((w, idx) => (
+                <div key={idx} className={`flex flex-col gap-1 px-4 py-2.5 rounded-xl border shrink-0 min-w-[110px] transition-all ${activeWeekByDate === w.weekNum ? 'bg-[#87be00] border-[#87be00] text-white shadow-md' : 'bg-gray-50 border-gray-100/50'}`}>
+                  <span className={`text-[10px] font-black ${activeWeekByDate === w.weekNum ? 'text-white' : 'text-gray-900'}`}>{w.label}</span>
+                  <span className={`text-[9px] font-bold uppercase leading-none ${activeWeekByDate === w.weekNum ? 'text-white/80' : 'text-gray-400'}`}>{w.dates}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-row flex-wrap sm:flex-nowrap items-center gap-2 md:gap-3 w-full lg:w-auto">
+            <button onClick={fetchData} className="p-3 sm:p-4 bg-gray-50 text-gray-500 rounded-xl sm:rounded-2xl hover:bg-gray-100 hover:text-[#87be00] border border-gray-100 shrink-0 transition-all">
+              <FiRefreshCw size={18}/>
+            </button>
+            <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleImportExcel} />
+            <button onClick={() => fileInputRef.current.click()} className="flex-1 sm:flex-none bg-[#87be00] text-white px-3 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg hover:bg-[#76a600] transition-all whitespace-nowrap">
+              <FiUploadCloud size={16}/> 
+              <span className="hidden sm:inline">Cargar Excel</span>
+              <span className="sm:hidden">Excel</span>
+            </button>
+            <button onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }} className="flex-1 sm:flex-none bg-gray-900 text-white px-3 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl hover:bg-black transition-all whitespace-nowrap">
+              <FiPlus size={16}/> Nueva Ruta
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-row flex-wrap sm:flex-nowrap items-center gap-2 md:gap-3 w-full lg:w-auto">
-          <button onClick={fetchData} className="p-3 sm:p-4 bg-gray-50 text-gray-500 rounded-xl sm:rounded-2xl hover:bg-gray-100 hover:text-[#87be00] border border-gray-100 shrink-0 transition-all">
-            <FiRefreshCw size={18}/>
-          </button>
-          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleImportExcel} />
-          <button onClick={() => fileInputRef.current.click()} className="flex-1 sm:flex-none bg-[#87be00] text-white px-3 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg hover:bg-[#76a600] transition-all whitespace-nowrap">
-            <FiUploadCloud size={16}/> 
-            <span className="hidden sm:inline">Cargar Excel</span>
-            <span className="sm:hidden">Excel</span>
-          </button>
-          <button onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }} className="flex-1 sm:flex-none bg-gray-900 text-white px-3 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl hover:bg-black transition-all whitespace-nowrap">
-            <FiPlus size={16}/> Nueva Ruta
-          </button>
+        {/* BARRA DE FILTROS AVANZADA */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-50">
+          
+          <div className="relative">
+            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input type="text" placeholder="BUSCAR LOCAL O CÓDIGO..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            {searchTerm && <button onClick={() => setSearchTerm("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
+          </div>
+
+          <div className="relative">
+            <FiUsers className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <select 
+              className={`w-full pl-12 pr-10 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner appearance-none cursor-pointer ${filterUser ? 'text-[#87be00]' : 'text-gray-500'}`}
+              value={filterUser} 
+              onChange={(e) => setFilterUser(e.target.value)}
+            >
+              <option value="">TODOS LOS REPONEDORES</option>
+              {uniqueMercaderistas.map(u => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            {filterUser && <button onClick={() => setFilterUser("")} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 pointer-events-auto"><FiX size={14}/></button>}
+          </div>
+
+          <div className="relative">
+            <FiCalendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input type="date" className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner cursor-pointer text-gray-500" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
+            {filterDate && <button onClick={() => setFilterDate("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
+          </div>
+
         </div>
+
       </div>
 
-      {/* 💻 TABLA DESKTOP PREMIUM */}
+      {/* 💻 TABLA DESKTOP */}
       <div className="hidden lg:block bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-visible">
         <div className="overflow-visible">
           <table className="w-full text-left border-collapse">
@@ -318,69 +418,75 @@ const Planificacion = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 text-[11px]">
-              {groupedRoutes.map((r, index) => {
-                const turnsByWeek = {};
-                // Colectamos turnos por semana (mostrando el primero que encontremos para resumen general)
-                r.scheduled_items.forEach(item => {
-                  if (!turnsByWeek[item.week]) {
-                    turnsByWeek[item.week] = item.turno;
-                  }
-                });
+              {groupedRoutes.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-7 py-16 text-center text-sm text-gray-400 font-bold">
+                    No se encontraron rutas con los filtros seleccionados.
+                  </td>
+                </tr>
+              ) : (
+                groupedRoutes.map((r, index) => {
+                  const turnsByWeek = {};
+                  r.scheduled_items.forEach(item => {
+                    if (!turnsByWeek[item.week]) {
+                      turnsByWeek[item.week] = item.turno;
+                    }
+                  });
 
-                return (
-                  <tr key={`desk-${index}`} className="hover:bg-gray-50/50 transition-colors group/row">
-                    <td className="p-6">
-                      <div className="min-w-0">
-                        <p className="font-black text-gray-900 uppercase italic leading-none text-[13px]">{r.cadena}</p>
-                        <p className="text-[12px] font-medium text-gray-400 mt-1.5 truncate max-w-xs">{r.direccion}</p>
-                        <span className="inline-block mt-3 px-2.5 py-1 bg-gray-100 text-gray-600 text-[9px] font-black rounded-lg tracking-widest border border-gray-200/50">{r.codigo_local}</span>
-                      </div>
-                    </td>
-                    
-                    {/* 🚩 DISEÑO DE MERCADERISTA MEJORADO (Ahora soporta múltiples usuarios: Juan / Gabriel) */}
-                    <td className="p-6">
-                      <div className="flex flex-col gap-3">
-                          <div className="font-black text-gray-800 uppercase flex items-center gap-2.5 leading-none">
-                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
-                              <FiUser size={14}/>
+                  return (
+                    <tr key={`desk-${index}`} className="hover:bg-gray-50/50 transition-colors group/row">
+                      <td className="p-6">
+                        <div className="min-w-0">
+                          <p className="font-black text-gray-900 uppercase italic leading-none text-[13px]">{r.cadena}</p>
+                          <p className="text-[12px] font-medium text-gray-400 mt-1.5 truncate max-w-xs">{r.direccion}</p>
+                          <span className="inline-block mt-3 px-2.5 py-1 bg-gray-100 text-gray-600 text-[9px] font-black rounded-lg tracking-widest border border-gray-200/50">{r.codigo_local}</span>
+                        </div>
+                      </td>
+                      
+                      <td className="p-6">
+                        <div className="flex flex-col gap-3">
+                            <div className="font-black text-gray-800 uppercase flex items-center gap-2.5 leading-none">
+                              <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
+                                <FiUser size={14}/>
+                              </div>
+                              <span className="truncate max-w-[200px]">
+                                {r.users.join(' / ')}
+                              </span>
                             </div>
-                            <span className="truncate max-w-[200px]">
-                              {r.users.join(' / ')}
-                            </span>
-                          </div>
-                          
-                          <div className="flex flex-wrap gap-1.5 pl-10">
-                            {[1, 2, 3, 4].map(wNum => {
-                              const tName = turnsByWeek[wNum];
-                              if (!tName) return null;
-                              return (
-                                <div key={wNum} className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md border border-gray-100/50">
-                                  <span className="text-[8px] font-black text-gray-400 uppercase tracking-tighter shrink-0">S{wNum}</span>
-                                  <span className="text-[9px] font-bold text-gray-700 uppercase truncate max-w-[120px]">{tName}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                      </div>
-                    </td>
-                    
-                    <td className="p-6">
-                      <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-50 inline-block">
-                        <MonthlyStatus scheduledDays={r.scheduled_items} />
-                      </div>
-                    </td>
-                    
-                    <td className="p-6 text-center">
-                      <div className="flex justify-center">{getStatusBadge(r.displayStatus)}</div>
-                    </td>
-                    <td className="p-6 text-right">
-                      <button onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} className="p-3.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all border border-gray-100 hover:border-transparent">
-                        <FiEdit3 size={16}/>
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                            
+                            <div className="flex flex-wrap gap-1.5 pl-10">
+                              {[1, 2, 3, 4].map(wNum => {
+                                const tName = turnsByWeek[wNum];
+                                if (!tName) return null;
+                                return (
+                                  <div key={wNum} className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md border border-gray-100/50">
+                                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-tighter shrink-0">S{wNum}</span>
+                                    <span className="text-[9px] font-bold text-gray-700 uppercase truncate max-w-[120px]">{tName}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                        </div>
+                      </td>
+                      
+                      <td className="p-6">
+                        <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-50 inline-block">
+                          <MonthlyStatus scheduledDays={r.scheduled_items} />
+                        </div>
+                      </td>
+                      
+                      <td className="p-6 text-center">
+                        <div className="flex justify-center">{getStatusBadge(r.displayStatus)}</div>
+                      </td>
+                      <td className="p-6 text-right">
+                        <button onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} className="p-3.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all border border-gray-100 hover:border-transparent">
+                          <FiEdit3 size={16}/>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -388,63 +494,69 @@ const Planificacion = () => {
       
       {/* 📱 VISTA MÓVIL */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:hidden">
-        {groupedRoutes.map((r, index) => {
-          const turnsByWeek = {};
-          r.scheduled_items.forEach(item => {
-            if (!turnsByWeek[item.week]) turnsByWeek[item.week] = item.turno;
-          });
+        {groupedRoutes.length === 0 ? (
+          <div className="col-span-1 md:col-span-2 py-16 text-center text-sm text-gray-400 font-bold bg-white rounded-[2.5rem] border border-gray-100">
+            No se encontraron rutas con los filtros seleccionados.
+          </div>
+        ) : (
+          groupedRoutes.map((r, index) => {
+            const turnsByWeek = {};
+            r.scheduled_items.forEach(item => {
+              if (!turnsByWeek[item.week]) turnsByWeek[item.week] = item.turno;
+            });
 
-          return (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={`mob-${index}`} className="bg-white p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100 flex flex-col gap-5">
-              
-              <div className="flex justify-between items-start">
-                <div className="pr-4">
-                  <p className="font-black text-gray-900 uppercase italic leading-tight text-sm">{r.cadena}</p>
-                  <p className="text-[11px] font-medium text-gray-400 mt-1">{r.direccion}</p>
-                  <span className="inline-block mt-3 px-3 py-1.5 bg-gray-100 text-gray-600 text-[9px] font-black rounded-lg tracking-widest">{r.codigo_local}</span>
-                </div>
-                <div className="flex flex-col items-end gap-3 shrink-0">
-                  {getStatusBadge(r.displayStatus)}
-                  <button onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} className="p-2.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all">
-                    <FiEdit3 size={16}/>
-                  </button>
-                </div>
-              </div>
-              
-              <hr className="border-gray-50" />
-
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
-                  <FiUser size={16}/>
-                </div>
-                <div>
-                  <p className="font-black text-gray-800 uppercase text-[11px] leading-none mb-1.5">
-                    {r.users.join(' / ')}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[1, 2, 3, 4].map(wNum => {
-                      const tName = turnsByWeek[wNum];
-                      if (!tName) return null;
-                      return (
-                        <div key={wNum} className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md border border-gray-100/50">
-                          <span className="text-[8px] font-black text-gray-400 uppercase tracking-tighter">S{wNum}</span>
-                          <span className="text-[9px] font-bold text-gray-700 uppercase">{tName}</span>
-                        </div>
-                      );
-                    })}
+            return (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={`mob-${index}`} className="bg-white p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100 flex flex-col gap-5">
+                
+                <div className="flex justify-between items-start">
+                  <div className="pr-4">
+                    <p className="font-black text-gray-900 uppercase italic leading-tight text-sm">{r.cadena}</p>
+                    <p className="text-[11px] font-medium text-gray-400 mt-1">{r.direccion}</p>
+                    <span className="inline-block mt-3 px-3 py-1.5 bg-gray-100 text-gray-600 text-[9px] font-black rounded-lg tracking-widest">{r.codigo_local}</span>
+                  </div>
+                  <div className="flex flex-col items-end gap-3 shrink-0">
+                    {getStatusBadge(r.displayStatus)}
+                    <button onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} className="p-2.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all">
+                      <FiEdit3 size={16}/>
+                    </button>
                   </div>
                 </div>
-              </div>
+                
+                <hr className="border-gray-50" />
 
-              <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-50 mt-1">
-                <div className="overflow-visible pb-1">
-                  <MonthlyStatus scheduledDays={r.scheduled_items} />
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
+                    <FiUser size={16}/>
+                  </div>
+                  <div>
+                    <p className="font-black text-gray-800 uppercase text-[11px] leading-none mb-1.5">
+                      {r.users.join(' / ')}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[1, 2, 3, 4].map(wNum => {
+                        const tName = turnsByWeek[wNum];
+                        if (!tName) return null;
+                        return (
+                          <div key={wNum} className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md border border-gray-100/50">
+                            <span className="text-[8px] font-black text-gray-400 uppercase tracking-tighter">S{wNum}</span>
+                            <span className="text-[9px] font-bold text-gray-700 uppercase">{tName}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-            </motion.div>
-          )
-        })}
+                <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-50 mt-1">
+                  <div className="overflow-visible pb-1">
+                    <MonthlyStatus scheduledDays={r.scheduled_items} />
+                  </div>
+                </div>
+
+              </motion.div>
+            )
+          })
+        )}
       </div>
 
       {/* MODAL PLANIFICADOR VISUAL */}
@@ -457,4 +569,4 @@ const Planificacion = () => {
   );
 };
 
-export default Planificacion;
+export default AdminRoutes;
