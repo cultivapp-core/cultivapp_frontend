@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { useNavigate, Link, useLocation } from "react-router-dom"
 import { motion } from "framer-motion"
 import { useAuth } from "../context/AuthContext"
 import toast from "react-hot-toast"
@@ -13,6 +13,22 @@ const LoginForm = () => {
 
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation() // 🔑 Captura parámetros de la URL para detectar cierres forzados
+
+  /* =========================================================
+     DETECTAR CIERRE DE SESIÓN POR MÚLTIPLES DISPOSITIVOS
+  ========================================================= */
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get("error") === "multiple_session") {
+      toast.error("Tu sesión se cerró porque ingresaste en otro dispositivo", {
+        icon: "📱",
+        duration: 6000
+      })
+      // Limpiamos los query params para que no vuelva a saltar el toast al recargar
+      navigate("/", { replace: true })
+    }
+  }, [location, navigate])
 
   const handleSubmit = async (e) => {
 
@@ -34,6 +50,7 @@ const LoginForm = () => {
         password: password.trim()
       })
 
+      // Guarda el token modificado por el backend (con el current_session_id en el payload)
       login(data)
 
       /* ==============================
