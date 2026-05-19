@@ -151,7 +151,7 @@ const EditLocalModal = ({
 
           <div className="grid grid-cols-2 gap-4">
             {/* EMPRESA */}
-            <div className="space-y-1">
+            {/* <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-gray-400 ml-2 flex items-center gap-1">
                 <FiBriefcase size={10} /> Empresa
               </label>
@@ -165,7 +165,7 @@ const EditLocalModal = ({
                 <option value="">Seleccionar</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-            </div>
+            </div>*/}
 
             {/* CADENA */}
             <div className="space-y-1">

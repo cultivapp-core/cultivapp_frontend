@@ -31,6 +31,9 @@ const AdminLocales = () => {
   const user = JSON.parse(localStorage.getItem("user"));
   const [selectedCompanyId, setSelectedCompanyId] = useState(user.company_id);
 
+  // 🚩 FUNCIÓN AUXILIAR: Determina si el usuario tiene permisos multi-empresa
+  const canSeeAllCompanies = user.role === "ROOT" || user.role === "ADMIN_CLIENTE";
+
   const fetchCompanies = async () => {
     try {
       const data = await api.get("/companies");
@@ -42,7 +45,10 @@ const AdminLocales = () => {
 
   const fetchLocales = useCallback(async () => {
     try {
-      const data = await api.get(`/locales?company_id=${selectedCompanyId}`);
+      // Si el rol NO tiene permisos multi-empresa, forzamos su propio company_id
+      const queryCompanyId = canSeeAllCompanies ? selectedCompanyId : user.company_id;
+      
+      const data = await api.get(`/locales?company_id=${queryCompanyId}`);
       setLocales(data || []);
       
       // 🚩 Extraer cadenas únicas de los locales cargados para el selector
@@ -53,12 +59,15 @@ const AdminLocales = () => {
     } catch (error) {
       toast.error("Error al cargar locales");
     }
-  }, [selectedCompanyId]);
+  }, [selectedCompanyId, canSeeAllCompanies, user.company_id]);
 
   useEffect(() => {
-    if (user.role === "ROOT") fetchCompanies();
+    // 🚩 Si el usuario es ROOT o ADMIN_CLIENTE, cargamos las empresas
+    if (canSeeAllCompanies) {
+      fetchCompanies();
+    }
     fetchLocales();
-  }, [fetchLocales, user.role]);
+  }, [fetchLocales, canSeeAllCompanies]);
 
   // 3. Lógica de filtrado (🚩 Ahora incluye Cadena)
   const filteredLocales = useMemo(() => {
@@ -141,8 +150,8 @@ const AdminLocales = () => {
       <div className="bg-white p-5 md:p-8 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-6">
         <div className="flex flex-col xl:flex-row gap-4">
           
-          {/* SELECTOR DE EMPRESA (Solo ROOT) */}
-          {user.role === "ROOT" && (
+          {/* SELECTOR DE EMPRESA (🚩 ROOT y ADMIN_CLIENTE) */}
+          {canSeeAllCompanies && (
             <div className="relative min-w-[200px]">
               <FiBriefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00] z-10" />
               <select
@@ -157,7 +166,7 @@ const AdminLocales = () => {
             </div>
           )}
 
-          {/* 🚩 NUEVO: SELECTOR DE CADENAS */}
+          {/* SELECTOR DE CADENAS */}
           <div className="relative min-w-[200px]">
             <FiShoppingCart className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00] z-10" />
             <select
