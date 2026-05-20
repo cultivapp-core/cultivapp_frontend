@@ -13,7 +13,8 @@ import {
   FiPackage,    // 🚩 Para CatalogManager
   FiCheckSquare, // 🚩 Para TaskControl
   FiUserCheck,   // 🚩 Para AttendanceControl
-  FiCamera       // 🚩 Para photoValidation
+  FiCamera,      // 🚩 Para photoValidation
+  FiMonitor      // 🚩 Nuevo: Para el Radar de Sesiones
 } from "react-icons/fi"
 import { useNotificationContext } from "../context/NotificationContext"
 
@@ -41,6 +42,11 @@ const Sidebar = () => {
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mb-2 ml-4">Métricas</p>
         <NavLink to="/root/analytics" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiBarChart2 size={18} /> Dashboard
+        </NavLink>
+        
+        {/* 🚩 NUEVA VISTA: RADAR DE SESIONES */}
+        <NavLink to="/root/active-sessions" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiMonitor size={18} /> Radar Sesiones
         </NavLink>
 
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Comunicación</p>
@@ -70,7 +76,6 @@ const Sidebar = () => {
           <FiNavigation size={18} /> Monitoreo GPS
         </NavLink>
 
-        {/* 🚩 NUEVA SECCIÓN: OPERACIONES / CONTROL */}
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Auditoría y Control</p>
         <NavLink to="/root/attendance-control" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiUserCheck size={18} /> Control Asistencia
@@ -82,7 +87,6 @@ const Sidebar = () => {
           <FiCamera size={18} /> Validar Fotos
         </NavLink>
 
-        {/* 🚩 NUEVA SECCIÓN: MAESTROS / CATÁLOGO */}
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Maestros</p>
         <NavLink to="/root/catalogo" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiPackage size={18} /> Catálogo SKU

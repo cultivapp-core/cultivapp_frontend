@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
-import { AuthProvider } from "./context/AuthContext"
+import { AuthProvider, useAuth } from "./context/AuthContext" // Agregado useAuth aquí
 import { NotificationProvider } from "./context/NotificationContext" 
 import { Toaster } from "react-hot-toast"
+import { useEffect } from "react" // Necesario para el monitor
+import api from "./api/apiClient" // Importante para el ping
 
 // --- HOOKS ---
 import { useOfflineSync } from "./hooks/useOfflineSync"
@@ -24,6 +26,7 @@ import AlertsHistory from "./components/AlertsHistory"
 /* ================= ROOT ================= */
 import RootDashboard from "./pages/root/RootDashboard"
 import Analytics from "./pages/root/Analytics"
+import ActiveSessions from "./pages/root/ActiveSession" // 🚩 CORREGIDO NOMBRE
 import Companies from "./pages/root/Companies"
 import Users from "./pages/root/Users"
 import Locales from "./pages/root/Locales"
@@ -59,14 +62,28 @@ import UserAgenda from "./pages/user/UserAgenda"
 import QuestionsManager from "./pages/admin/QuestionsManager"
 
 import "./App.css"
-import { useAuth } from "./context/AuthContext"
 
-// 🚩 ROUTER MEJORADO: ROOT y Admin de Cultiva ven vista elevada (Locales.jsx)
-const ID_CULTIVA = '0e342e01-d213-4353-b210-39a12ac335cf';
-const AdminLocalesRouter = () => {
+// 🚩 COMPONENTE MONITOR DE LATIDOS (HEARTBEAT)
+const HeartbeatMonitor = () => {
   const { user } = useAuth();
-  const isElevated = user?.company_id === ID_CULTIVA || user?.role === 'ROOT';
-  return isElevated ? <Locales /> : <AdminLocales />;
+
+  useEffect(() => {
+    if (!user) return;
+
+    const sendPing = async () => {
+      try {
+        await api.post("/users/ping"); 
+      } catch (error) {
+        console.warn("Ping fallido, reintentando en el próximo ciclo...");
+      }
+    };
+
+    sendPing();
+    const intervalId = setInterval(sendPing, 60000); // 3 minutos
+    return () => clearInterval(intervalId);
+  }, [user]);
+
+  return null; 
 };
 
 const OfflineMonitor = () => {
@@ -94,6 +111,7 @@ function App() {
       <NotificationProvider> 
         <BrowserRouter>
           <OfflineMonitor />
+          <HeartbeatMonitor /> {/* 🚩 INTEGRADO */}
           <Toaster position="top-right" />
           <Routes>
             <Route path="/" element={<Login />} />
@@ -104,32 +122,27 @@ function App() {
 
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
 
-            {/* 👑 SECCIÓN ROOT: Acceso Maestro Global */}
+            {/* 👑 SECCIÓN ROOT */}
             <Route path="/root" element={<ProtectedRoute role="ROOT"><RootDashboard /></ProtectedRoute>}>
               <Route index element={<Analytics />} /> 
               <Route path="analytics" element={<Analytics />} />
+              <Route path="active-sessions" element={<ActiveSessions />} /> 
               <Route path="companies" element={<Companies />} />
               <Route path="users" element={<Users />} />
               <Route path="locales" element={<Locales />} />
-              
-              <Route path="planificacion" element={<Analytics />} /> 
               <Route path="routes" element={<AdminRoutes />} />
               <Route path="turnos" element={<TurnosManager />} />
               <Route path="gps-monitor" element={<GpsMonitor />} />
-
               <Route path="notifications-manager" element={<NotificationManager />} />
-              <Route path="trazabilidad-global" element={<AlertsHistory userRole="ROOT" />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ROOT" />} />
               <Route path="questions" element={<QuestionsManager />} />
               <Route path="catalogo" element={<CatalogManager />} />
-              
-              {/* 🚩 Gestión y Auditoría Global para ROOT */}
               <Route path="task-control" element={<TaskControl />} />
               <Route path="attendance-control" element={<AttendanceControl />} />
               <Route path="photo-validation" element={<PhotoValidation />} />
             </Route>
 
-            {/* 👤 SECCIÓN USUARIO (MERCADERISTA) */}
+            {/* 👤 SECCIÓN USUARIO */}
             <Route path="/usuario" element={<ProtectedRoute role="USUARIO"><UserDashboard /></ProtectedRoute>}>
               <Route index element={<UserHome />} />
               <Route path="home" element={<UserHome />} />
@@ -142,7 +155,6 @@ function App() {
             {/* 🛡️ SECCIÓN SUPERVISOR */}
             <Route path="/supervisor" element={<ProtectedRoute role="SUPERVISOR"><SupervisorDashboard /></ProtectedRoute>}>
               <Route index element={<SupervisorPanel />} />
-              <Route path="trazabilidad-alertas" element={<AlertsHistory userRole="SUPERVISOR" />} />
               <Route path="mapa" element={<LiveMap />} />
               <Route path="alertas" element={<AlertManager />} />
               <Route path="asistencia" element={<AttendanceControl />} />
@@ -151,7 +163,7 @@ function App() {
               <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
             </Route>
 
-            {/* 💼 SECCIÓN ADMIN CLIENTE: Soporta ADMIN y ROOT */}
+            {/* 💼 SECCIÓN ADMIN */}
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
               <Route index element={<AdminOverview />} />
               <Route path="users" element={<AdminUsers />} />
@@ -161,12 +173,9 @@ function App() {
               <Route path="routes" element={<AdminRoutes />} />
               <Route path="gps-monitor" element={<GpsMonitor />} /> 
               <Route path="notification-manager" element={<NotificationManager />} />
-              <Route path="trazabilidad-alertas" element={<AlertsHistory userRole="ADMIN" />} />
               <Route path="questions" element={<QuestionsManager />} />
               <Route path="notifications" element={<NotificationsLayout userRole="ADMIN" />} />
               <Route path="catalogo" element={<CatalogManager />} />
-              
-              {/* 🚩 Control Operativo Multitenant */}
               <Route path="task-control" element={<TaskControl />} />
               <Route path="attendance-control" element={<AttendanceControl />} />
               <Route path="photo-validation" element={<PhotoValidation />} />
