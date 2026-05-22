@@ -50,6 +50,7 @@ import AlertManager from "./pages/supervisor/AlertManager"
 import AttendanceControl from "./pages/supervisor/AttendanceControl"
 import PhotoValidation from "./pages/supervisor/PhotoValidation"
 import TaskControl from "./pages/supervisor/TaskControl"
+import SupervisorVisitFlow from "./pages/supervisor/SupervisorVisitFlow" // 🚩 Importamos el nuevo flujo de supervisión
 
 /* ================= USUARIO (MERCADERISTA) ================= */
 import UserDashboard from "./pages/user/UserDashboard"
@@ -157,6 +158,10 @@ function App() {
               <Route index element={<SupervisorPanel />} />
               <Route path="mapa" element={<LiveMap />} />
               <Route path="alertas" element={<AlertManager />} />
+              
+              {/* 🚩 NUEVA SUBRUTA: REGISTRO E INICIO DE VISITA DE SUPERVISOR */}
+              <Route path="visita" element={<SupervisorVisitFlow />} />
+              
               <Route path="asistencia" element={<AttendanceControl />} />
               <Route path="ejecucion" element={<PhotoValidation />} />
               <Route path="tareas" element={<TaskControl />} />

@@ -8,7 +8,8 @@ import {
   FiLogOut, 
   FiBell,
   FiX,
-  FiPackage // 🚩 Importamos ícono para el módulo de tareas
+  FiPackage,
+  FiMapPin // 🚩 Importamos el ícono para el módulo de Visita a Local
 } from "react-icons/fi"
 import { useAuth } from "../../context/AuthContext"
 import { useNotificationContext } from "../../context/NotificationContext"
@@ -74,8 +75,14 @@ const SupervisorSidebar = ({ onClose }) => {
             Bandeja Avisos
           </NavLink>
 
-          {/* CONTROL */}
+          {/* CONTROL Y AUDITORÍA */}
           <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Auditoría</p>
+          
+          {/* 🚩 NUEVO: ENLACE VISITA A LOCAL */}
+          <NavLink to="/supervisor/visita" onClick={onClose} className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+            <FiMapPin size={18} /> Visita a Local
+          </NavLink>
+
           <NavLink to="/supervisor/asistencia" onClick={onClose} className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
             <FiClock size={18} /> Control Jornada
           </NavLink>
@@ -84,7 +91,7 @@ const SupervisorSidebar = ({ onClose }) => {
             <FiCamera size={18} /> Validación Sala
           </NavLink>
 
-          {/* 🚩 NUEVO: CONTROL DE TAREAS */}
+          {/* CONTROL DE TAREAS */}
           <NavLink to="/supervisor/tareas" onClick={onClose} className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
             <FiPackage size={18} /> Control Tareas
           </NavLink>
