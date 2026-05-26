@@ -168,6 +168,9 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                   <option value="Plazo Fijo">Plazo Fijo</option>
                   <option value="Part-Time">Part-Time</option>
                   <option value="Honorarios">Honorarios</option>
+                  <option value="EST">Servicios Transitorios (EST)</option>
+                  <option value="OT">Outsourcing (OT)</option>
+                  <option value="Propio">Propio</option>
                 </select>
 
                 <div className="flex flex-col">
