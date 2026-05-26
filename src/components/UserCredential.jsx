@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import api from "../api/apiClient"; 
-import { FiCheckCircle, FiXCircle, FiPhone, FiUser, FiCalendar, FiDownload, FiBriefcase, FiAlertTriangle, FiExternalLink } from "react-icons/fi";
+import { FiXCircle, FiPhone, FiDownload, FiBriefcase, FiAlertTriangle, FiExternalLink } from "react-icons/fi";
 
 import logoEmpresa from "../assets/logo-cultiva.png"; 
 
@@ -16,7 +16,6 @@ const UserCredential = () => {
     if (path.startsWith('http')) return path;
     
     const baseUrl = "http://localhost:5000";
-    // Aseguramos que el path empiece con / pero que no se duplique
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
     return `${baseUrl}${cleanPath}`;
   };
@@ -26,7 +25,6 @@ const UserCredential = () => {
       try {
         setLoading(true);
         const data = await api.get(`users/public/verify/${id}`);
-        console.log("🔍 Datos recibidos del backend:", data);
         setUser(data);
       } catch (err) {
         console.error("Error:", err);
@@ -43,7 +41,6 @@ const UserCredential = () => {
 
     try {
       const fileUrl = getFullUrl(user.achs_url);
-
       const response = await fetch(fileUrl);
       if (!response.ok) throw new Error("Error al descargar el archivo");
       
@@ -51,11 +48,9 @@ const UserCredential = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
       link.setAttribute('download', `ACHS_${user.last_name || 'Documento'}.pdf`);
       document.body.appendChild(link);
       link.click();
-      
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (err) {
@@ -116,7 +111,7 @@ const UserCredential = () => {
           </div>
         </div>
 
-        {/* FOTO - CORREGIDA */}
+        {/* FOTO */}
         <div className="flex justify-center -mt-10 relative z-10">
           <div className="p-1.5 bg-white rounded-[2.2rem] shadow-2xl">
             <img 
@@ -139,11 +134,18 @@ const UserCredential = () => {
           <p className="text-[#87be00] font-extrabold text-[11px] uppercase tracking-[0.2em] mt-2 mb-6">{user.position}</p>
           
           <div className="space-y-3 text-left">
+            {/* 🚩 BLOQUE EMPRESA Y TRABAJANDO PARA */}
             <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center gap-4">
               <div className="bg-white p-2.5 rounded-xl shadow-sm text-[#87be00]"><FiBriefcase size={18} /></div>
-              <div>
-                <p className="text-[9px] text-gray-400 font-black uppercase mb-1">Prestando Servicios para:</p>
-                <p className="text-sm font-bold text-gray-700">{user.empresa_cliente || "CULTIVA S.A."}</p>
+              <div className="flex-1 space-y-3">
+                <div>
+                  <p className="text-[9px] text-gray-400 font-black uppercase mb-0.5">Empresa</p>
+                  <p className="text-sm font-bold text-gray-700 leading-tight">{user.empresa_cliente || "CULTIVA S.A."}</p>
+                </div>
+                <div className="border-t border-gray-200 pt-2">
+                  <p className="text-[9px] text-gray-400 font-black uppercase mb-0.5">Trabajando para:</p>
+                  <p className="text-sm font-bold text-[#87be00] leading-tight">{user.trabajando_para || "No especificado"}</p>
+                </div>
               </div>
             </div>
 
