@@ -195,12 +195,8 @@ const TaskControl = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-900 text-white text-center">
-                {/* 🚩 CABECERA 1 */}
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-left">Mercaderista</th>
-                
-                {/* 🚩 NUEVA CABECERA 2: N° VISITA */}
                 <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic w-[160px]">N° Visita</th>
-                
                 <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Punto de Venta</th>
                 <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Tiempo Total</th>
                 <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Productos Revisados</th>
@@ -214,7 +210,6 @@ const TaskControl = () => {
                     onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
                     className={`cursor-pointer transition-all text-center ${expandedRow === idx ? 'bg-gray-50' : 'hover:bg-gray-50/50'}`}
                   >
-                    {/* MERCADERISTA */}
                     <td className="px-8 py-5 text-left">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 bg-[#87be00] text-white rounded-2xl flex items-center justify-center text-xs font-black shadow-lg shadow-[#87be00]/20 shrink-0">
@@ -226,21 +221,15 @@ const TaskControl = () => {
                         </div>
                       </div>
                     </td>
-
-                    {/* 🚩 NUEVA COLUMNA N° VISITA (Estilo Foto 2) */}
                     <td className="px-4 py-5">
                       <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 italic tracking-tighter">
                         {visit.visit_number}
                       </span>
                     </td>
-
-                    {/* PUNTO DE VENTA */}
                     <td className="px-4 py-5">
                       <p className="text-[10px] font-black text-gray-800 uppercase italic leading-none truncate max-w-[200px] mx-auto">{visit.local_name}</p>
                       <p className="text-[9px] font-black text-[#87be00] mt-1">{visit.local_code}</p>
                     </td>
-
-                    {/* TIEMPO */}
                     <td className="px-4 py-5">
                       <div className="flex flex-col items-center">
                         <DurationBadge minutes={visit.total_duration} />
@@ -251,15 +240,11 @@ const TaskControl = () => {
                         </div>
                       </div>
                     </td>
-
-                    {/* PRODUCTOS */}
                     <td className="px-4 py-5">
                       <span className="inline-flex items-center gap-2 bg-amber-50 text-amber-600 text-[11px] font-black px-4 py-2 rounded-xl">
                         <FiPackage size={14} /> {visit.products.length} Prod.
                       </span>
                     </td>
-
-                    {/* ACCIÓN */}
                     <td className="px-4 py-5">
                        <motion.div animate={{ rotate: expandedRow === idx ? 180 : 0 }} className="inline-block">
                          <button className={`p-3 rounded-2xl shadow-sm transition-all ${expandedRow === idx ? 'bg-black text-white' : 'bg-white border border-gray-200 text-gray-400 hover:text-black hover:border-black'}`}>
@@ -269,7 +254,6 @@ const TaskControl = () => {
                     </td>
                   </motion.tr>
 
-                  {/* PRODUCTOS EXPANDIDOS */}
                   <AnimatePresence>
                     {expandedRow === idx && (
                       <motion.tr initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
@@ -289,18 +273,28 @@ const TaskControl = () => {
                                         </div>
                                         <div className="bg-[#87be00]/10 text-[#87be00] text-[9px] font-black px-2 py-1 rounded-lg flex items-center gap-1"><FiClock size={10} /> {formatMinutes(productTask.duration_minutes)}</div>
                                     </div>
-                                    <div className="space-y-3 mt-4 pt-3 border-t border-dashed border-gray-100">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[9px] font-bold text-gray-500 uppercase flex items-center gap-1"><FiHash className="text-purple-500"/> EAN:</span>
-                                            <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">{productTask.codes_count || 0}</span>
+                                    
+                                    <div className="mt-4 pt-3 border-t border-dashed border-gray-100">
+                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">Códigos EAN ({productTask.product_codes?.length || 0})</p>
+                                        <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto pr-1">
+                                            {productTask.product_codes && productTask.product_codes.length > 0 ? (
+                                                productTask.product_codes.map((code, cIdx) => (
+                                                    <span key={cIdx} className="text-[9px] font-mono bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100 italic">
+                                                        {code}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-[9px] text-gray-300 italic">Sin códigos</span>
+                                            )}
                                         </div>
-                                        {productTask.comment && (
-                                            <div className="bg-gray-50 p-3 rounded-xl">
-                                                <FiMessageSquare className="text-blue-400 mb-1" size={12}/>
-                                                <p className="text-[9px] font-bold text-gray-600 italic">"{productTask.comment}"</p>
-                                            </div>
-                                        )}
                                     </div>
+
+                                    {productTask.comment && (
+                                        <div className="bg-gray-50 p-3 rounded-xl mt-3">
+                                            <FiMessageSquare className="text-blue-400 mb-1" size={12}/>
+                                            <p className="text-[9px] font-bold text-gray-600 italic">"{productTask.comment}"</p>
+                                        </div>
+                                    )}
                                  </div>
                               ))}
                            </div>
@@ -379,10 +373,21 @@ const VisitMobileCard = ({ visit }) => {
                          </div>
                          <span className="text-[9px] font-black text-[#87be00] bg-[#87be00]/10 px-2 py-1 rounded-lg">{formatMinutes(prod.duration_minutes)}</span>
                      </div>
-                     <div className="flex gap-2">
-                         {prod.codes_count > 0 && <span className="text-[8px] font-bold bg-purple-50 text-purple-600 px-2 py-1 rounded-md">EAN: {prod.codes_count}</span>}
-                         {prod.comment && <span className="text-[8px] font-bold bg-blue-50 text-blue-500 px-2 py-1 rounded-md">1 Obs.</span>}
-                     </div>
+                     
+                     <div className="mt-3 pt-3 border-t border-dashed border-gray-100">
+                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">EANs Escaneados</p>
+                        <div className="flex flex-wrap gap-1.5">
+                            {prod.product_codes && prod.product_codes.length > 0 ? (
+                                prod.product_codes.map((code, cIdx) => (
+                                    <span key={cIdx} className="text-[9px] font-outfit bg-purple-50 text-purple-600 px-2 py-0.5 rounded border border-purple-100">
+                                        {code}
+                                    </span>
+                                ))
+                            ) : (
+                                <span className="text-[9px] text-gray-300 italic">Sin códigos</span>
+                            )}
+                        </div>
+                    </div>
                  </div>
              ))}
           </motion.div>
