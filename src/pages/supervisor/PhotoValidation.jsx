@@ -51,7 +51,7 @@ const PhotoValidation = () => {
   }, [allLocales, filters.cadena]);
 
   // --- 2. FETCH DE FOTOS ---
-  const { data: photos = [], isLoading: isLoadingPhotos, isFetching } = useQuery({
+  const { data: photos = [], isLoading: isLoadingPhotos } = useQuery({
     queryKey: ["audit-photos", filters.fecha, filters.empresa_id, debouncedSearch], 
     queryFn: async () => {
       const params = {
@@ -74,20 +74,20 @@ const PhotoValidation = () => {
   }, [photos, filters.cadena, filters.codigo]);
 
   /**
-   * 🛠️ REPARACIÓN DINÁMICA DE RUTAS
-   * Si la ruta dice "usuario_desconocido", la reconstruimos con los datos reales
+   * 🛠️ GESTIÓN DINÁMICA DE RUTAS (Soporte Híbrido: Supabase + Local Legacy)
    */
   const getImageUrl = (item) => {
-    const path = item.photo_url || "";
+    // 🚩 FIX: Soportamos tanto image_url (Supabase) como photo_url (Legacy)
+    const path = item.image_url || item.photo_url || "";
     if (!path) return "https://via.placeholder.com/400x300?text=Sin+Imagen";
+    
+    // Si la ruta es externa (Supabase), la devolvemos tal cual
     if (path.startsWith('http')) return path;
 
+    // --- LÓGICA LEGACY PARA FOTOS ANTIGUAS LOCALES ---
     const baseUrl = import.meta.env.VITE_API_URL.split('/api')[0];
-    
-    // Normalización de barras
     let cleanPath = path.trim().replace(/\\/g, "/").replace(/^uploads\//i, '');
 
-    // 🚩 SI LA RUTA ESTÁ MAL (Desconocido), LA ARREGLAMOS SEGÚN TU CARPETA REAL
     if (cleanPath.includes("usuario_desconocido") || cleanPath.includes("default_tenant")) {
       const slugify = (text) => text?.toString().toLowerCase().trim()
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -97,7 +97,6 @@ const PhotoValidation = () => {
       const safeUser = slugify(item.user_name);
       const fileName = cleanPath.split('/').pop();
 
-      // Mapeo para encontrar la subcarpeta de evidencia correcta
       const mapeo = { 
         'Fachada': 'foto_local', 
         'Góndola Inicio': 'foto_gondola', 
@@ -106,7 +105,6 @@ const PhotoValidation = () => {
       };
       const subFolder = mapeo[item.photo_type] || "otros";
 
-      // Reconstruimos la ruta para que coincida con tu disco duro
       cleanPath = `${safeCompany}/${safeUser}/evidencias/${subFolder}/${fileName}`;
     }
 
@@ -126,13 +124,15 @@ const PhotoValidation = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      alert("Error al descargar.");
+      // Si falla por CORS de Supabase, abrimos en nueva ventana
+      window.open(imageUrl, '_blank');
     }
   };
 
   return (
     <div className="space-y-6 md:space-y-8 font-[Outfit] pb-10">
-      {/* HEADER RESPONSIVO */}
+      
+      {/* HEADER */}
       <div className="flex flex-row justify-between items-start sm:items-center px-2 md:px-4 gap-4">
         <div className="flex-1">
           <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
@@ -149,7 +149,7 @@ const PhotoValidation = () => {
         </div>
       </div>
 
-      {/* FILTROS RESPONSIVOS */}
+      {/* FILTROS */}
       <section className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm border border-gray-50 mx-2 md:mx-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <div className="relative">
@@ -199,7 +199,7 @@ const PhotoValidation = () => {
         </div>
       </section>
 
-      {/* GRID RESPONSIVO */}
+      {/* GRID */}
       {isLoadingPhotos ? (
         <div className="py-20 text-center text-[10px] font-black uppercase italic animate-pulse text-gray-400">
             Cargando imágenes...
@@ -224,21 +224,21 @@ const PhotoValidation = () => {
                     onError={(e) => { e.target.src = "https://via.placeholder.com/400x300?text=No+Encontrada"; }}
                   />
                   <div className="absolute top-3 left-3 md:top-4 md:left-4 bg-black/80 text-[#87be00] text-[8px] font-black px-2.5 py-1 md:px-3 md:py-1.5 rounded-full uppercase italic shadow-md">
-                    {item.photo_type || 'Evidencia'}
+                    {item.photo_type || item.evidence_type || 'Evidencia'}
                   </div>
                 </div>
                 
                 <div className="p-4 md:p-5 flex-1 flex flex-col justify-between">
                   <div className="flex items-center gap-2.5 md:gap-3 mb-4">
                     <div className="w-8 h-8 md:w-10 md:h-10 shrink-0 bg-black rounded-xl md:rounded-2xl flex items-center justify-center text-[#87be00] font-black text-[10px] md:text-xs italic">
-                      {item.user_name?.substring(0,2).toUpperCase()}
+                      {(item.user_name || item.first_name || 'U').substring(0,2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] md:text-[11px] font-black text-gray-900 uppercase italic truncate leading-tight">
-                        {item.user_name}
+                        {item.user_name || `${item.first_name} ${item.last_name}`}
                       </p>
                       <p className="text-[8px] md:text-[9px] font-bold text-gray-400 uppercase truncate mt-0.5">
-                        {item.cadena} • {item.local_nombre}
+                        {item.cadena} • {item.local_nombre || item.local_name}
                       </p>
                     </div>
                   </div>
@@ -248,7 +248,7 @@ const PhotoValidation = () => {
                         className="py-2.5 md:py-3 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-black hover:text-[#87be00] transition-all shadow-sm">
                         <FiExternalLink size={16} className="md:w-[18px] md:h-[18px]" />
                       </a>
-                      <button onClick={() => handleDownload(currentUrl, `evidencia_${item.user_name}.jpg`)}
+                      <button onClick={() => handleDownload(currentUrl, `evidencia_${item.user_name || item.first_name}.jpg`)}
                         className="py-2.5 md:py-3 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-[#87be00] hover:text-white transition-all shadow-sm">
                         <FiDownload size={16} className="md:w-[18px] md:h-[18px]" />
                       </button>
