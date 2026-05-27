@@ -14,7 +14,7 @@ const VisitFlow = () => {
   const fileInputRef = useRef(null);
   const isProcessingScan = useRef(false);
 
-  // 🚩 CONFIGURACIÓN DE URL (Ajusta esto a tu backend)
+  // 🚩 CONFIGURACIÓN DE URL
   const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -49,10 +49,12 @@ const VisitFlow = () => {
     8: { key: "cierre", title: "Visita Finalizada", sub: "Proceso completo" } 
   };
 
-  // 🚩 UTILIDAD: Formatear URL de imagen
+  // 🚩 UTILIDAD MEJORADA: Formatear URL de imagen (Compatible con Supabase Storage)
   const formatImageUrl = (url) => {
     if (!url) return null;
-    if (url.startsWith('blob:') || url.startsWith('http')) return url;
+    // Si la URL ya viene completa desde Supabase o es un blob local, la retornamos tal cual
+    if (url.startsWith('http') || url.startsWith('blob:')) return url;
+    // Si por alguna razón es una ruta relativa antigua, concatenamos el BASE_URL
     return `${BASE_URL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
   };
 
@@ -96,7 +98,6 @@ const VisitFlow = () => {
     if (step === 4) {
       const loadQuestions = async () => {
         try {
-          // 🚩 MEJORA: Filtramos el endpoint para recuperar solo las preguntas del flujo reponedor
           const data = await api.get("/questions?flow=reponedor");
           setQuestions(data);
         } catch (err) {
@@ -108,6 +109,7 @@ const VisitFlow = () => {
     }
   }, [step]);
 
+  // 🚩 FIX: Manejo correcto de la respuesta de Supabase (URL absoluta)
   const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -122,6 +124,7 @@ const VisitFlow = () => {
       
       const response = await api.post(`/routes/${id}/photo`, formData);
       
+      // Tomamos directamente la URL que envía el backend (Supabase URL) o usamos un blob local si estamos offline
       const photoPath = response?.offline 
         ? URL.createObjectURL(file) 
         : (response.image_url || response.url || URL.createObjectURL(file));
@@ -331,12 +334,10 @@ const VisitFlow = () => {
           </div>
         )}
 
-        {/* 🚩 OPTIMIZACIÓN PASO 4: FORMULARIO INTERACTIVO MULTI-TIPO ULTRA-FLEXIBLE */}
         {step === 4 && (
            <div className="space-y-5 animate-in slide-in-from-right duration-300 text-left">
              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
                {questions.map((q) => {
-                 // 🚩 FIX: Normalizamos el string a minúsculas para que acepte tanto "boolean", "BOOLEAN", "si_no", etc.
                  const normalizedType = String(q.type || 'TEXTO').toLowerCase().trim();
                  const isBoolean = normalizedType === "boolean" || normalizedType === "si_no" || normalizedType === "si/no";
                  const currentAnswer = answers[q.id];
@@ -344,16 +345,12 @@ const VisitFlow = () => {
                  return (
                    <div key={q.id} className="bg-gray-50/70 p-5 rounded-[2rem] border border-gray-100 space-y-3.5 shadow-sm">
                      
-                     {/* Enunciado de la Pregunta */}
                      <p className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-tighter leading-tight">
                        {q.question} {q.is_required && <span className="text-red-500 font-black ml-0.5">*</span>}
                      </p>
 
-                     {/* Renderizado Condicional */}
                      {isBoolean ? (
                        <div className="grid grid-cols-2 gap-4 pt-1">
-                         
-                         {/* Control Sí */}
                          <label className="flex items-center gap-3 cursor-pointer group select-none">
                            <input
                              type="radio"
@@ -368,7 +365,6 @@ const VisitFlow = () => {
                            </span>
                          </label>
 
-                         {/* Control No */}
                          <label className="flex items-center gap-3 cursor-pointer group select-none">
                            <input
                              type="radio"
@@ -382,10 +378,8 @@ const VisitFlow = () => {
                              No
                            </span>
                          </label>
-
                        </div>
                      ) : (
-                       /* Campo de entrada de Texto Abierto */
                        <input
                          type="text"
                          placeholder="Escribe tu respuesta aquí..."
