@@ -38,7 +38,7 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
         supervisor_nombre: user?.supervisor_nombre || "",
         supervisor_telefono: user?.supervisor_telefono || "",
       });
-      setPreview(user?.foto_url ? `${api.defaults.baseURL}${user.foto_url}` : null);
+      setPreview(user?.foto_url ? `${api.defaults?.baseURL ?? ""}${user.foto_url}` : null);
     }
   }, [isOpen, user]);
 
