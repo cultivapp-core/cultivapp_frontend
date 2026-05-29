@@ -142,6 +142,15 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
                 <input type="text" value={form.last_name} placeholder="Apellidos" required className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, last_name: e.target.value})} />
                 <input type="text" value={form.rut} placeholder="RUT" required className={`w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none ${rutError ? 'border-red-400' : 'border-gray-200'}`} onChange={handleRutChange} />
                 <input type="email" value={form.email} placeholder="Correo Electrónico" required className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, email: e.target.value})} />
+                
+                {/* 🚩 NUEVO CAMPO DE TELÉFONO */}
+                <input 
+                  type="tel" 
+                  value={form.phone} 
+                  placeholder="Teléfono (Ej: +569...)" 
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none" 
+                  onChange={e => setForm({...form, phone: e.target.value})} 
+                />
               </div>
               
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-3">
