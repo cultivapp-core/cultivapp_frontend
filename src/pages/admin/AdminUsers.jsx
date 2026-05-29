@@ -22,7 +22,6 @@ import CreateAdminUserModal from "../../components/CreateAdminUserModal"
 import EditAdminUserModal from "../../components/EditAdminUserModal"
 import ResetPasswordAdminModal from "../../components/ResetPasswordAdminModal"
 import AssignLocalesModal from "./AssignLocalesModal" 
-// 🚩 IMPORTANTE: Importamos el nuevo componente
 import UserQuickView from "../../components/UserQuickView" 
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -36,7 +35,6 @@ const AdminUsers = () => {
   const [loading, setLoading] = useState(true)
   const [bulkLoading, setBulkLoading] = useState(false)
 
-  // 🚩 ESTADO PARA COORDINAR EL QUICK VIEW
   const [activePopover, setActivePopover] = useState(null)
 
   const fileInputRef = useRef(null)
@@ -153,7 +151,6 @@ const AdminUsers = () => {
   }
 
   return (
-    // 🚩 Al hacer click en el fondo cerramos cualquier popover abierto
     <div className="space-y-6 md:space-y-10 animate-in fade-in duration-700 font-[Outfit] pb-20 px-2 sm:px-0" onClick={() => setActivePopover(null)}>
       
       {/* HEADER */}
@@ -210,14 +207,19 @@ const AdminUsers = () => {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-black text-gray-900 uppercase italic truncate">{user.first_name} {user.last_name}</p>
-                  <span className="text-[8px] font-black text-[#87be00] uppercase italic bg-[#87be00]/10 px-2 py-0.5 rounded-md border border-[#87be00]/10 mt-1 inline-block">
-                    {user.role}
-                  </span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    <span className="text-[8px] font-black text-[#87be00] uppercase italic bg-[#87be00]/10 px-2 py-0.5 rounded-md border border-[#87be00]/10 whitespace-nowrap">
+                      {user.role}
+                    </span>
+                    <span className="text-[8px] font-black text-blue-500 uppercase italic bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 whitespace-nowrap">
+                      {user.tipo_contrato?.replace(/_/g, ' ') || 'NO DEFINIDO'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <button
                 onClick={() => toggleUser(user.id)}
-                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-all ${user.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}
+                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-all shrink-0 ${user.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}
               >
                 <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-all ${user.is_active ? "translate-x-6" : "translate-x-1"}`} />
               </button>
@@ -241,67 +243,70 @@ const AdminUsers = () => {
         ))}
       </div>
 
-      {/* VISTA DESKTOP - INTEGRADA CON UserQuickView */}
-      <div className="hidden md:block bg-white rounded-[3.5rem] shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden mx-2 lg:mx-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50/70 border-b border-gray-100">
-                <th className="p-8 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em]">Colaborador</th>
-                <th className="p-8 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center">Rol</th>
-                <th className="p-8 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center">Teléfono</th>
-                <th className="p-8 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center">Correo</th>
-                <th className="p-8 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center">Estado</th>
-                <th className="p-8 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-right">Acciones</th>
+      {/* VISTA DESKTOP - MEJORADA CON SCROLL Y MIN-W-MAX */}
+      <div className="hidden md:block bg-white rounded-[2rem] shadow-xl shadow-gray-100/50 border border-gray-100 overflow-hidden mx-2 lg:mx-0">
+        <div className="max-h-[65vh] overflow-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse min-w-max">
+            <thead className="sticky top-0 bg-white z-20 border-b border-gray-100 shadow-sm">
+              <tr>
+                <th className="px-6 py-5 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] whitespace-nowrap">Colaborador</th>
+                <th className="px-6 py-5 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center whitespace-nowrap">Rol</th>
+                <th className="px-6 py-5 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center whitespace-nowrap">Contrato</th>
+                <th className="px-6 py-5 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center whitespace-nowrap">Teléfono</th>
+                <th className="px-6 py-5 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center whitespace-nowrap">Correo</th>
+                <th className="px-6 py-5 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-center whitespace-nowrap">Estado</th>
+                <th className="px-6 py-5 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] text-right whitespace-nowrap">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50/50">
               {users.map(user => (
-                <tr key={user.id} className="hover:bg-gray-50/50 transition-all group">
-                  <td className="p-8">
+                <tr key={user.id} className="hover:bg-gray-50/80 transition-colors group">
+                  <td className="px-6 py-4">
                     <div className="flex items-center gap-5">
-                      
-                      {/* 🚩 REEMPLAZADO: Avatar estático por el componente UserQuickView */}
                       <UserQuickView 
                         user={user} 
                         isActive={activePopover === user.id} 
                         onToggle={() => setActivePopover(activePopover === user.id ? null : user.id)}
                       />
-
                       <div className="min-w-0">
-                        <p className="text-base font-black text-gray-900 uppercase tracking-tighter leading-none italic truncate">{user.first_name} {user.last_name}</p>
+                        <p className="text-[13px] font-black text-gray-900 uppercase tracking-tighter leading-none italic truncate whitespace-nowrap">{user.first_name} {user.last_name}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="p-8 text-center">
-                    <span className="bg-[#87be00]/10 text-[#87be00] px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic border border-[#87be00]/10">
+                  <td className="px-6 py-4 text-center">
+                    <span className="bg-[#87be00]/10 text-[#87be00] px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic border border-[#87be00]/10 whitespace-nowrap inline-block">
                       {user.role}
                     </span>
                   </td>
-                  <td className="p-8 text-center">
-                    <p className="text-[11px] font-bold text-gray-500 flex items-center justify-center gap-2">
-                      <FiPhone className="text-[#87be00]/50" size={12} /> {user.phone || '—'}
-                    </p>
+                  <td className="px-6 py-4 text-center">
+                    <span className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic border border-blue-100 whitespace-nowrap inline-block">
+                      {user.tipo_contrato?.replace(/_/g, ' ') || 'NO DEFINIDO'}
+                    </span>
                   </td>
-                  <td className="p-8 text-center">
-                    <p className="text-[11px] font-bold text-gray-500 flex items-center justify-center gap-2">
-                      <FiFileText className="text-[#87be00]/50" size={12} /> {user.email}
-                    </p>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-center gap-2 whitespace-nowrap text-[11px] font-bold text-gray-500">
+                      <FiPhone className="text-[#87be00]/60" size={12} /> {user.phone || '—'}
+                    </div>
                   </td>
-                  <td className="p-8 text-center">
-                    <button onClick={() => toggleUser(user.id)} className={`relative inline-flex h-7 w-14 items-center rounded-full transition-all duration-500 shadow-inner ${user.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}>
-                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-all duration-500 ${user.is_active ? "translate-x-8" : "translate-x-1"}`} />
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-center gap-2 whitespace-nowrap text-[11px] font-bold text-gray-500">
+                      <FiFileText className="text-[#87be00]/60" size={12} /> {user.email}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <button onClick={() => toggleUser(user.id)} className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors duration-300 shadow-inner ${user.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${user.is_active ? "translate-x-7" : "translate-x-1"}`} />
                     </button>
                   </td>
-                  <td className="p-8 text-right">
-                    <div className="flex justify-end gap-3 opacity-20 group-hover:opacity-100 transition-all transform group-hover:translate-x-0 translate-x-2">
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2 text-gray-400">
                       {user.role === 'SUPERVISOR' && (
-                        <button onClick={() => setAssignSupervisor(user)} className="p-3 bg-gray-50 text-[#87be00] rounded-2xl hover:bg-gray-900 hover:text-white transition-all shadow-sm" title="Asignar Cobertura"><FiMapPin size={18} /></button>
+                        <button onClick={() => setAssignSupervisor(user)} className="p-2.5 bg-gray-50 rounded-xl hover:bg-gray-900 hover:text-white transition-all shadow-sm" title="Asignar Cobertura"><FiMapPin size={16} /></button>
                       )}
-                      <button onClick={() => setEditUser(user)} className="p-3 bg-gray-50 text-gray-700 rounded-2xl hover:bg-gray-900 hover:text-[#87be00] transition-all shadow-sm"><FiEdit size={18} /></button>
-                      <button onClick={() => setResetUser(user)} className="p-3 bg-gray-50 text-gray-700 rounded-2xl hover:bg-gray-900 hover:text-yellow-400 transition-all shadow-sm"><FiRotateCw size={18} /></button>
+                      <button onClick={() => setEditUser(user)} className="p-2.5 bg-gray-50 rounded-xl hover:bg-gray-900 hover:text-[#87be00] transition-all shadow-sm"><FiEdit size={16} /></button>
+                      <button onClick={() => setResetUser(user)} className="p-2.5 bg-gray-50 rounded-xl hover:bg-gray-900 hover:text-yellow-400 transition-all shadow-sm"><FiRotateCw size={16} /></button>
                       {user.role !== "ADMIN_CLIENTE" && user.id !== userLocal.id && (
-                        <button onClick={() => deleteUser(user)} className="p-3 bg-gray-50 text-gray-700 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><FiTrash size={18} /></button>
+                        <button onClick={() => deleteUser(user)} className="p-2.5 bg-gray-50 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><FiTrash size={16} /></button>
                       )}
                     </div>
                   </td>

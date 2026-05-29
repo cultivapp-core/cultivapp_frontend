@@ -259,7 +259,7 @@ const SupervisorVisitFlow = () => {
           <div className="space-y-4 animate-in slide-in-from-right duration-300 text-left">
             <textarea value={generalObservations} onChange={(e) => setGeneralObservations(e.target.value)} placeholder="Observaciones..." className="w-full h-28 p-5 bg-gray-50 rounded-[2rem] text-xs md:text-sm font-bold" />
             {renderPhotoContainer(fotoTermino, setFotoTermino, "Término")}
-            <button onClick={enviarAuditoriaFinal} disabled={loading || !fotoTermino} className="w-full bg-black text-white py-5 md:py-6 rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs disabled:opacity-40">Sincronizar</button>
+            <button onClick={enviarAuditoriaFinal} disabled={loading} className="w-full bg-black text-white py-5 md:py-6 rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs disabled:opacity-40">{loading ? "Sincronizando..." : "Sincronizar"}</button>
           </div>
         )}
 
