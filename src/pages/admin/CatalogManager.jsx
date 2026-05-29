@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   FiPlus, FiPackage, FiAward, FiTrash2, 
-  FiChevronRight, FiChevronDown, FiX, FiTag, FiEdit2 
+  FiChevronRight, FiChevronDown, FiX, FiTag, FiEdit2,
+  FiUploadCloud, FiRotateCw // 🚩 Nuevos iconos
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
@@ -12,6 +13,10 @@ const CatalogManager = () => {
   const [products, setProducts] = useState([]);
   const [expandedBrand, setExpandedBrand] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // 🚩 Nuevo estado y referencia para Carga Masiva
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Estados de Modales y Control de Edición
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,6 +53,28 @@ const CatalogManager = () => {
     }
   };
 
+  // 🚩 NUEVA FUNCIÓN: Manejo de Carga Masiva
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("excel", file); // Asegúrate de que el backend espere este nombre (ej: "excel" o "file")
+
+    try {
+      setBulkLoading(true);
+      // 🚩 Endpoint para carga masiva (ajusta la ruta según tu backend)
+      const res = await api.post("/routes/products/bulk", formData);
+      toast.success(res?.message || "Carga masiva completada con éxito");
+      loadData(); // Refresca el catálogo
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Error al procesar el archivo");
+    } finally {
+      setBulkLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = ""; // Resetea el input
+    }
+  };
+
   // --- LÓGICA DE PRODUCTOS ---
   const handleOpenProductModal = (prod = null) => {
     setIsEditing(!!prod);
@@ -60,11 +87,9 @@ const CatalogManager = () => {
     e.preventDefault();
     try {
       if (isEditing) {
-        // 🚩 CORRECCIÓN: Prefijo /routes añadido
         await api.put(`/routes/products/${selectedId}`, productData);
         toast.success("Producto actualizado");
       } else {
-        // 🚩 CORRECCIÓN: Prefijo /routes añadido
         await api.post("/routes/products", productData);
         toast.success("Producto creado");
       }
@@ -76,7 +101,6 @@ const CatalogManager = () => {
   const handleDeleteProduct = async (id) => {
     if (!window.confirm("¿Eliminar este SKU del maestro?")) return;
     try {
-      // 🚩 CORRECCIÓN: Prefijo /routes añadido
       await api.delete(`/routes/products/${id}`);
       toast.success("Producto eliminado");
       loadData();
@@ -95,11 +119,9 @@ const CatalogManager = () => {
     e.preventDefault();
     try {
       if (isEditing) {
-        // 🚩 CORRECCIÓN: Prefijo /routes añadido
         await api.put(`/routes/brands/${selectedId}`, { name: brandName });
         toast.success("Marca actualizada");
       } else {
-        // 🚩 CORRECCIÓN: Prefijo /routes añadido
         await api.post("/routes/brands", { name: brandName });
         toast.success("Marca creada");
       }
@@ -120,11 +142,9 @@ const CatalogManager = () => {
     e.preventDefault();
     try {
       if (isEditing) {
-        // 🚩 CORRECCIÓN: Prefijo /routes añadido
         await api.put(`/routes/categories/${selectedId}`, { name: categoryName });
         toast.success("Categoría actualizada");
       } else {
-        // 🚩 CORRECCIÓN: Prefijo /routes añadido
         await api.post("/routes/categories", { name: categoryName });
         toast.success("Categoría creada");
       }
@@ -136,7 +156,6 @@ const CatalogManager = () => {
   const handleDeleteCategory = async (id) => {
     if (!window.confirm("¿Eliminar esta categoría? Esto podría afectar a los productos vinculados.")) return;
     try {
-      // 🚩 CORRECCIÓN: Prefijo /routes añadido
       await api.delete(`/routes/categories/${id}`);
       toast.success("Categoría eliminada");
       loadData();
@@ -157,6 +176,26 @@ const CatalogManager = () => {
           <p className="text-[10px] font-black text-[#87be00] uppercase tracking-[0.4em] mt-4">Trazabilidad por SKU y Familia</p>
         </div>
         <div className="flex flex-wrap gap-3">
+          
+          {/* 🚩 NUEVO BOTÓN DE CARGA MASIVA */}
+          <button 
+            onClick={() => fileInputRef.current?.click()} 
+            disabled={bulkLoading}
+            className="bg-white border-2 border-black text-black px-6 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-gray-50 transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            {bulkLoading ? <FiRotateCw className="animate-spin" size={16} /> : <FiUploadCloud size={16} />}
+            Carga Masiva
+          </button>
+          
+          {/* Input oculto para seleccionar el archivo */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept=".xlsx, .xls, .csv" 
+            onChange={handleBulkUpload} 
+          />
+
           <button onClick={() => handleOpenBrandModal()} className="bg-white border-2 border-black text-black px-6 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-gray-50 transition-all">+ Marca</button>
           <button onClick={() => handleOpenCategoryModal()} className="bg-white border-2 border-black text-black px-6 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-gray-50 transition-all">+ Categoría</button>
           <button onClick={() => handleOpenProductModal()} className="bg-black text-[#87be00] px-8 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 transition-all shadow-2xl flex items-center gap-3"><FiPlus size={20}/> Nuevo Producto</button>
@@ -197,7 +236,6 @@ const CatalogManager = () => {
                 </div>
                 <div className="flex items-center gap-4">
                   <button onClick={() => handleOpenBrandModal(brand)} className="p-2 text-gray-400 hover:text-black"><FiEdit2 size={18} /></button>
-                  {/* 🚩 CORRECCIÓN: Prefijo /routes añadido en el delete de marca rápido */}
                   <button onClick={() => { if(window.confirm("¿Eliminar marca?")) api.delete(`/routes/brands/${brand.id}`).then(()=>loadData()) }} className="p-2 text-gray-400 hover:text-red-500"><FiTrash2 size={18} /></button>
                   {isExpanded ? <FiChevronDown size={24} className="text-[#87be00]" /> : <FiChevronRight size={24} className="text-gray-300" />}
                 </div>
