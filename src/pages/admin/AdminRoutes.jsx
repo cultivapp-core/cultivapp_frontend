@@ -14,7 +14,9 @@ import {
   FiSearch,
   FiX,
   FiUsers,
-  FiCalendar
+  FiCalendar,
+  FiGlobe, // 🚩 Nuevo Icono
+  FiMapPin // 🚩 Nuevo Icono
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
@@ -97,6 +99,10 @@ const AdminRoutes = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterUser, setFilterUser] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  
+  // 🚩 NUEVOS ESTADOS PARA UBICACIÓN
+  const [selectedRegion, setSelectedRegion] = useState("");
+  const [selectedComuna, setSelectedComuna] = useState("");
 
   const fileInputRef = useRef(null);
 
@@ -186,6 +192,18 @@ const AdminRoutes = () => {
     return [...new Set(names)].sort();
   }, [routes]);
 
+  // 🚩 OBTENER REGIONES Y COMUNAS ÚNICAS
+  const regions = useMemo(() => {
+    return [...new Set(locales.map(l => l.region_name || l.region).filter(Boolean))].sort();
+  }, [locales]);
+
+  const comunas = useMemo(() => {
+    return [...new Set(locales
+      .filter(l => !selectedRegion || (l.region_name || l.region) === selectedRegion)
+      .map(l => l.comuna_name || l.comuna)
+      .filter(Boolean))].sort();
+  }, [locales, selectedRegion]);
+
   const handleImportExcel = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -230,13 +248,22 @@ const AdminRoutes = () => {
     e.target.value = "";
   };
 
-  // 🚩 AGRUPACIÓN Y FILTRADO (AHORA CON FECHA)
+  // 🚩 AGRUPACIÓN Y FILTRADO
   const groupedRoutes = useMemo(() => {
     const groups = {};
     const search = searchTerm.toLowerCase();
 
     routes.forEach((r) => {
       if (!r.local_id) return;
+
+      // 🚩 Obtener datos del local para filtros de ubicación
+      const localData = locales.find(l => String(l.id) === String(r.local_id));
+      const region = localData?.region_name || localData?.region || "";
+      const comuna = localData?.comuna_name || localData?.comuna || "";
+
+      // 🚩 Aplicar filtros de ubicación
+      if (selectedRegion && region !== selectedRegion) return;
+      if (selectedComuna && comuna !== selectedComuna) return;
       
       const fullName = `${r.first_name} ${r.last_name}`;
 
@@ -303,7 +330,7 @@ const AdminRoutes = () => {
                      group.all_statuses.every(s => s === 'COMPLETED' || s === 'OK') ? 'COMPLETED' : 
                      group.all_statuses.some(s => s === 'COMPLETED' || s === 'OK') ? 'PARTIAL' : 'PENDING'
     })).filter(group => {
-      // 🚩 Si hay una fecha filtrada, obligar a que el grupo tenga visitas ese día
+      // Si hay una fecha filtrada, obligar a que el grupo tenga visitas ese día
       if (!targetDateInfo) return true;
       return group.scheduled_items.some(item => 
         parseInt(item.week) === targetDateInfo.weekNum &&
@@ -311,7 +338,7 @@ const AdminRoutes = () => {
       );
     });
 
-  }, [routes, searchTerm, filterUser, targetDateInfo]);
+  }, [routes, searchTerm, filterUser, targetDateInfo, selectedRegion, selectedComuna, locales]);
 
   const getStatusBadge = (status) => {
     const config = {
@@ -367,13 +394,54 @@ const AdminRoutes = () => {
           </div>
         </div>
 
-        {/* BARRA DE FILTROS AVANZADA */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-50">
+        {/* 🚩 BARRA DE FILTROS AVANZADA (Actualizada a 5 columnas) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 pt-4 border-t border-gray-50">
           
           <div className="relative">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input type="text" placeholder="BUSCAR LOCAL O CÓDIGO..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             {searchTerm && <button onClick={() => setSearchTerm("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
+          </div>
+
+          {/* NUEVO FILTRO DE REGIÓN */}
+          <div className="relative">
+            <FiGlobe className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <select 
+              className={`w-full pl-12 pr-10 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner appearance-none cursor-pointer ${selectedRegion ? 'text-[#87be00]' : 'text-gray-500'}`}
+              value={selectedRegion} 
+              onChange={(e) => {
+                setSelectedRegion(e.target.value);
+                setSelectedComuna("");
+              }}
+            >
+              <option value="">TODAS LAS REGIONES</option>
+              {regions.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            {selectedRegion && <button onClick={() => { setSelectedRegion(""); setSelectedComuna(""); }} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 pointer-events-auto"><FiX size={14}/></button>}
+          </div>
+
+          {/* NUEVO FILTRO DE COMUNA */}
+          <div className="relative">
+            <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <select 
+              className={`w-full pl-12 pr-10 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner appearance-none cursor-pointer ${selectedComuna ? 'text-[#87be00]' : 'text-gray-500'}`}
+              value={selectedComuna} 
+              onChange={(e) => setSelectedComuna(e.target.value)}
+            >
+              <option value="">TODAS LAS COMUNAS</option>
+              {comunas.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            {selectedComuna && <button onClick={() => setSelectedComuna("")} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 pointer-events-auto"><FiX size={14}/></button>}
           </div>
 
           <div className="relative">
