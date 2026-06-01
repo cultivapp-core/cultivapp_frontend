@@ -7,6 +7,8 @@ import {
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 import Scanner from "../../components/Scanner"; 
+// 🚩 IMPORT: Asegúrate de tener este componente en tu carpeta de modals
+import QuestionRenderer from "../../components/modals/QuestionRenderer"; 
 
 const VisitFlow = () => {
   const { id } = useParams();
@@ -21,6 +23,7 @@ const VisitFlow = () => {
   const [step, setStep] = useState(1); 
   const [loading, setLoading] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [imageError, setImageError] = useState(false); // 🚩 Estado de seguridad para fotos
   
   const [brands, setBrands] = useState([]);
   const [allProducts, setProducts] = useState([]);
@@ -49,12 +52,9 @@ const VisitFlow = () => {
     8: { key: "cierre", title: "Visita Finalizada", sub: "Proceso completo" } 
   };
 
-  // 🚩 UTILIDAD MEJORADA: Formatear URL de imagen (Compatible con Supabase Storage)
   const formatImageUrl = (url) => {
     if (!url) return null;
-    // Si la URL ya viene completa desde Supabase o es un blob local, la retornamos tal cual
     if (url.startsWith('http') || url.startsWith('blob:')) return url;
-    // Si por alguna razón es una ruta relativa antigua, concatenamos el BASE_URL
     return `${BASE_URL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
   };
 
@@ -109,12 +109,12 @@ const VisitFlow = () => {
     }
   }, [step]);
 
-  // 🚩 FIX: Manejo correcto de la respuesta de Supabase (URL absoluta)
   const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setCapturing(true);
+    setImageError(false);
     const toastId = toast.loading("Subiendo imagen...");
     
     try {
@@ -124,14 +124,15 @@ const VisitFlow = () => {
       
       const response = await api.post(`/routes/${id}/photo`, formData);
       
-      // Tomamos directamente la URL que envía el backend (Supabase URL) o usamos un blob local si estamos offline
       const photoPath = response?.offline 
         ? URL.createObjectURL(file) 
         : (response.image_url || response.url || URL.createObjectURL(file));
 
-      if (step === 1) setFachadaPhoto(photoPath);
-      if (step === 2) setGondolaInicialPhoto(photoPath);
-      if (step === 5) setGondolaTerminoPhoto(photoPath);
+      // 🚩 LOGICA SEGURA: Usamos la clave del paso actual
+      const currentStepKey = stepsInfo[step].key;
+      if (currentStepKey === "foto_fachada") setFachadaPhoto(photoPath);
+      if (currentStepKey === "foto_gondola_inicio") setGondolaInicialPhoto(photoPath);
+      if (currentStepKey === "foto_gondola_termino") setGondolaTerminoPhoto(photoPath);
       
       toast.success("Captura guardada", { id: toastId });
       if (step === 1) setStep(prev => prev + 1);
@@ -199,38 +200,34 @@ const VisitFlow = () => {
   };
 
   const renderPhotoContainer = (photoUrl, setPhotoUrl, placeholderText) => {
-    if (photoUrl) {
+    if (photoUrl && !imageError) {
       return (
         <div className="relative w-full aspect-square bg-gray-50 rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-xl group animate-in fade-in zoom-in duration-300">
           <img 
             src={formatImageUrl(photoUrl)} 
             className="w-full h-full object-cover" 
             alt={placeholderText}
-            onError={(e) => {
-              e.target.style.display = 'none';
-              e.target.nextSibling.style.display = 'flex';
-            }}
+            onError={() => setImageError(true)}
           />
-          <div className="hidden absolute inset-0 flex-col items-center justify-center bg-gray-50 text-red-400 p-4">
-            <FiAlertCircle size={40} className="mb-2" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
-          </div>
-
-          <button 
-            onClick={(e) => { e.stopPropagation(); setPhotoUrl(null); }} 
-            className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10"
-          >
+          <button onClick={(e) => { e.stopPropagation(); setPhotoUrl(null); setImageError(false); }} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10">
             <FiX size={18}/>
           </button>
         </div>
       );
     }
     
+    if (imageError) {
+        return (
+            <div className="w-full aspect-square bg-gray-50 border-4 border-dashed border-red-200 rounded-[3rem] flex flex-col items-center justify-center text-red-400">
+                <FiAlertCircle size={40} className="mb-2" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
+                <button onClick={() => setImageError(false)} className="mt-4 text-xs font-bold underline">Reintentar</button>
+            </div>
+        )
+    }
+    
     return (
-      <div 
-        onClick={() => !capturing && fileInputRef.current.click()} 
-        className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 hover:border-[#87be00]/50 transition-all group"
-      >
+      <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 hover:border-[#87be00]/50 transition-all group">
         {capturing ? (
           <div className="flex flex-col items-center">
             <FiLoader className="animate-spin text-[#87be00] mb-2" size={44} />
@@ -270,6 +267,7 @@ const VisitFlow = () => {
             <p className={`text-[9px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step]?.sub}</p>
         </div>
 
+        {/* STEP 1 & 7 */}
         {(step === 1 || step === 7) && (
           <div className="space-y-4 animate-in zoom-in duration-300">
              {renderPhotoContainer(
@@ -285,6 +283,7 @@ const VisitFlow = () => {
           </div>
         )}
 
+        {/* STEP 2 */}
         {step === 2 && (
           <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-500">
             <div className="grid grid-cols-1 gap-3">
@@ -317,6 +316,7 @@ const VisitFlow = () => {
           </div>
         )}
 
+        {/* STEP 3 */}
         {step === 3 && (
           <div className="space-y-4 animate-in zoom-in duration-300">
             <div className="rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
@@ -334,60 +334,27 @@ const VisitFlow = () => {
           </div>
         )}
 
+        {/* STEP 4: ENCUENTAS - INTEGRACIÓN DE QUESTIONRENDERER */}
         {step === 4 && (
            <div className="space-y-5 animate-in slide-in-from-right duration-300 text-left">
              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
                {questions.map((q) => {
-                 const normalizedType = String(q.type || 'TEXTO').toLowerCase().trim();
-                 const isBoolean = normalizedType === "boolean" || normalizedType === "si_no" || normalizedType === "si/no";
-                 const currentAnswer = answers[q.id];
-
+                 const rawConfig = q.config || {};
+                 const normalizedQuestion = {
+                    ...q,
+                    config: rawConfig.config ? rawConfig.config : rawConfig
+                 };
+                 
                  return (
-                   <div key={q.id} className="bg-gray-50/70 p-5 rounded-[2rem] border border-gray-100 space-y-3.5 shadow-sm">
-                     
-                     <p className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-tighter leading-tight">
+                   <div key={q.id} className="bg-gray-50/70 p-5 rounded-[2rem] border border-gray-100 shadow-sm">
+                     <p className="text-xs font-black text-gray-800 uppercase tracking-tighter leading-tight mb-3">
                        {q.question} {q.is_required && <span className="text-red-500 font-black ml-0.5">*</span>}
                      </p>
-
-                     {isBoolean ? (
-                       <div className="grid grid-cols-2 gap-4 pt-1">
-                         <label className="flex items-center gap-3 cursor-pointer group select-none">
-                           <input
-                             type="radio"
-                             name={`question-${q.id}`}
-                             value="SI"
-                             checked={currentAnswer === "SI"}
-                             onChange={() => setAnswers({ ...answers, [q.id]: "SI" })}
-                             className="w-5 h-5 rounded-full border-2 border-gray-300 text-[#87be00] focus:ring-[#87be00]/20 checked:border-[#87be00] accent-[#87be00] cursor-pointer transition-all"
-                           />
-                           <span className={`text-xs font-black uppercase tracking-wider transition-colors ${currentAnswer === "SI" ? "text-[#87be00]" : "text-gray-500 group-hover:text-gray-800"}`}>
-                             Sí
-                           </span>
-                         </label>
-
-                         <label className="flex items-center gap-3 cursor-pointer group select-none">
-                           <input
-                             type="radio"
-                             name={`question-${q.id}`}
-                             value="NO"
-                             checked={currentAnswer === "NO"}
-                             onChange={() => setAnswers({ ...answers, [q.id]: "NO" })}
-                             className="w-5 h-5 rounded-full border-2 border-gray-300 text-[#87be00] focus:ring-[#87be00]/20 checked:border-[#87be00] accent-[#87be00] cursor-pointer transition-all"
-                           />
-                           <span className={`text-xs font-black uppercase tracking-wider transition-colors ${currentAnswer === "NO" ? "text-red-500" : "text-gray-500 group-hover:text-gray-800"}`}>
-                             No
-                           </span>
-                         </label>
-                       </div>
-                     ) : (
-                       <input
-                         type="text"
-                         placeholder="Escribe tu respuesta aquí..."
-                         value={currentAnswer || ""}
-                         onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
-                         className="w-full bg-white border border-gray-200/60 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:border-[#87be00]/50 focus:ring-4 focus:ring-[#87be00]/5 transition-all text-gray-800 shadow-inner"
-                       />
-                     )}
+                     <QuestionRenderer 
+                       question={normalizedQuestion} 
+                       answer={answers[q.id]} 
+                       onChange={(val) => setAnswers({...answers, [q.id]: val})} 
+                     />
                    </div>
                  );
                })}
@@ -399,6 +366,7 @@ const VisitFlow = () => {
            </div>
         )}
 
+        {/* STEP 5 */}
         {step === 5 && (
           <div className="space-y-4 animate-in slide-in-from-right duration-300">
              {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, "Foto Final")}
@@ -407,6 +375,7 @@ const VisitFlow = () => {
           </div>
         )}
 
+        {/* STEP 6 */}
         {step === 6 && (
           <div className="py-6 space-y-6 animate-in zoom-in">
             <div className="flex flex-col items-center gap-3">
@@ -421,12 +390,13 @@ const VisitFlow = () => {
           </div>
         )}
 
+        {/* STEP 8 */}
         {step === 8 && (
           <div className="py-6 space-y-4 animate-in zoom-in">
              <div className="bg-[#87be00]/5 p-8 rounded-[3rem] border border-[#87be00]/10 text-center mb-6">
                <FiCheckCircle className="text-[#87be00] mx-auto mb-3" size={40} />
                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Gestión Finalizada</p>
-               <p className="text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight">Has registrado todos los productos and tu salida del local.</p>
+               <p className="text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight">Has registrado todos los productos y tu salida del local.</p>
              </div>
              <button onClick={finalizarVisitaTotal} disabled={loading} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-2xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
                {loading ? <FiLoader className="animate-spin" /> : <><FiSend size={20}/> Enviar y Cerrar Visita</>}

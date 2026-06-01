@@ -1,19 +1,17 @@
 import { useState, useEffect } from "react"
-import { FiX, FiHelpCircle, FiUser, FiEye } from "react-icons/fi"
+import { FiX, FiTrash2, FiHelpCircle, FiUser, FiEye } from "react-icons/fi"
 import api from "../../api/apiClient"
 
-const EditQuestionModal = ({
-  isOpen,
-  onClose,
-  onUpdated,
-  question
-}) => {
+const EditQuestionModal = ({ isOpen, onClose, onUpdated, question }) => {
 
   const [form, setForm] = useState({
     question: "",
-    type: "TEXTO", 
-    target_flow: "REPONEDOR", // 🚩 Nuevo campo para controlar el flujo en el formulario
-    is_required: false
+    type: "TEXTO",
+    target_flow: "REPONEDOR",
+    is_required: false,
+    options: [],      
+    isMultiple: false,
+    max_selections: "" // 🚩 NUEVO: Estado para el límite
   })
 
   const [loading, setLoading] = useState(false)
@@ -21,19 +19,17 @@ const EditQuestionModal = ({
 
   useEffect(() => {
     if (question) {
-      // Normalizamos el tipo que viene de la base de datos a mayúsculas para la interfaz visual del modal
-      const rawType = String(question.type || "TEXTO").toUpperCase().trim();
-      const currentType = (rawType === "BOOLEAN" || rawType === "SI_NO" || rawType === "SI/NO") ? "BOOLEAN" : "TEXTO";
+      // Accedemos a la configuración de forma segura (considerando si está doblemente envuelta o no)
+      const config = question.config?.config || question.config || {};
       
-      // Normalizamos el flujo destino que viene de la base de datos
-      const rawFlow = String(question.target_flow || "REPONEDOR").toUpperCase().trim();
-      const currentFlow = (rawFlow === "SUPERVISOR") ? "SUPERVISOR" : "REPONEDOR";
-
       setForm({
         question: question.question || "",
-        type: currentType, 
-        target_flow: currentFlow,
-        is_required: question.is_required || false
+        type: String(question.type || "TEXTO").toUpperCase(),
+        target_flow: String(question.target_flow || "REPONEDOR").toUpperCase(),
+        is_required: question.is_required || false,
+        options: config.options || [], 
+        isMultiple: config.isMultiple || false,
+        max_selections: config.max_selections || "" // 🚩 Cargamos el límite existente
       })
     }
   }, [question])
@@ -42,33 +38,20 @@ const EditQuestionModal = ({
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
-    setForm(prev => ({
-      ...prev,
-      [name]: value
-    }))
+    setForm(prev => ({ ...prev, [name]: value }))
   }
 
   const handleCheckboxChange = (e) => {
     const { name, checked } = e.target
-    setForm(prev => ({
-      ...prev,
-      [name]: checked
-    }))
+    setForm(prev => ({ ...prev, [name]: checked }))
   }
 
   const handleTypeSelect = (selectedType) => {
-    setForm(prev => ({
-      ...prev,
-      type: selectedType
-    }))
+    setForm(prev => ({ ...prev, type: selectedType }))
   }
 
-  // 🚩 Función auxiliar para cambiar el flujo destino al hacer clic en las pastillas
   const handleFlowSelect = (selectedFlow) => {
-    setForm(prev => ({
-      ...prev,
-      target_flow: selectedFlow
-    }))
+    setForm(prev => ({ ...prev, target_flow: selectedFlow }))
   }
 
   const handleSubmit = async (e) => {
@@ -76,14 +59,17 @@ const EditQuestionModal = ({
     setLoading(true)
     setError("")
 
-    // 🚩 CLAVE DE PERSISTENCIA EXPANDIDA: Enviamos tanto los tipos como los flujos 
-    // formateados en minúsculas consistentes tal como los procesa ahora tu backend.
+    // Empaquetamos la configuración para que el backend la guarde
     const payload = {
       question: form.question,
       is_required: form.is_required,
-      type: form.type.toLowerCase(),          // "boolean" o "texto"
-      question_type: form.type,               // Respaldo
-      target_flow: form.target_flow.toLowerCase() // "reponedor" o "supervisor"
+      type: form.type.toLowerCase(),
+      target_flow: form.target_flow.toLowerCase(),
+      config: {
+        options: form.type === "SELECCION" ? form.options : [],
+        isMultiple: form.type === "SELECCION" ? form.isMultiple : false,
+        max_selections: form.type === "SELECCION" && form.isMultiple ? parseInt(form.max_selections) || 0 : 0
+      }
     }
 
     try {
@@ -107,9 +93,6 @@ const EditQuestionModal = ({
             <h3 className="text-xl font-black uppercase tracking-tighter text-gray-900 italic">
               Editar <span className="text-[#87be00]">Pregunta</span>
             </h3>
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-              Modifica la estructura de este ítem
-            </p>
           </div>
           <button type="button" onClick={onClose} className="p-2.5 rounded-xl bg-gray-50 text-gray-400 hover:bg-gray-100 transition-all">
             <FiX size={18} />
@@ -117,7 +100,7 @@ const EditQuestionModal = ({
         </div>
 
         {/* FORMULARIO */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
           
           {error && (
             <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-500 text-[11px] font-bold uppercase tracking-wide">
@@ -125,121 +108,71 @@ const EditQuestionModal = ({
             </div>
           )}
 
-          {/* 🚩 NUEVO SECTOR: ASIGNACIÓN DE FLUJO DESTINO (ESTILO PASTILLAS PREMIUM CULTIVAAPP) */}
+          {/* Flujo Destino */}
           <div className="space-y-2">
-            <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-2">
-              Asignación del Flujo Destino
-            </label>
+            <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Asignación del Flujo Destino</label>
             <div className="grid grid-cols-2 gap-2 bg-gray-100 p-1.5 rounded-2xl">
-              <button
-                type="button"
-                onClick={() => handleFlowSelect("REPONEDOR")}
-                className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${form.target_flow === "REPONEDOR" ? "bg-white text-[#87be00] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
-              >
-                <FiUser size={13}/> Flujo Reponedor
+              <button type="button" onClick={() => handleFlowSelect("REPONEDOR")} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${form.target_flow === "REPONEDOR" ? "bg-white text-[#87be00] shadow-sm" : "text-gray-400"}`}>
+                <FiUser size={12} className="inline mr-1"/> Reponedor
               </button>
-              <button
-                type="button"
-                onClick={() => handleFlowSelect("SUPERVISOR")}
-                className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${form.target_flow === "SUPERVISOR" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
-              >
-                <FiEye size={13}/> Flujo Supervisor
+              <button type="button" onClick={() => handleFlowSelect("SUPERVISOR")} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${form.target_flow === "SUPERVISOR" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-400"}`}>
+                <FiEye size={12} className="inline mr-1"/> Supervisor
               </button>
             </div>
           </div>
 
-          {/* INPUT: ENUNCIADO DE PREGUNTA */}
+          {/* Enunciado */}
           <div className="space-y-1.5">
-            <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-2 flex items-center gap-1">
-              <FiHelpCircle size={11}/> Enunciado de la Pregunta
-            </label>
-            <input
-              type="text"
-              name="question"
-              value={form.question}
-              onChange={handleInputChange}
-              required
-              placeholder="Escribe la pregunta..."
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 text-xs font-bold outline-none focus:bg-white focus:border-[#87be00]/40 focus:ring-4 focus:ring-[#87be00]/5 transition-all shadow-inner text-gray-800"
-            />
+            <label className="text-[9px] font-black uppercase text-gray-400 ml-2 flex items-center gap-1"><FiHelpCircle size={11}/> Enunciado</label>
+            <input type="text" name="question" value={form.question} onChange={handleInputChange} required placeholder="Escribe la pregunta..." className="w-full bg-gray-50 border rounded-xl px-4 py-3.5 text-xs font-bold" />
           </div>
 
-          {/* SELECCIÓN DE TIPO */}
+          {/* Tipo de respuesta */}
           <div className="space-y-2">
-            <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-2">
-              Formato de Respuesta de la Encuesta
-            </label>
-            
-            <div className="grid grid-cols-1 gap-2.5">
-              
-              {/* Opción 1: Boolean (Sí / No) */}
-              <div 
-                onClick={() => handleTypeSelect("BOOLEAN")}
-                className={`flex flex-col gap-2 p-4 rounded-2xl border-2 transition-all cursor-pointer bg-white relative ${form.type === "BOOLEAN" ? "border-[#87be00] shadow-sm shadow-[#87be00]/5" : "border-gray-100 hover:border-gray-200"}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-gray-800 uppercase tracking-tight">Formato Sí / No</span>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${form.type === "BOOLEAN" ? "border-[#87be00]" : "border-gray-300"}`}>
-                    <div className={`w-2.5 h-2.5 rounded-full bg-[#87be00] transition-opacity ${form.type === "BOOLEAN" ? "opacity-100" : "opacity-0"}`} />
-                  </div>
-                </div>
-                
-                <div className="flex gap-2 mt-1">
-                  <div className="flex items-center gap-1.5 opacity-60">
-                    <div className="w-3.5 h-3.5 rounded-full border border-gray-400 flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#87be00]" />
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Sí</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 opacity-60">
-                    <div className="w-3.5 h-3.5 rounded-full border border-gray-400" />
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">No</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Opción 2: Texto Libre */}
-              <div 
-                onClick={() => handleTypeSelect("TEXTO")}
-                className={`flex flex-col gap-2 p-4 rounded-2xl border-2 transition-all cursor-pointer bg-white relative ${form.type === "TEXTO" ? "border-[#87be00] shadow-sm shadow-[#87be00]/5" : "border-gray-100 hover:border-gray-200"}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-gray-800 uppercase tracking-tight">Texto Abierto</span>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${form.type === "TEXTO" ? "border-[#87be00]" : "border-gray-300"}`}>
-                    <div className={`w-2.5 h-2.5 rounded-full bg-[#87be00] transition-opacity ${form.type === "TEXTO" ? "opacity-100" : "opacity-0"}`} />
-                  </div>
-                </div>
-                <div className="w-full bg-gray-50 border border-dashed border-gray-200 rounded-xl px-3 py-1.5 text-[9px] font-bold text-gray-300 uppercase tracking-wider select-none mt-1">
-                  Escribir respuesta...
-                </div>
-              </div>
-
+            <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Formato de Respuesta</label>
+            <div className="grid grid-cols-3 gap-2">
+              {["TEXTO", "SELECCION", "BOOLEAN"].map((t) => (
+                <button key={t} type="button" onClick={() => handleTypeSelect(t)} className={`py-3 rounded-xl text-[9px] font-black uppercase transition-all ${form.type === t ? "bg-[#87be00] text-white" : "bg-gray-100 text-gray-400"}`}>
+                  {t}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* OBLIGATORIEDAD */}
-          <label className="flex items-center gap-3 px-2 py-1.5 cursor-pointer group w-max select-none">
-            <input
-              type="checkbox"
-              name="is_required"
-              checked={form.is_required}
-              onChange={handleCheckboxChange}
-              className="w-4 h-4 rounded border-gray-300 text-[#87be00] focus:ring-[#87be00] cursor-pointer transition-all accent-[#87be00]"
-            />
-            <span className="text-[11px] font-black uppercase tracking-wider text-gray-600 group-hover:text-gray-900 transition-colors">
-              Pregunta obligatoria
-            </span>
+          {/* Opciones si es SELECCION */}
+          {form.type === "SELECCION" && (
+            <div className="bg-gray-50 p-4 rounded-2xl space-y-3">
+               <label className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-500">
+                  <input type="checkbox" checked={form.isMultiple} onChange={e => setForm({...form, isMultiple: e.target.checked})} className="accent-[#87be00]" />
+                  Selección Múltiple
+               </label>
+               
+               {/* 🚩 NUEVO: Límite de respuestas */}
+               {form.isMultiple && (
+                 <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black text-gray-500 uppercase">Máx. respuestas:</span>
+                    <input type="number" value={form.max_selections} onChange={e => setForm({...form, max_selections: e.target.value})} className="w-20 p-2 text-xs border border-gray-200 rounded-lg text-center" placeholder="Sin límite" />
+                 </div>
+               )}
+
+               {form.options.map((opt, i) => (
+                 <div key={i} className="flex gap-2">
+                    <input value={opt} onChange={e => { const o = [...form.options]; o[i] = e.target.value; setForm({...form, options: o}) }} className="flex-1 p-2 text-xs border border-gray-200 rounded-lg" />
+                    <button type="button" onClick={() => setForm({...form, options: form.options.filter((_, idx) => idx !== i)})} className="text-gray-300 hover:text-red-500"><FiTrash2 size={14}/></button>
+                 </div>
+               ))}
+               <button type="button" onClick={() => setForm({...form, options: [...form.options, "Nueva opción"]})} className="text-[#87be00] text-[10px] font-black flex items-center gap-1">+ Añadir Opción</button>
+            </div>
+          )}
+
+          <label className="flex items-center gap-3 px-2 cursor-pointer">
+            <input type="checkbox" name="is_required" checked={form.is_required} onChange={handleCheckboxChange} className="w-4 h-4 accent-[#87be00]" />
+            <span className="text-[11px] font-black uppercase text-gray-600">Pregunta obligatoria</span>
           </label>
 
-          {/* FOOTER ACCIÓN */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-gray-900 hover:bg-black text-white py-4 rounded-xl font-black uppercase text-[10px] sm:text-[11px] tracking-[0.2em] shadow-xl transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 mt-2"
-          >
+          <button type="submit" disabled={loading} className="w-full bg-gray-900 hover:bg-black text-white py-4 rounded-xl font-black uppercase text-[11px]">
             {loading ? "Guardando..." : "Actualizar pregunta"}
           </button>
-
         </form>
       </div>
     </div>

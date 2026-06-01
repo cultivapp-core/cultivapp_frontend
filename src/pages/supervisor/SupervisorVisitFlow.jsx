@@ -6,6 +6,7 @@ import {
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
+import QuestionRenderer from "../../components/modals/QuestionRenderer"; 
 
 const SupervisorVisitFlow = () => {
   const { id } = useParams();
@@ -174,7 +175,6 @@ const SupervisorVisitFlow = () => {
 
   return (
     <div className={`min-h-screen p-4 md:p-6 pb-24 flex flex-col items-center ${isOnline ? 'bg-gray-50' : 'bg-orange-50/40'}`}>
-      {/* Barra de progreso */}
       <div className="w-full max-w-md md:max-w-xl flex justify-between mb-8 sticky top-6 z-20 py-2">
         {[1, 2, 3, 4].map(i => (
           <div key={i} className={`h-1.5 flex-1 mx-1 rounded-full transition-all duration-700 ${step >= i ? 'bg-[#87be00]' : 'bg-gray-200'}`} />
@@ -189,7 +189,6 @@ const SupervisorVisitFlow = () => {
           </p>
         </div>
 
-        {/* ── STEP 1 ── */}
         {step === 1 && (
           <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-500">
             <div className="grid grid-cols-1 gap-4">
@@ -229,23 +228,24 @@ const SupervisorVisitFlow = () => {
           </div>
         )}
 
-        {/* ── STEP 2 ── */}
         {step === 2 && (
           <div className="space-y-5 animate-in slide-in-from-right duration-300 text-left">
             <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
               {questions.map((q) => {
-                const isBoolean = ["boolean", "si_no", "si/no"].includes(String(q.type).toLowerCase());
+                // NORMALIZACIÓN DE DATOS ANTES DE RENDERIZAR
+                const config = typeof q.config === 'string' ? JSON.parse(q.config || '{}') : (q.config || {});
+                const normalizedQuestion = { ...q, config };
+                
                 return (
                   <div key={q.id} className="bg-gray-50/70 p-5 rounded-[2rem] border shadow-sm">
-                    <p className="text-xs md:text-sm font-black uppercase mb-3">{q.question} {q.is_required && "*"}</p>
-                    {isBoolean ? (
-                      <div className="grid grid-cols-2 gap-4">
-                        <button onClick={() => setAnswers({...answers, [q.id]: "SI"})} className={`py-3 rounded-xl border ${answers[q.id] === "SI" ? "bg-[#87be00] text-white border-[#87be00]" : "bg-white"}`}>Sí</button>
-                        <button onClick={() => setAnswers({...answers, [q.id]: "NO"})} className={`py-3 rounded-xl border ${answers[q.id] === "NO" ? "bg-red-500 text-white border-red-500" : "bg-white"}`}>No</button>
-                      </div>
-                    ) : (
-                      <input type="text" value={answers[q.id] || ""} onChange={(e) => setAnswers({...answers, [q.id]: e.target.value})} className="w-full bg-white border rounded-xl px-4 py-3 text-xs md:text-sm" />
-                    )}
+                    <p className="text-xs md:text-sm font-black uppercase mb-3 text-gray-700">
+                      {q.question} {q.is_required && <span className="text-red-500">*</span>}
+                    </p>
+                    <QuestionRenderer 
+                      question={normalizedQuestion} 
+                      answer={answers[q.id]} 
+                      onChange={(val) => setAnswers({...answers, [q.id]: val})} 
+                    />
                   </div>
                 );
               })}
@@ -254,7 +254,6 @@ const SupervisorVisitFlow = () => {
           </div>
         )}
 
-        {/* ── STEP 3 ── */}
         {step === 3 && (
           <div className="space-y-4 animate-in slide-in-from-right duration-300 text-left">
             <textarea value={generalObservations} onChange={(e) => setGeneralObservations(e.target.value)} placeholder="Observaciones..." className="w-full h-28 p-5 bg-gray-50 rounded-[2rem] text-xs md:text-sm font-bold" />
@@ -263,7 +262,6 @@ const SupervisorVisitFlow = () => {
           </div>
         )}
 
-        {/* ── STEP 4 ── */}
         {step === 4 && (
           <div className="py-6 space-y-4 animate-in zoom-in">
             <FiCheckCircle className="text-[#87be00] mx-auto" size={64} />
