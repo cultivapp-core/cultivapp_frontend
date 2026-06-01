@@ -5,7 +5,7 @@ import api from "../../api/apiClient"
 const defaultForm = () => ({
   question: "",
   type: "TEXTO",
-  target_flow: "REPONEDOR",
+  target_flows: ["REPONEDOR"], // 🚩 CAMBIO: Ahora es un array para soportar múltiples
   is_required: false,
   options: ["Nueva opción"],
   isMultiple: false,
@@ -21,17 +21,33 @@ const CreateQuestionModal = ({ isOpen, onClose, onCreated }) => {
 
   const set = (patch) => setForm(prev => ({ ...prev, ...patch }))
 
+  // 🚩 LOGICA PARA MULTI-SELECCIÓN DE FLUJOS
+  const toggleFlow = (flow) => {
+    setForm(prev => {
+      const isSelected = prev.target_flows.includes(flow);
+      let newFlows = isSelected 
+        ? prev.target_flows.filter(f => f !== flow) 
+        : [...prev.target_flows, flow];
+      
+      // Evitar que queden vacíos
+      if (newFlows.length === 0) return prev;
+      return { ...prev, target_flows: newFlows };
+    });
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError("")
 
-    // Empaquetamos la configuración para que coincida con el backend
+    // 🚩 LÓGICA DE ENVÍO: Si tiene más de 1, enviamos "AMBOS", si no, el único seleccionado
+    const finalFlow = form.target_flows.length > 1 ? "AMBOS" : form.target_flows[0];
+
     const payload = {
       question: form.question,
       is_required: form.is_required,
       type: form.type.toLowerCase(),
-      target_flow: form.target_flow.toLowerCase(),
+      target_flow: finalFlow.toLowerCase(),
       config: {
         options: form.type === "SELECCION" ? form.options : [],
         isMultiple: form.type === "SELECCION" ? form.isMultiple : false,
@@ -55,28 +71,22 @@ const CreateQuestionModal = ({ isOpen, onClose, onCreated }) => {
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[200] p-4 font-[Outfit]">
       <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
         
-        {/* HEADER */}
         <div className="flex items-center justify-between px-6 py-5 bg-white border-b border-gray-50">
-          <div>
-            <h3 className="text-xl font-black uppercase tracking-tighter text-gray-900 italic">
-              Nueva <span className="text-[#87be00]">Pregunta</span>
-            </h3>
-          </div>
-          <button onClick={onClose} className="p-2.5 rounded-xl bg-gray-50 text-gray-400 hover:bg-gray-100 transition-all"><FiX size={18} /></button>
+          <h3 className="text-xl font-black uppercase tracking-tighter text-gray-900 italic">Nueva <span className="text-[#87be00]">Pregunta</span></h3>
+          <button onClick={onClose} className="p-2.5 rounded-xl bg-gray-50 text-gray-400 hover:bg-gray-100"><FiX size={18} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
-            
             {error && <div className="p-3 bg-red-50 text-red-500 text-[11px] font-bold uppercase rounded-xl">{error}</div>}
 
-            {/* FLUJO DESTINO */}
+            {/* FLUJO DESTINO MULTI-SELECT */}
             <div className="space-y-2">
               <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Asignación del Flujo Destino</label>
               <div className="grid grid-cols-2 gap-2 bg-gray-100 p-1.5 rounded-2xl">
-                <button type="button" onClick={() => set({ target_flow: "REPONEDOR" })} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${form.target_flow === "REPONEDOR" ? "bg-white text-[#87be00] shadow-sm" : "text-gray-400"}`}>
+                <button type="button" onClick={() => toggleFlow("REPONEDOR")} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${form.target_flows.includes("REPONEDOR") ? "bg-white text-[#87be00] shadow-sm" : "text-gray-400"}`}>
                   <FiUser size={12} className="inline mr-1"/> Reponedor
                 </button>
-                <button type="button" onClick={() => set({ target_flow: "SUPERVISOR" })} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${form.target_flow === "SUPERVISOR" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-400"}`}>
+                <button type="button" onClick={() => toggleFlow("SUPERVISOR")} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${form.target_flows.includes("SUPERVISOR") ? "bg-white text-indigo-600 shadow-sm" : "text-gray-400"}`}>
                   <FiEye size={12} className="inline mr-1"/> Supervisor
                 </button>
               </div>
@@ -138,5 +148,4 @@ const CreateQuestionModal = ({ isOpen, onClose, onCreated }) => {
     </div>
   )
 }
-
 export default CreateQuestionModal
