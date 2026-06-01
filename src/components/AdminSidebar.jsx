@@ -11,8 +11,9 @@ import {
   FiClock,
   FiBriefcase,
   FiBox,
-  FiClipboard, // 🚩 NUEVO ICONO PARA TAREAS
-  FiUserCheck  // 🚩 NUEVO ICONO PARA ASISTENCIA
+  FiClipboard,
+  FiUserCheck,
+  FiFileText // 🚩 NUEVO ICONO PARA INFORMES
 } from "react-icons/fi"
 import { useAuth } from "../context/AuthContext"
 import { useNotificationContext } from "../context/NotificationContext" 
@@ -56,6 +57,17 @@ const AdminSidebar = () => {
           >
             <FiBarChart2 size={18} />
             Dashboard
+          </NavLink>
+
+          {/* 🚩 NUEVO: ENLACE A INFORMES */}
+          <NavLink
+            to="/admin/informes"
+            className={({ isActive }) =>
+              `${linkBase} ${isActive ? linkActive : linkInactive}`
+            }
+          >
+            <FiFileText size={18} />
+            Informes
           </NavLink>
 
           {/* LOGÍSTICA */}
@@ -169,7 +181,7 @@ const AdminSidebar = () => {
             Catálogo Maestro
           </NavLink>
 
-          {/* 🚩 NUEVO: CONTROL DE TAREAS */}
+          {/* CONTROL DE TAREAS */}
           <NavLink
             to="/admin/task-control"
             className={({ isActive }) =>
@@ -180,7 +192,7 @@ const AdminSidebar = () => {
             Control de Tareas
           </NavLink>
 
-          {/* 🚩 NUEVO: CONTROL DE ASISTENCIA */}
+          {/* CONTROL DE ASISTENCIA */}
           <NavLink
             to="/admin/attendance-control"
             className={({ isActive }) =>

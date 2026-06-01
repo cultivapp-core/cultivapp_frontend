@@ -243,7 +243,7 @@ const AdminUsers = () => {
         ))}
       </div>
 
-      {/* VISTA DESKTOP - MEJORADA CON SCROLL Y MIN-W-MAX */}
+      {/* VISTA DESKTOP */}
       <div className="hidden md:block bg-white rounded-[2rem] shadow-xl shadow-gray-100/50 border border-gray-100 overflow-hidden mx-2 lg:mx-0">
         <div className="max-h-[65vh] overflow-auto custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-max">
@@ -269,7 +269,9 @@ const AdminUsers = () => {
                         onToggle={() => setActivePopover(activePopover === user.id ? null : user.id)}
                       />
                       <div className="min-w-0">
-                        <p className="text-[13px] font-black text-gray-900 uppercase tracking-tighter leading-none italic truncate whitespace-nowrap">{user.first_name} {user.last_name}</p>
+                        <p className="text-[13px] font-black text-gray-900 uppercase tracking-tighter leading-none italic">
+                          {user.first_name} {user.last_name}
+                        </p>
                       </div>
                     </div>
                   </td>

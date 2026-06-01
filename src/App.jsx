@@ -1,9 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
-import { AuthProvider, useAuth } from "./context/AuthContext" // Agregado useAuth aquí
+import { AuthProvider, useAuth } from "./context/AuthContext" 
 import { NotificationProvider } from "./context/NotificationContext" 
 import { Toaster } from "react-hot-toast"
-import { useEffect } from "react" // Necesario para el monitor
-import api from "./api/apiClient" // Importante para el ping
+import { useEffect } from "react" 
+import api from "./api/apiClient" 
 
 // --- HOOKS ---
 import { useOfflineSync } from "./hooks/useOfflineSync"
@@ -26,7 +26,7 @@ import AlertsHistory from "./components/AlertsHistory"
 /* ================= ROOT ================= */
 import RootDashboard from "./pages/root/RootDashboard"
 import Analytics from "./pages/root/Analytics"
-import ActiveSessions from "./pages/root/ActiveSession" // 🚩 CORREGIDO NOMBRE
+import ActiveSessions from "./pages/root/ActiveSession" 
 import Companies from "./pages/root/Companies"
 import Users from "./pages/root/Users"
 import Locales from "./pages/root/Locales"
@@ -50,7 +50,7 @@ import AlertManager from "./pages/supervisor/AlertManager"
 import AttendanceControl from "./pages/supervisor/AttendanceControl"
 import PhotoValidation from "./pages/supervisor/PhotoValidation"
 import TaskControl from "./pages/supervisor/TaskControl"
-import SupervisorVisitFlow from "./pages/supervisor/SupervisorVisitFlow" // 🚩 Importamos el nuevo flujo de supervisión
+import SupervisorVisitFlow from "./pages/supervisor/SupervisorVisitFlow" 
 
 /* ================= USUARIO (MERCADERISTA) ================= */
 import UserDashboard from "./pages/user/UserDashboard"
@@ -59,8 +59,9 @@ import UserLocales from "./pages/user/UserLocales"
 import VisitFlow from "./pages/user/VisitFlow" 
 import UserAgenda from "./pages/user/UserAgenda"
 
-/* ================= QUESTIONS ================= */
+/* ================= QUESTIONS & REPORTS ================= */
 import QuestionsManager from "./pages/admin/QuestionsManager"
+import ReportsPage from "./pages/reports/ReportsPage" // 🚩 IMPORTACIÓN AGREGADA
 
 import "./App.css"
 
@@ -112,7 +113,7 @@ function App() {
       <NotificationProvider> 
         <BrowserRouter>
           <OfflineMonitor />
-          <HeartbeatMonitor /> {/* 🚩 INTEGRADO */}
+          <HeartbeatMonitor /> 
           <Toaster position="top-right" />
           <Routes>
             <Route path="/" element={<Login />} />
@@ -158,14 +159,12 @@ function App() {
               <Route index element={<SupervisorPanel />} />
               <Route path="mapa" element={<LiveMap />} />
               <Route path="alertas" element={<AlertManager />} />
-              
-              {/* 🚩 NUEVA SUBRUTA: REGISTRO E INICIO DE VISITA DE SUPERVISOR */}
               <Route path="visita" element={<SupervisorVisitFlow />} />
-              
               <Route path="asistencia" element={<AttendanceControl />} />
               <Route path="ejecucion" element={<PhotoValidation />} />
               <Route path="tareas" element={<TaskControl />} />
               <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
+              <Route path="informes" element={<ReportsPage />} /> {/* 🚩 RUTA AGREGADA */}
             </Route>
 
             {/* 💼 SECCIÓN ADMIN */}
@@ -184,6 +183,7 @@ function App() {
               <Route path="task-control" element={<TaskControl />} />
               <Route path="attendance-control" element={<AttendanceControl />} />
               <Route path="photo-validation" element={<PhotoValidation />} />
+              <Route path="informes" element={<ReportsPage />} /> {/* 🚩 RUTA AGREGADA */}
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />
