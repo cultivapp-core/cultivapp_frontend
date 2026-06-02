@@ -32,6 +32,8 @@ import Users from "./pages/root/Users"
 import Locales from "./pages/root/Locales"
 import NotificationManager from "./pages/root/NotificationManager"
 import TurnosManager from "./pages/root/TurnosManager"
+import UploadSalesData from "./pages/reports/UploadSalesData" 
+import SalesDashboard from "./pages/reports/SalesDashboard" 
 
 /* ================= ADMIN CLIENTE ================= */
 import AdminDashboard from "./pages/admin/AdminDashboard"
@@ -61,30 +63,22 @@ import UserAgenda from "./pages/user/UserAgenda"
 
 /* ================= QUESTIONS & REPORTS ================= */
 import QuestionsManager from "./pages/admin/QuestionsManager"
-import ReportsPage from "./pages/reports/ReportsPage" // 🚩 IMPORTACIÓN AGREGADA
+import ReportsPage from "./pages/reports/ReportsPage" 
 
 import "./App.css"
 
 // 🚩 COMPONENTE MONITOR DE LATIDOS (HEARTBEAT)
 const HeartbeatMonitor = () => {
   const { user } = useAuth();
-
   useEffect(() => {
     if (!user) return;
-
     const sendPing = async () => {
-      try {
-        await api.post("/users/ping"); 
-      } catch (error) {
-        console.warn("Ping fallido, reintentando en el próximo ciclo...");
-      }
+      try { await api.post("/users/ping"); } catch (error) { console.warn("Ping fallido..."); }
     };
-
     sendPing();
-    const intervalId = setInterval(sendPing, 60000); // 3 minutos
+    const intervalId = setInterval(sendPing, 60000);
     return () => clearInterval(intervalId);
   }, [user]);
-
   return null; 
 };
 
@@ -119,15 +113,15 @@ function App() {
             <Route path="/" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            
             <Route path="/verify/:id" element={<UserCredential />} />
-
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
 
             {/* 👑 SECCIÓN ROOT */}
             <Route path="/root" element={<ProtectedRoute role="ROOT"><RootDashboard /></ProtectedRoute>}>
               <Route index element={<Analytics />} /> 
               <Route path="analytics" element={<Analytics />} />
+              <Route path="upload-sales" element={<UploadSalesData />} />
+              <Route path="sales-report" element={<SalesDashboard />} />
               <Route path="active-sessions" element={<ActiveSessions />} /> 
               <Route path="companies" element={<Companies />} />
               <Route path="users" element={<Users />} />
@@ -164,12 +158,14 @@ function App() {
               <Route path="ejecucion" element={<PhotoValidation />} />
               <Route path="tareas" element={<TaskControl />} />
               <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
-              <Route path="informes" element={<ReportsPage />} /> {/* 🚩 RUTA AGREGADA */}
+              <Route path="informes" element={<ReportsPage />} />
             </Route>
 
             {/* 💼 SECCIÓN ADMIN */}
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
               <Route index element={<AdminOverview />} />
+              <Route path="upload-sales" element={<UploadSalesData />} />
+              <Route path="sales-report" element={<SalesDashboard />} /> {/* 🚩 NUEVA RUTA ADMIN */}
               <Route path="users" element={<AdminUsers />} />
               <Route path="locales" element={<AdminLocales />} />
               <Route path="companies" element={<Companies />} />
@@ -183,7 +179,7 @@ function App() {
               <Route path="task-control" element={<TaskControl />} />
               <Route path="attendance-control" element={<AttendanceControl />} />
               <Route path="photo-validation" element={<PhotoValidation />} />
-              <Route path="informes" element={<ReportsPage />} /> {/* 🚩 RUTA AGREGADA */}
+              <Route path="informes" element={<ReportsPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

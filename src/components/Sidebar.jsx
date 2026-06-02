@@ -14,7 +14,9 @@ import {
   FiCheckSquare, // 🚩 Para TaskControl
   FiUserCheck,   // 🚩 Para AttendanceControl
   FiCamera,      // 🚩 Para photoValidation
-  FiMonitor      // 🚩 Nuevo: Para el Radar de Sesiones
+  FiMonitor,     // 🚩 Nuevo: Para el Radar de Sesiones
+  FiTrendingUp,  // 🚩 Para Reportes
+  FiPieChart     // 🚩 Nuevo: Para Dashboard Ventas
 } from "react-icons/fi"
 import { useNotificationContext } from "../context/NotificationContext"
 
@@ -39,12 +41,21 @@ const Sidebar = () => {
       </div>
 
       <nav className="flex flex-col gap-1.5 overflow-y-auto pr-2 custom-scrollbar">
-        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mb-2 ml-4">Métricas</p>
+        
+        {/* 🚩 SECCIÓN REPORTES */}
+        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mb-2 ml-4">Reportes</p>
+        <NavLink to="/root/upload-sales" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiTrendingUp size={18} /> Cargar Ventas
+        </NavLink>
+        <NavLink to="/root/sales-report" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiPieChart size={18} /> Dashboard Ventas
+        </NavLink>
+
+        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Métricas</p>
         <NavLink to="/root/analytics" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiBarChart2 size={18} /> Dashboard
         </NavLink>
         
-        {/* 🚩 NUEVA VISTA: RADAR DE SESIONES */}
         <NavLink to="/root/active-sessions" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiMonitor size={18} /> Radar Sesiones
         </NavLink>
