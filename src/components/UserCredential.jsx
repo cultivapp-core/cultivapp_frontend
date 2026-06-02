@@ -35,27 +35,45 @@ const UserCredential = () => {
     if (id) fetchUser();
   }, [id]);
 
-  const handleDownload = async (e) => {
-    e.preventDefault();
-    if (!user?.achs_url) return;
+  // 🚩 LOGICA PARA IDENTIFICAR DOCUMENTOS DISPONIBLES
+  const getDocumentos = () => {
+    const docs = [];
+    if (user?.achs_url) docs.push({ url: user.achs_url, name: 'Certificado_ACHS' });
+    if (user?.contrato_url) docs.push({ url: user.contrato_url, name: 'Contrato' });
+    // Agrega aquí más campos si tu API tiene otros, ej: if (user?.diploma_url) ...
+    return docs;
+  };
 
-    try {
-      const fileUrl = getFullUrl(user.achs_url);
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error("Error al descargar el archivo");
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `ACHS_${user.last_name || 'Documento'}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Error en la descarga:", err);
-      window.open(getFullUrl(user.achs_url), '_blank');
+  // 🚩 FUNCIÓN PARA DESCARGAR TODOS LOS DOCUMENTOS
+  const handleDownloadAll = async (e) => {
+    e.preventDefault();
+    const documentos = getDocumentos();
+    
+    if (documentos.length === 0) return;
+
+    for (let i = 0; i < documentos.length; i++) {
+      const doc = documentos[i];
+      try {
+        const fileUrl = getFullUrl(doc.url);
+        // Delay para evitar bloqueo del navegador en descargas múltiples
+        await new Promise(resolve => setTimeout(resolve, i * 500));
+        
+        const response = await fetch(fileUrl);
+        if (!response.ok) throw new Error("Error al descargar");
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `${doc.name}_${user.last_name || 'Documento'}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("Error en descarga:", err);
+        window.open(getFullUrl(doc.url), '_blank');
+      }
     }
   };
 
@@ -134,7 +152,6 @@ const UserCredential = () => {
           <p className="text-[#87be00] font-extrabold text-[11px] uppercase tracking-[0.2em] mt-2 mb-6">{user.position}</p>
           
           <div className="space-y-3 text-left">
-            {/* 🚩 BLOQUE EMPRESA Y TRABAJANDO PARA */}
             <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center gap-4">
               <div className="bg-white p-2.5 rounded-xl shadow-sm text-[#87be00]"><FiBriefcase size={18} /></div>
               <div className="flex-1 space-y-3">
@@ -168,12 +185,12 @@ const UserCredential = () => {
             </div>
 
             <button 
-                onClick={handleDownload}
+                onClick={handleDownloadAll}
                 className="w-full group flex items-center justify-between px-6 py-4 bg-[#eff6ff] hover:bg-blue-600 text-blue-600 hover:text-white rounded-2xl font-bold text-xs transition-all duration-300 border border-blue-100 mt-2 shadow-sm"
             >
                 <div className="flex items-center gap-3">
                     <FiDownload size={18} className="group-hover:animate-bounce" />
-                    <span>Descargar Documentos</span>
+                    <span>Descargar Todos</span>
                 </div>
                 <FiExternalLink className="opacity-40 group-hover:opacity-100" />
             </button>
