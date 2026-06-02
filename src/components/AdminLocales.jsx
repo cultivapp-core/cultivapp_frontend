@@ -16,6 +16,7 @@ const AdminLocales = () => {
   const [chains, setChains] = useState([]); 
   const [regions, setRegions] = useState([]); 
   const [comunas, setComunas] = useState([]); 
+  const [companies, setCompanies] = useState([]); // <-- NUEVO ESTADO: Para almacenar las empresas
   
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedChain, setSelectedChain] = useState("");
@@ -27,23 +28,28 @@ const AdminLocales = () => {
   const [openEdit, setOpenEdit] = useState(false);
   const [selectedLocal, setSelectedLocal] = useState(null);
 
-  const fetchLocales = useCallback(async () => {
+  const fetchLocalesAndCompanies = useCallback(async () => { // <-- MODIFICADO: Trae locales y empresas
     try {
-      const data = await api.get(`/locales`);
-      setLocales(data || []);
+      const [localesData, companiesData] = await Promise.all([
+        api.get(`/locales`),
+        api.get(`/companies`)
+      ]);
+
+      setLocales(localesData || []);
+      setCompanies(companiesData || []);
       
-      if (data) {
-        setChains([...new Set(data.map(l => l.cadena))].filter(Boolean).sort());
-        setRegions([...new Set(data.map(l => l.region_name || l.region))].filter(Boolean).sort());
+      if (localesData) {
+        setChains([...new Set(localesData.map(l => l.cadena))].filter(Boolean).sort());
+        setRegions([...new Set(localesData.map(l => l.region_name || l.region))].filter(Boolean).sort());
       }
     } catch (error) {
-      toast.error("Error al cargar locales");
+      toast.error("Error al cargar datos");
     }
   }, []);
 
   useEffect(() => {
-    fetchLocales();
-  }, [fetchLocales]);
+    fetchLocalesAndCompanies();
+  }, [fetchLocalesAndCompanies]);
 
   useEffect(() => {
     const filteredComunas = [...new Set(locales
@@ -158,9 +164,9 @@ const AdminLocales = () => {
         ))}
       </div>
 
-      <CreateLocalModal isOpen={openCreate} onClose={() => setOpenCreate(false)} onCreated={fetchLocales} />
-      <UploadLocalesModal isOpen={openUpload} onClose={() => setOpenUpload(false)} onUploaded={fetchLocales} />
-      {selectedLocal && <EditLocalModal isOpen={openEdit} onClose={() => { setOpenEdit(false); setSelectedLocal(null); }} onUpdated={fetchLocales} local={selectedLocal} />}
+      <CreateLocalModal isOpen={openCreate} onClose={() => setOpenCreate(false)} onCreated={fetchLocalesAndCompanies} companies={companies} /> {/* <-- MODIFICADO: Pasamos companies */}
+      <UploadLocalesModal isOpen={openUpload} onClose={() => setOpenUpload(false)} onUploaded={fetchLocalesAndCompanies} companies={companies} /> {/* <-- MODIFICADO: Pasamos companies */}
+      {selectedLocal && <EditLocalModal isOpen={openEdit} onClose={() => { setOpenEdit(false); setSelectedLocal(null); }} onUpdated={fetchLocalesAndCompanies} local={selectedLocal} companies={companies} />} {/* <-- MODIFICADO: Pasamos companies */}
     </div>
   );
 };
