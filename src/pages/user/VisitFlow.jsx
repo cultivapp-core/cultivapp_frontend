@@ -7,8 +7,42 @@ import {
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 import Scanner from "../../components/Scanner"; 
-// 🚩 IMPORT: Asegúrate de tener este componente en tu carpeta de modals
 import QuestionRenderer from "../../components/modals/QuestionRenderer"; 
+
+// 🚀 FUNCIÓN DE COMPRESIÓN DE IMAGEN: Hace que la carga sea hasta 10x más rápida en móvil
+const compressImage = (file, maxWidth = 1024, quality = 0.7) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          const compressedFile = new File([blob], file.name, {
+            type: "image/jpeg",
+            lastModified: Date.now(),
+          });
+          resolve(compressedFile);
+        }, "image/jpeg", quality);
+      };
+    };
+  });
+};
 
 const VisitFlow = () => {
   const { id } = useParams();
@@ -16,14 +50,13 @@ const VisitFlow = () => {
   const fileInputRef = useRef(null);
   const isProcessingScan = useRef(false);
 
-  // 🚩 CONFIGURACIÓN DE URL
   const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [step, setStep] = useState(1); 
   const [loading, setLoading] = useState(false);
   const [capturing, setCapturing] = useState(false);
-  const [imageError, setImageError] = useState(false); // 🚩 Estado de seguridad para fotos
+  const [imageError, setImageError] = useState(false); 
   
   const [brands, setBrands] = useState([]);
   const [allProducts, setProducts] = useState([]);
@@ -115,20 +148,22 @@ const VisitFlow = () => {
 
     setCapturing(true);
     setImageError(false);
-    const toastId = toast.loading("Subiendo imagen...");
+    const toastId = toast.loading("Optimizando y subiendo...");
     
     try {
+      // 🚀 Aplicamos la compresión antes de subir
+      const compressedFile = await compressImage(file, 1024, 0.7);
+
       const formData = new FormData();
       formData.append("photo_type", stepsInfo[step].key);
-      formData.append("foto", file); 
+      formData.append("foto", compressedFile); 
       
       const response = await api.post(`/routes/${id}/photo`, formData);
       
       const photoPath = response?.offline 
-        ? URL.createObjectURL(file) 
-        : (response.image_url || response.url || URL.createObjectURL(file));
+        ? URL.createObjectURL(compressedFile) 
+        : (response.image_url || response.url || URL.createObjectURL(compressedFile));
 
-      // 🚩 LOGICA SEGURA: Usamos la clave del paso actual
       const currentStepKey = stepsInfo[step].key;
       if (currentStepKey === "foto_fachada") setFachadaPhoto(photoPath);
       if (currentStepKey === "foto_gondola_inicio") setGondolaInicialPhoto(photoPath);
@@ -178,9 +213,17 @@ const VisitFlow = () => {
       await api.post(`/routes/${id}/task`, taskData);
       toast.success("Producto registrado exitosamente", { id: toastId });
 
-      setScannedCodes([]); setAnswers({}); setComment("");
-      setGondolaTerminoPhoto(null); setGondolaInicialPhoto(null);
-      setProductStartTime(null); setSelectedBrand(""); setSelectedProduct("");
+      // 🚀 LIMPIEZA PROFUNDA: Solución al "Efecto Fantasma"
+      setScannedCodes([]); 
+      setAnswers({}); 
+      setComment("");
+      setGondolaTerminoPhoto(null); 
+      setGondolaInicialPhoto(null);
+      setProductStartTime(null); 
+      setSelectedBrand(""); 
+      setSelectedProduct("");
+      setImageError(false); 
+      isProcessingScan.current = false;
 
       if (proximoPaso === 'NUEVO') setStep(2); 
       else setStep(7); 
@@ -202,15 +245,15 @@ const VisitFlow = () => {
   const renderPhotoContainer = (photoUrl, setPhotoUrl, placeholderText) => {
     if (photoUrl && !imageError) {
       return (
-        <div className="relative w-full aspect-square bg-gray-50 rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-xl group animate-in fade-in zoom-in duration-300">
+        <div className="relative w-full aspect-square bg-gray-50 rounded-[2rem] md:rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-xl group animate-in fade-in zoom-in duration-300">
           <img 
             src={formatImageUrl(photoUrl)} 
             className="w-full h-full object-cover" 
             alt={placeholderText}
             onError={() => setImageError(true)}
           />
-          <button onClick={(e) => { e.stopPropagation(); setPhotoUrl(null); setImageError(false); }} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10">
-            <FiX size={18}/>
+          <button onClick={(e) => { e.stopPropagation(); setPhotoUrl(null); setImageError(false); }} className="absolute top-3 right-3 md:top-4 md:right-4 bg-red-500 text-white p-3 md:p-4 rounded-full shadow-lg active:scale-90 transition-transform z-10">
+            <FiX size={20}/>
           </button>
         </div>
       );
@@ -218,27 +261,27 @@ const VisitFlow = () => {
     
     if (imageError) {
         return (
-            <div className="w-full aspect-square bg-gray-50 border-4 border-dashed border-red-200 rounded-[3rem] flex flex-col items-center justify-center text-red-400">
+            <div className="w-full aspect-square bg-gray-50 border-4 border-dashed border-red-200 rounded-[2rem] md:rounded-[3rem] flex flex-col items-center justify-center text-red-400 p-4">
                 <FiAlertCircle size={40} className="mb-2" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
-                <button onClick={() => setImageError(false)} className="mt-4 text-xs font-bold underline">Reintentar</button>
+                <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
+                <button onClick={() => setImageError(false)} className="mt-4 text-xs font-bold underline active:scale-95 transition-transform p-2">Reintentar</button>
             </div>
         )
     }
     
     return (
-      <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 hover:border-[#87be00]/50 transition-all group">
+      <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[2rem] md:rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 hover:border-[#87be00]/50 transition-all group p-4">
         {capturing ? (
           <div className="flex flex-col items-center">
-            <FiLoader className="animate-spin text-[#87be00] mb-2" size={44} />
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Procesando...</span>
+            <FiLoader className="animate-spin text-[#87be00] mb-3" size={44} />
+            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest">Optimizando...</span>
           </div>
         ) : (
           <>
-            <div className="bg-white p-6 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform">
-                <FiCamera size={40} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} />
+            <div className="bg-white p-5 md:p-6 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform flex items-center justify-center">
+                <FiCamera size={36} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} />
             </div>
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar {placeholderText}</span>
+            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest px-4 text-center leading-tight">Capturar {placeholderText}</span>
           </>
         )}
       </div>
@@ -246,7 +289,7 @@ const VisitFlow = () => {
   };
 
   return (
-    <div className={`min-h-screen font-[Outfit] p-4 pb-24 flex flex-col items-center transition-colors duration-500 ${isOnline ? 'bg-gray-50' : 'bg-orange-50/40'}`}>
+    <div className={`min-h-screen font-[Outfit] p-3 md:p-4 pb-28 flex flex-col items-center transition-colors duration-500 ${isOnline ? 'bg-gray-50' : 'bg-orange-50/40'}`}>
       
       {!isOnline && (
         <div className="fixed top-0 left-0 w-full bg-orange-500 text-white text-[10px] font-black py-1.5 text-center z-[60] flex items-center justify-center gap-2 shadow-lg">
@@ -254,17 +297,17 @@ const VisitFlow = () => {
         </div>
       )}
 
-      <div className="w-full max-w-md flex justify-between mb-8 sticky top-6 z-20 py-2">
+      <div className="w-full max-w-md flex justify-between mb-6 sticky top-4 z-20 py-2 px-1">
         {[1, 2, 3, 4, 5, 7].map(i => (
-          <div key={i} className={`h-1.5 flex-1 mx-1 rounded-full transition-all duration-700 ${step >= i ? 'bg-[#87be00]' : 'bg-gray-200'}`} />
+          <div key={i} className={`h-1.5 flex-1 mx-1 rounded-full transition-all duration-700 ${step >= i ? 'bg-[#87be00]' : 'bg-gray-200 shadow-inner'}`} />
         ))}
       </div>
 
-      <div className="w-full max-w-md bg-white p-6 rounded-[2.5rem] shadow-xl text-center space-y-6 border border-gray-100 relative overflow-hidden">
+      <div className="w-full max-w-md bg-white p-5 md:p-6 rounded-[2rem] md:rounded-[2.5rem] shadow-xl text-center space-y-5 border border-gray-100 relative overflow-hidden">
         
-        <div className="space-y-1 pt-2">
-            <h2 className="text-xl font-black uppercase text-gray-900 leading-none">{stepsInfo[step]?.title || "Cierre"}</h2>
-            <p className={`text-[9px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step]?.sub}</p>
+        <div className="space-y-1 pt-1">
+            <h2 className="text-lg md:text-xl font-black uppercase text-gray-900 leading-none">{stepsInfo[step]?.title || "Cierre"}</h2>
+            <p className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step]?.sub}</p>
         </div>
 
         {/* STEP 1 & 7 */}
@@ -276,8 +319,8 @@ const VisitFlow = () => {
                stepsInfo[step].title
              )}
              {step === 7 && fachadaPhoto && (
-                 <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-lg hover:bg-[#76a500]">
-                   Confirmar y Finalizar Visita <FiArrowRight size={16}/>
+                 <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-lg active:scale-95 transition-transform hover:bg-[#76a500]">
+                   Confirmar y Finalizar Visita <FiArrowRight size={18}/>
                  </button>
              )}
           </div>
@@ -285,18 +328,18 @@ const VisitFlow = () => {
 
         {/* STEP 2 */}
         {step === 2 && (
-          <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-4 md:space-y-5 animate-in slide-in-from-bottom-4 duration-500">
             <div className="grid grid-cols-1 gap-3">
               <div className="relative text-left">
-                <FiTag className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
-                <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)} className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none">
+                <FiTag className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+                <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)} className="w-full pl-11 pr-4 py-3.5 md:py-4 bg-gray-50 rounded-2xl md:rounded-[1.5rem] border-none text-xs md:text-sm font-bold outline-none shadow-inner appearance-none truncate">
                   <option value="">Seleccione Marca...</option>
                   {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
               <div className="relative text-left">
-                <FiBox className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
-                <select disabled={!selectedBrand} value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none disabled:opacity-40">
+                <FiBox className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+                <select disabled={!selectedBrand} value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full pl-11 pr-4 py-3.5 md:py-4 bg-gray-50 rounded-2xl md:rounded-[1.5rem] border-none text-xs md:text-sm font-bold outline-none shadow-inner appearance-none disabled:opacity-40 truncate">
                   <option value="">Seleccione Producto...</option>
                   {filteredProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
@@ -307,8 +350,8 @@ const VisitFlow = () => {
               <div className="pt-2 animate-in zoom-in duration-300 space-y-4">
                 {renderPhotoContainer(gondolaInicialPhoto, setGondolaInicialPhoto, "Foto Inicial")}
                 {gondolaInicialPhoto && (
-                  <button onClick={() => setStep(3)} className="w-full mt-4 bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
-                    Escanear Productos <FiArrowRight size={16}/>
+                  <button onClick={() => setStep(3)} className="w-full mt-2 bg-[#87be00] text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
+                    Escanear Productos <FiArrowRight size={18}/>
                   </button>
                 )}
               </div>
@@ -319,25 +362,25 @@ const VisitFlow = () => {
         {/* STEP 3 */}
         {step === 3 && (
           <div className="space-y-4 animate-in zoom-in duration-300">
-            <div className="rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
+            <div className="rounded-2xl md:rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
               <Scanner onScanSuccess={handleScanSuccess} />
             </div>
-            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto px-1 custom-scrollbar border-y border-gray-50 py-3 text-left">
+            <div className="flex flex-col gap-2 max-h-40 md:max-h-48 overflow-y-auto px-1 custom-scrollbar border-y border-gray-50 py-2 md:py-3 text-left">
                 {scannedCodes.length > 0 ? scannedCodes.map((code, idx) => (
-                  <div key={idx} className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                    <div className="flex items-center gap-3"><FiCheckCircle className="text-[#87be00]" size={14}/><span className="text-[10px] font-bold text-gray-700">{code}</span></div>
-                    <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-red-400 p-1 hover:bg-red-50 rounded-lg"><FiTrash2 size={14}/></button>
+                  <div key={idx} className="flex items-center justify-between bg-gray-50 p-2.5 md:p-3 rounded-xl md:rounded-2xl border border-gray-100">
+                    <div className="flex items-center gap-2 md:gap-3"><FiCheckCircle className="text-[#87be00] shrink-0" size={16}/><span className="text-[10px] md:text-xs font-bold text-gray-700 truncate">{code}</span></div>
+                    <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-red-400 p-2 hover:bg-red-50 rounded-lg active:scale-90 transition-transform shrink-0"><FiTrash2 size={16}/></button>
                   </div>
-                )) : <p className="text-[10px] text-gray-300 font-black uppercase py-8 text-center tracking-widest">Esperando escaneo...</p>}
+                )) : <p className="text-[9px] md:text-[10px] text-gray-300 font-black uppercase py-6 md:py-8 text-center tracking-widest">Esperando escaneo...</p>}
             </div>
-            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-lg">Validar Encuesta <FiArrowRight size={16}/></button>
+            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-lg active:scale-95 transition-transform">Validar Encuesta <FiArrowRight size={18}/></button>
           </div>
         )}
 
-        {/* STEP 4: ENCUENTAS - INTEGRACIÓN DE QUESTIONRENDERER */}
+        {/* STEP 4 */}
         {step === 4 && (
-           <div className="space-y-5 animate-in slide-in-from-right duration-300 text-left">
-             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
+           <div className="space-y-4 md:space-y-5 animate-in slide-in-from-right duration-300 text-left">
+             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                {questions.map((q) => {
                  const rawConfig = q.config || {};
                  const normalizedQuestion = {
@@ -346,8 +389,8 @@ const VisitFlow = () => {
                  };
                  
                  return (
-                   <div key={q.id} className="bg-gray-50/70 p-5 rounded-[2rem] border border-gray-100 shadow-sm">
-                     <p className="text-xs font-black text-gray-800 uppercase tracking-tighter leading-tight mb-3">
+                   <div key={q.id} className="bg-gray-50/70 p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm">
+                     <p className="text-[10px] md:text-xs font-black text-gray-800 uppercase tracking-tighter leading-tight mb-3">
                        {q.question} {q.is_required && <span className="text-red-500 font-black ml-0.5">*</span>}
                      </p>
                      <QuestionRenderer 
@@ -360,8 +403,8 @@ const VisitFlow = () => {
                })}
              </div>
              
-             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all">
-               Góndola Final <FiArrowRight/>
+             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-xl active:scale-95 transition-transform">
+               Góndola Final <FiArrowRight size={18}/>
              </button>
            </div>
         )}
@@ -370,42 +413,42 @@ const VisitFlow = () => {
         {step === 5 && (
           <div className="space-y-4 animate-in slide-in-from-right duration-300">
              {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, "Foto Final")}
-             <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre este producto..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner focus:ring-2 ring-[#87be00]/20" />
-             <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 disabled:opacity-50 transition-all">Confirmar Producto <FiArrowRight size={16}/></button>
+             <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre este producto..." className="w-full h-20 md:h-24 p-4 md:p-5 bg-gray-50 rounded-2xl md:rounded-[2rem] border-none text-[11px] md:text-sm outline-none resize-none shadow-inner focus:ring-2 ring-[#87be00]/20" />
+             <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 disabled:opacity-50 active:scale-95 transition-transform">Confirmar Producto <FiArrowRight size={18}/></button>
           </div>
         )}
 
         {/* STEP 6 */}
         {step === 6 && (
-          <div className="py-6 space-y-6 animate-in zoom-in">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-16 h-16 bg-[#87be00]/10 rounded-full flex items-center justify-center text-[#87be00] mb-2"><FiCheckCircle size={32} /></div>
-              <h3 className="text-sm font-black uppercase text-gray-900 tracking-tighter italic">¿Agregar otro producto?</h3>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">El tiempo de este producto ha sido registrado.</p>
+          <div className="py-4 md:py-6 space-y-5 md:space-y-6 animate-in zoom-in">
+            <div className="flex flex-col items-center gap-2 md:gap-3">
+              <div className="w-14 h-14 md:w-16 md:h-16 bg-[#87be00]/10 rounded-full flex items-center justify-center text-[#87be00] mb-1 md:mb-2"><FiCheckCircle size={28} className="md:w-8 md:h-8" /></div>
+              <h3 className="text-xs md:text-sm font-black uppercase text-gray-900 tracking-tighter italic">¿Agregar otro producto?</h3>
+              <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight px-4">El tiempo de este producto ha sido registrado.</p>
             </div>
             <div className="flex flex-col gap-3">
-              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-[0.98] transition-all hover:bg-[#76a500]">{loading ? <FiLoader className="animate-spin"/> : <><FiPlusCircle size={18}/> Sí, nuevo producto</>}</button>
-              <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all"><FiLogOut size={18}/> No, finalizar jornada</button>
+              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-transform hover:bg-[#76a500]">{loading ? <FiLoader className="animate-spin" size={18}/> : <><FiPlusCircle size={18}/> Sí, nuevo producto</>}</button>
+              <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 active:scale-95 transition-transform"><FiLogOut size={18}/> No, finalizar jornada</button>
             </div>
           </div>
         )}
 
         {/* STEP 8 */}
         {step === 8 && (
-          <div className="py-6 space-y-4 animate-in zoom-in">
-             <div className="bg-[#87be00]/5 p-8 rounded-[3rem] border border-[#87be00]/10 text-center mb-6">
-               <FiCheckCircle className="text-[#87be00] mx-auto mb-3" size={40} />
-               <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Gestión Finalizada</p>
-               <p className="text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight">Has registrado todos los productos y tu salida del local.</p>
+          <div className="py-4 md:py-6 space-y-4 animate-in zoom-in">
+             <div className="bg-[#87be00]/5 p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-[#87be00]/10 text-center mb-4 md:mb-6">
+               <FiCheckCircle className="text-[#87be00] mx-auto mb-2 md:mb-3" size={36} />
+               <p className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Gestión Finalizada</p>
+               <p className="text-[11px] md:text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight px-2">Has registrado todos los productos y tu salida del local.</p>
              </div>
-             <button onClick={finalizarVisitaTotal} disabled={loading} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-2xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
-               {loading ? <FiLoader className="animate-spin" /> : <><FiSend size={20}/> Enviar y Cerrar Visita</>}
+             <button onClick={finalizarVisitaTotal} disabled={loading} className="w-full bg-[#87be00] text-white py-4 md:py-6 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs tracking-widest shadow-2xl flex items-center justify-center gap-2 md:gap-3 active:scale-95 transition-transform">
+               {loading ? <FiLoader className="animate-spin" size={20}/> : <><FiSend size={20}/> Enviar y Cerrar Visita</>}
              </button>
           </div>
         )}
 
-        <div className="pt-4 border-t border-gray-50 flex items-center justify-center gap-2 text-gray-300 text-[8px] font-black uppercase tracking-[0.3em]">
-            <FiMapPin className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /> LOCAL ID: {id?.slice(0,8).toUpperCase()}
+        <div className="pt-4 border-t border-gray-50 flex items-center justify-center gap-2 text-gray-300 text-[7px] md:text-[8px] font-black uppercase tracking-[0.3em]">
+            <FiMapPin size={12} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /> LOCAL ID: {id?.slice(0,8).toUpperCase()}
         </div>
       </div>
 
