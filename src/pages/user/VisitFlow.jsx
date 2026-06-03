@@ -9,7 +9,6 @@ import toast from "react-hot-toast";
 import Scanner from "../../components/Scanner"; 
 import QuestionRenderer from "../../components/modals/QuestionRenderer"; 
 
-// 🚀 FUNCIÓN DE COMPRESIÓN DE IMAGEN: Hace que la carga sea hasta 10x más rápida en móvil
 const compressImage = (file, maxWidth = 1024, quality = 0.7) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -151,23 +150,30 @@ const VisitFlow = () => {
     const toastId = toast.loading("Optimizando y subiendo...");
     
     try {
-      // 🚀 Aplicamos la compresión antes de subir
       const compressedFile = await compressImage(file, 1024, 0.7);
 
       const formData = new FormData();
-      formData.append("photo_type", stepsInfo[step].key);
+      // Le agregamos la fecha al nombre para que el backend no lo sobreescriba si guarda con el mismo nombre
+      formData.append("photo_type", `${stepsInfo[step].key}_${Date.now()}`);
       formData.append("foto", compressedFile); 
       
       const response = await api.post(`/routes/${id}/photo`, formData);
       
-      const photoPath = response?.offline 
+      let photoPath = response?.offline 
         ? URL.createObjectURL(compressedFile) 
         : (response.image_url || response.url || URL.createObjectURL(compressedFile));
+
+      // 🚀 ROMPE CACHÉ: Le agregamos "?t=12312312" al final de la URL para obligar a que cargue la foto fresca
+      if (photoPath && !photoPath.startsWith('blob:')) {
+        const separator = photoPath.includes('?') ? '&' : '?';
+        photoPath = `${photoPath}${separator}t=${Date.now()}`;
+      }
 
       const currentStepKey = stepsInfo[step].key;
       if (currentStepKey === "foto_fachada") setFachadaPhoto(photoPath);
       if (currentStepKey === "foto_gondola_inicio") setGondolaInicialPhoto(photoPath);
       if (currentStepKey === "foto_gondola_termino") setGondolaTerminoPhoto(photoPath);
+      if (currentStepKey === "foto_salida") setFachadaPhoto(photoPath); // Si se requiere para salida
       
       toast.success("Captura guardada", { id: toastId });
       if (step === 1) setStep(prev => prev + 1);
@@ -180,13 +186,19 @@ const VisitFlow = () => {
   };
 
   const handleScanSuccess = async (decodedText) => {
-    if (scannedCodes.includes(decodedText)) return; 
+    // 🚀 ELIMINAMOS el bloqueo de códigos repetidos. Ahora sumará unidades.
     if (isProcessingScan.current) return;
     
     isProcessingScan.current = true;
     try {
       await api.post(`/routes/${id}/scans`, { barcode: decodedText });
+      
+      // Agregamos el código al historial (así sea repetido)
       setScannedCodes(prev => [decodedText, ...prev]);
+      
+      // Feedback ligero y rápido
+      toast.success("EAN registrado", { duration: 1000, position: 'bottom-center' });
+      
       setTimeout(() => { isProcessingScan.current = false; }, 600);
     } catch (err) { isProcessingScan.current = false; }
   };
@@ -213,7 +225,6 @@ const VisitFlow = () => {
       await api.post(`/routes/${id}/task`, taskData);
       toast.success("Producto registrado exitosamente", { id: toastId });
 
-      // 🚀 LIMPIEZA PROFUNDA: Solución al "Efecto Fantasma"
       setScannedCodes([]); 
       setAnswers({}); 
       setComment("");
@@ -241,6 +252,12 @@ const VisitFlow = () => {
     } catch (err) { toast.error("Error al cerrar visita", { id: toastId }); } 
     finally { setLoading(false); }
   };
+
+  // 🚀 LÓGICA DE AGRUPACIÓN VISUAL: Suma cantidades de EANs repetidos
+  const groupedScannedCodes = scannedCodes.reduce((acc, code) => {
+    acc[code] = (acc[code] || 0) + 1;
+    return acc;
+  }, {});
 
   const renderPhotoContainer = (photoUrl, setPhotoUrl, placeholderText) => {
     if (photoUrl && !imageError) {
@@ -274,7 +291,7 @@ const VisitFlow = () => {
         {capturing ? (
           <div className="flex flex-col items-center">
             <FiLoader className="animate-spin text-[#87be00] mb-3" size={44} />
-            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest">Optimizando...</span>
+            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest">Procesando...</span>
           </div>
         ) : (
           <>
@@ -310,19 +327,10 @@ const VisitFlow = () => {
             <p className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step]?.sub}</p>
         </div>
 
-        {/* STEP 1 & 7 */}
-        {(step === 1 || step === 7) && (
+        {/* STEP 1 */}
+        {step === 1 && (
           <div className="space-y-4 animate-in zoom-in duration-300">
-             {renderPhotoContainer(
-               step === 1 ? fachadaPhoto : null, 
-               step === 1 ? setFachadaPhoto : () => {}, 
-               stepsInfo[step].title
-             )}
-             {step === 7 && fachadaPhoto && (
-                 <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-lg active:scale-95 transition-transform hover:bg-[#76a500]">
-                   Confirmar y Finalizar Visita <FiArrowRight size={18}/>
-                 </button>
-             )}
+             {renderPhotoContainer(fachadaPhoto, setFachadaPhoto, stepsInfo[step].title)}
           </div>
         )}
 
@@ -359,16 +367,25 @@ const VisitFlow = () => {
           </div>
         )}
 
-        {/* STEP 3 */}
+        {/* STEP 3 - ESCÁNER Y CANTIDADES */}
         {step === 3 && (
           <div className="space-y-4 animate-in zoom-in duration-300">
             <div className="rounded-2xl md:rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
               <Scanner onScanSuccess={handleScanSuccess} />
             </div>
             <div className="flex flex-col gap-2 max-h-40 md:max-h-48 overflow-y-auto px-1 custom-scrollbar border-y border-gray-50 py-2 md:py-3 text-left">
-                {scannedCodes.length > 0 ? scannedCodes.map((code, idx) => (
+                {Object.keys(groupedScannedCodes).length > 0 ? Object.entries(groupedScannedCodes).map(([code, qty], idx) => (
                   <div key={idx} className="flex items-center justify-between bg-gray-50 p-2.5 md:p-3 rounded-xl md:rounded-2xl border border-gray-100">
-                    <div className="flex items-center gap-2 md:gap-3"><FiCheckCircle className="text-[#87be00] shrink-0" size={16}/><span className="text-[10px] md:text-xs font-bold text-gray-700 truncate">{code}</span></div>
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <FiCheckCircle className="text-[#87be00] shrink-0" size={16}/>
+                      <span className="text-[10px] md:text-xs font-bold text-gray-700 truncate">{code}</span>
+                      {qty > 1 && (
+                        <span className="bg-[#87be00] text-white text-[8px] md:text-[9px] font-black px-2 py-0.5 rounded-full shadow-sm animate-in zoom-in">
+                          x{qty}
+                        </span>
+                      )}
+                    </div>
+                    {/* Al borrar, borramos todas las instancias de ese código */}
                     <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-red-400 p-2 hover:bg-red-50 rounded-lg active:scale-90 transition-transform shrink-0"><FiTrash2 size={16}/></button>
                   </div>
                 )) : <p className="text-[9px] md:text-[10px] text-gray-300 font-black uppercase py-6 md:py-8 text-center tracking-widest">Esperando escaneo...</p>}
@@ -433,6 +450,18 @@ const VisitFlow = () => {
           </div>
         )}
 
+        {/* STEP 7 - FOTO SALIDA */}
+        {step === 7 && (
+          <div className="space-y-4 animate-in slide-in-from-right duration-300">
+             {renderPhotoContainer(fachadaPhoto, setFachadaPhoto, "Foto de Salida")}
+             {fachadaPhoto && (
+                 <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-lg active:scale-95 transition-transform hover:bg-[#76a500]">
+                   Confirmar y Finalizar Visita <FiArrowRight size={18}/>
+                 </button>
+             )}
+          </div>
+        )}
+
         {/* STEP 8 */}
         {step === 8 && (
           <div className="py-4 md:py-6 space-y-4 animate-in zoom-in">
@@ -441,8 +470,8 @@ const VisitFlow = () => {
                <p className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Gestión Finalizada</p>
                <p className="text-[11px] md:text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight px-2">Has registrado todos los productos y tu salida del local.</p>
              </div>
-             <button onClick={finalizarVisitaTotal} disabled={loading} className="w-full bg-[#87be00] text-white py-4 md:py-6 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs tracking-widest shadow-2xl flex items-center justify-center gap-2 md:gap-3 active:scale-95 transition-transform">
-               {loading ? <FiLoader className="animate-spin" size={20}/> : <><FiSend size={20}/> Enviar y Cerrar Visita</>}
+             <button onClick={() => navigate("/usuario/home")} className="w-full bg-black text-white py-4 md:py-6 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs tracking-widest shadow-2xl flex items-center justify-center gap-2 md:gap-3 active:scale-95 transition-transform">
+               Volver al Inicio
              </button>
           </div>
         )}
