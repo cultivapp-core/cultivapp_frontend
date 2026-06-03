@@ -140,7 +140,7 @@ const VisitFlow = () => {
     }
   }, [step]);
 
-  const handleCapture = async (e) => {
+const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -150,10 +150,17 @@ const VisitFlow = () => {
     
     try {
       const compressedFile = await compressImage(file, 1024, 0.7);
-      const activeStepKey = stepsInfo[captureStepRef.current]?.key;
+      const stepKey = captureStepRef.current;
+      
+      // 🚩 MEJORA: Etiquetado dinámico para orden de archivos
+      let evidenceLabel = stepsInfo[stepKey].key; 
+      if (stepKey === 1) evidenceLabel = "Inicio_Jornada";
+      else if (stepKey === 7) evidenceLabel = "Salida_Jornada";
+      else if (stepKey === 2) evidenceLabel = `gondola_inicio_producto_${selectedProduct || 'sin_prod'}`;
+      else if (stepKey === 5) evidenceLabel = `gondola_fin_producto_${selectedProduct || 'sin_prod'}`;
       
       const formData = new FormData();
-      formData.append("photo_type", activeStepKey);
+      formData.append("photo_type", evidenceLabel); // Se envía la etiqueta dinámica
       formData.append("foto", compressedFile); 
       
       const response = await api.post(`/routes/${id}/photo`, formData);
@@ -162,19 +169,18 @@ const VisitFlow = () => {
         ? URL.createObjectURL(compressedFile) 
         : (response.image_url || response.url || URL.createObjectURL(compressedFile));
 
-      // 🚀 ROMPE CACHÉ: Añade timestamp único para forzar refresco visual
       if (photoPath && !photoPath.startsWith('blob:')) {
         photoPath = `${photoPath}${photoPath.includes('?') ? '&' : '?'}t=${Date.now()}`;
       }
 
-      // 🚀 ASIGNACIÓN SEGURA
-      if (activeStepKey === "foto_fachada") setFachadaPhoto(photoPath);
-      if (activeStepKey === "foto_gondola_inicio") setGondolaInicialPhoto(photoPath);
-      if (activeStepKey === "foto_gondola_termino") setGondolaTerminoPhoto(photoPath);
-      if (activeStepKey === "foto_salida") setExitPhoto(photoPath);
+      // ASIGNACIÓN SEGURA
+      if (stepKey === 1) setFachadaPhoto(photoPath);
+      else if (stepKey === 2) setGondolaInicialPhoto(photoPath);
+      else if (stepKey === 5) setGondolaTerminoPhoto(photoPath);
+      else if (stepKey === 7) setExitPhoto(photoPath);
       
       toast.success("Captura guardada", { id: toastId });
-      if (captureStepRef.current === 1) setStep(prev => prev + 1);
+      if (stepKey === 1) setStep(prev => prev + 1);
     } catch (err) {
       toast.error("Error al subir", { id: toastId });
     } finally {
