@@ -9,9 +9,8 @@ const Scanner = ({ onScanSuccess }) => {
   const codeReaderRef = useRef(null);
   const isMounted = useRef(true);
 
-  // 🚩 Anti-rebote para escaneo múltiple
-  const lastScannedCode = useRef(null);
-  const scanTimeoutRef = useRef(null);
+  // 🚩 MEJORA: Reemplazamos las refs antiguas por un simple timestamp
+  const lastScanTime = useRef(0);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -67,27 +66,22 @@ const Scanner = ({ onScanSuccess }) => {
         videoRef.current.setAttribute("playsinline", "true");
         videoRef.current.setAttribute("muted", "true");
 
-        // 🚩 decodeFromStream para no detenerse al encontrar un código
+        // 🚩 LÓGICA DE ESCANEO SIN BLOQUEO POR CONTENIDO
         codeReader.decodeFromStream(stream, videoRef.current, (result, err) => {
           if (!isMounted.current || isManualInput) return;
           
           if (result) {
-            const code = result.getText();
-            
-            // 🚩 Permitir escanear múltiples, pero sin rebotes (2 seg delay)
-            if (code !== lastScannedCode.current) {
-              lastScannedCode.current = code;
+            const now = Date.now();
+            // Permitir escaneo si han pasado al menos 800ms
+            if (now - lastScanTime.current > 800) {
+              lastScanTime.current = now;
+              const code = result.getText();
+              
               onScanSuccess(code);
               if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-              toast.success(`EAN: ${code}`, { id: 'scan-success', duration: 1500 });
-              
-              if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
-              scanTimeoutRef.current = setTimeout(() => {
-                lastScannedCode.current = null;
-              }, 2000);
+              toast.success(`EAN: ${code}`, { id: 'scan-success', duration: 800 });
             }
           }
-          // Ignoramos silenciosamente los errores cuando no encuentra código para evitar pantalla negra
         });
       }
 
@@ -109,7 +103,6 @@ const Scanner = ({ onScanSuccess }) => {
       return () => {
         isMounted.current = false;
         clearTimeout(timeoutId);
-        clearTimeout(scanTimeoutRef.current);
         stopCamera();
       };
     } else {
@@ -119,7 +112,6 @@ const Scanner = ({ onScanSuccess }) => {
 
     return () => {
       isMounted.current = false;
-      clearTimeout(scanTimeoutRef.current);
       stopCamera();
     };
   }, [isManualInput, startScanner, stopCamera]);
@@ -139,14 +131,12 @@ const Scanner = ({ onScanSuccess }) => {
       try {
         const result = await codeReaderRef.current.decodeFromImageUrl(imageData);
         if (result) {
-          const code = result.getText();
-          // Lógica anti-rebote también aquí por si acaso
-          if (code !== lastScannedCode.current) {
-             lastScannedCode.current = code;
-             onScanSuccess(code);
+          const now = Date.now();
+          // Aplicamos la misma lógica de tiempo
+          if (now - lastScanTime.current > 800) {
+             lastScanTime.current = now;
+             onScanSuccess(result.getText());
              toast.success("Detectado por captura fotográfica");
-             if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
-             scanTimeoutRef.current = setTimeout(() => { lastScannedCode.current = null; }, 2000);
           }
         }
       } catch (scanErr) {
@@ -157,7 +147,6 @@ const Scanner = ({ onScanSuccess }) => {
     }
   };
 
-  // 🚩 Manejo del formulario de ingreso manual por teclado
   const handleKeyboardSubmit = (e) => {
     e.preventDefault();
     if (manualCode.trim().length >= 4) {
@@ -172,11 +161,9 @@ const Scanner = ({ onScanSuccess }) => {
       
       {!isManualInput ? (
         <>
-          {/* MODO CÁMARA */}
           <video ref={videoRef} className="w-full h-full object-cover scale-[1.15]" playsInline muted autoPlay />
           <canvas ref={canvasRef} className="hidden" />
 
-          {/* Visor UI */}
           <div className="absolute inset-0 pointer-events-none z-10 flex flex-col items-center justify-center p-8">
             <div className="relative w-64 h-44 border-2 border-[#87be00]/30 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]">
               <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-[#87be00] rounded-tl-xl"></div>
@@ -192,12 +179,9 @@ const Scanner = ({ onScanSuccess }) => {
 
           {!loading && !error && (
             <div className="absolute bottom-6 left-0 w-full flex justify-center gap-4 z-30 px-6">
-              {/* Botón original de foto forzada */}
               <button onClick={captureManual} className="bg-white/10 backdrop-blur-xl border border-white/30 p-4 rounded-full active:scale-90 transition-transform shadow-2xl">
                 <FiCamera className="text-[#87be00]" size={24} />
               </button>
-              
-              {/* Nuevo botón para pasar a teclado */}
               <button onClick={() => setIsManualInput(true)} className="bg-white/10 backdrop-blur-xl border border-white/30 px-6 py-4 rounded-full flex items-center gap-2 active:scale-90 transition-transform shadow-2xl">
                 <FiEdit3 className="text-white" size={18} />
                 <span className="text-[10px] font-black text-white uppercase tracking-widest">Digitar EAN</span>
@@ -222,7 +206,6 @@ const Scanner = ({ onScanSuccess }) => {
           )}
         </>
       ) : (
-        /* MODO INGRESO POR TECLADO */
         <div className="w-full h-full bg-white flex flex-col items-center justify-center p-6 relative">
           <button onClick={() => setIsManualInput(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-900 bg-gray-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase">
             Volver a Cámara
