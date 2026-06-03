@@ -9,8 +9,8 @@ const Scanner = ({ onScanSuccess }) => {
   const codeReaderRef = useRef(null);
   const isMounted = useRef(true);
 
-  const lastScannedCode = useRef(null);
-  const scanTimeoutRef = useRef(null);
+  // 🚩 El "cooldown" para evitar que se disparen 60 escaneos por segundo
+  const isScanning = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,13 +45,23 @@ const Scanner = ({ onScanSuccess }) => {
       
       if (videoRef.current && isMounted.current && !isManualInput) {
         videoRef.current.srcObject = stream;
+        
         codeReader.decodeFromStream(stream, videoRef.current, (result, err) => {
-          if (result && !isManualInput && result.getText() !== lastScannedCode.current) {
-            lastScannedCode.current = result.getText();
-            onScanSuccess(result.getText());
+          // 🚩 MEJORA: Eliminamos la restricción `result.getText() !== lastScannedCode.current`
+          // Ahora controlamos con `isScanning` para no saturar el estado
+          if (result && !isManualInput && !isScanning.current) {
+            isScanning.current = true;
+            const code = result.getText();
+            
+            onScanSuccess(code);
+            
             if (navigator.vibrate) navigator.vibrate(100);
-            toast.success(`EAN: ${result.getText()}`, { id: 'scan-success' });
-            setTimeout(() => { lastScannedCode.current = null; }, 2000);
+            toast.success(`EAN: ${code}`, { id: 'scan-success', duration: 800 });
+            
+            // 🚩 Enfriamiento de 800ms para permitir volver a escanear el mismo código rápidamente
+            setTimeout(() => { 
+              isScanning.current = false; 
+            }, 800);
           }
         });
       }
@@ -69,21 +79,18 @@ const Scanner = ({ onScanSuccess }) => {
   }, [isManualInput, startScanner, stopCamera]);
 
   return (
-    // 🚩 MEJORA: Contenedor responsivo sin aspect-ratio fijo rígido
     <div className="relative w-full min-h-[400px] max-h-[70vh] bg-black rounded-[2rem] overflow-hidden shadow-2xl flex flex-col">
       
       {!isManualInput ? (
         <>
           <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
           
-          {/* Visor UI */}
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
              <div className="w-64 h-40 border-2 border-[#87be00]/40 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] animate-in zoom-in duration-300">
                 <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-[#87be00] opacity-50 shadow-[0_0_15px_#87be00] animate-pulse"></div>
              </div>
           </div>
 
-          {/* 🚩 MEJORA: Botones posicionados con margen seguro inferior */}
           {!loading && !error && (
             <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-4 z-30 px-6 pb-4">
               <button onClick={() => setIsManualInput(true)} className="bg-white/10 backdrop-blur-md border border-white/20 px-6 py-4 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
@@ -98,7 +105,6 @@ const Scanner = ({ onScanSuccess }) => {
           )}
         </>
       ) : (
-        /* MODO MANUAL */
         <div className="w-full h-full bg-white flex flex-col items-center justify-center p-6 relative">
           <button onClick={() => setIsManualInput(false)} className="absolute top-6 left-6 text-gray-400 p-2">
             <FiArrowLeft size={24} />
