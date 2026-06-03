@@ -374,7 +374,7 @@ const handleCapture = async (e) => {
         {step === 5 && (
           <div className="space-y-4">
              {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, 5)}
-             <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
+             <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre este producto..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
              <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Confirmar Producto</button>
           </div>
         )}
@@ -391,6 +391,7 @@ const handleCapture = async (e) => {
         {step === 7 && (
           <div className="space-y-4">
              {renderPhotoContainer(exitPhoto, setExitPhoto, 7)}
+              <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre la sala..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
              {exitPhoto && <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px]">Confirmar y Finalizar</button>}
           </div>
         )}
