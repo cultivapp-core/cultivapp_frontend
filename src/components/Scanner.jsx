@@ -9,8 +9,8 @@ const Scanner = ({ onScanSuccess }) => {
   const codeReaderRef = useRef(null);
   const isMounted = useRef(true);
 
-  // 🚩 MEJORA: Ref para control de tiempo de escaneo
-  const lastScanTime = useRef(0);
+  const lastScannedCode = useRef(null);
+  const scanTimeoutRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -18,9 +18,7 @@ const Scanner = ({ onScanSuccess }) => {
   const [manualCode, setManualCode] = useState("");
 
   const stopCamera = useCallback(() => {
-    if (codeReaderRef.current) {
-      codeReaderRef.current.reset();
-    }
+    if (codeReaderRef.current) codeReaderRef.current.reset();
     if (videoRef.current?.srcObject) {
       videoRef.current.srcObject.getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
@@ -47,21 +45,14 @@ const Scanner = ({ onScanSuccess }) => {
       
       if (videoRef.current && isMounted.current && !isManualInput) {
         videoRef.current.srcObject = stream;
-        
-        // 🚩 MEJORA: Lógica de escaneo con cooldown de 800ms
         codeReader.decodeFromStream(stream, videoRef.current, (result, err) => {
-          if (!result || isManualInput) return;
-
-          const now = Date.now();
-          if (now - lastScanTime.current < 800) return;
-
-          lastScanTime.current = now;
-          const code = result.getText();
-
-          onScanSuccess(code);
-
-          if (navigator.vibrate) navigator.vibrate(100);
-          toast.success(`EAN: ${code}`, { id: "scan-success" });
+          if (result && !isManualInput && result.getText() !== lastScannedCode.current) {
+            lastScannedCode.current = result.getText();
+            onScanSuccess(result.getText());
+            if (navigator.vibrate) navigator.vibrate(100);
+            toast.success(`EAN: ${result.getText()}`, { id: 'scan-success' });
+            setTimeout(() => { lastScannedCode.current = null; }, 2000);
+          }
         });
       }
       setLoading(false);
@@ -77,50 +68,22 @@ const Scanner = ({ onScanSuccess }) => {
     return () => { isMounted.current = false; stopCamera(); };
   }, [isManualInput, startScanner, stopCamera]);
 
-  // 🚩 Actualizado para usar lastScanTime
-  const captureManual = async () => {
-    if (!videoRef.current || !codeReaderRef.current) return;
-    try {
-      const canvas = canvasRef.current;
-      const context = canvas.getContext("2d");
-      const video = videoRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = canvas.toDataURL("image/jpeg", 0.9);
-
-      try {
-        const result = await codeReaderRef.current.decodeFromImageUrl(imageData);
-        if (result) {
-          const now = Date.now();
-          if (now - lastScanTime.current >= 800) {
-             lastScanTime.current = now;
-             onScanSuccess(result.getText());
-             toast.success("Detectado por captura");
-          }
-        }
-      } catch (scanErr) {
-        toast.error("No se detectó código", { id: 'scan-err' });
-      }
-    } catch (fatalErr) {
-      console.error("Error disparo manual:", fatalErr);
-    }
-  };
-
   return (
+    // 🚩 MEJORA: Contenedor responsivo sin aspect-ratio fijo rígido
     <div className="relative w-full min-h-[400px] max-h-[70vh] bg-black rounded-[2rem] overflow-hidden shadow-2xl flex flex-col">
       
       {!isManualInput ? (
         <>
           <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
-          <canvas ref={canvasRef} className="hidden" />
           
+          {/* Visor UI */}
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
              <div className="w-64 h-40 border-2 border-[#87be00]/40 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] animate-in zoom-in duration-300">
                 <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-[#87be00] opacity-50 shadow-[0_0_15px_#87be00] animate-pulse"></div>
              </div>
           </div>
 
+          {/* 🚩 MEJORA: Botones posicionados con margen seguro inferior */}
           {!loading && !error && (
             <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-4 z-30 px-6 pb-4">
               <button onClick={() => setIsManualInput(true)} className="bg-white/10 backdrop-blur-md border border-white/20 px-6 py-4 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
@@ -135,6 +98,7 @@ const Scanner = ({ onScanSuccess }) => {
           )}
         </>
       ) : (
+        /* MODO MANUAL */
         <div className="w-full h-full bg-white flex flex-col items-center justify-center p-6 relative">
           <button onClick={() => setIsManualInput(false)} className="absolute top-6 left-6 text-gray-400 p-2">
             <FiArrowLeft size={24} />
