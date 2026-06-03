@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import api from "../../api/apiClient";
 import { toast } from "react-hot-toast";
-import { Send, Users, Store, Globe, Loader2, X, CheckCircle2, Mail, UserCircle } from "lucide-react";
+import { Send, Users, Store, Globe, Loader2, X, CheckCircle2, Mail, UserCircle, Search } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { FiShield } from "react-icons/fi";
 
@@ -14,6 +14,9 @@ const NotificationManager = () => {
   
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(false);
+  
+  // 🔍 Nuevo estado para el buscador
+  const [searchTerm, setSearchTerm] = useState("");
 
   const ID_CULTIVA = '0e342e01-d213-4353-b210-39a12ac335cf'; 
   
@@ -47,6 +50,7 @@ const NotificationManager = () => {
       });
     }
     setForm(prev => ({ ...prev, chainId: "", localId: "", selectedTargets: [] }));
+    setSearchTerm(""); // Resetear búsqueda al cambiar de empresa
   }, [form.companyId]);
 
   useEffect(() => {
@@ -64,7 +68,22 @@ const NotificationManager = () => {
         setFetchingData(false);
       });
     }
+    setSearchTerm(""); // Resetear búsqueda al cambiar de local
   }, [form.localId, form.scope]);
+
+  // 🔍 Lógica de filtrado de usuarios
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm.trim()) return users;
+    
+    const term = searchTerm.toLowerCase().trim();
+    return users.filter(u => {
+      const nameMatch = `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase().includes(term);
+      const emailMatch = (u.email || '').toLowerCase().includes(term);
+      const rutMatch = (u.rut || '').toLowerCase().includes(term); // Asumiendo que existe u.rut
+      
+      return nameMatch || emailMatch || rutMatch;
+    });
+  }, [users, searchTerm]);
 
   const toggleUserSelection = (userId) => {
     setForm(prev => {
@@ -79,11 +98,12 @@ const NotificationManager = () => {
   };
 
   const getUserInfo = (u) => {
-    if (!u) return { name: "Desconocido", email: "-", role: "-" };
+    if (!u) return { name: "Desconocido", email: "-", role: "-", rut: "-" };
     const name = `${u.first_name || ''} ${u.last_name || ''}`.trim() || "Sin nombre";
     const email = u.email || "No registra";
     const role = u.role || "Personal";
-    return { name, email, role };
+    const rut = u.rut || "";
+    return { name, email, role, rut };
   };
 
   const handleSubmit = async (e) => {
@@ -105,6 +125,7 @@ const NotificationManager = () => {
       
       toast.success("¡Alertas enviadas con éxito en Cultivapp!");
       setForm(prev => ({ ...prev, title: "", message: "", selectedTargets: [] }));
+      setSearchTerm("");
     } catch (error) {
       toast.error("Error: " + error.message);
     } finally {
@@ -113,10 +134,8 @@ const NotificationManager = () => {
   };
 
   return (
-    // 🚩 Ajustamos padding exterior para móviles (p-4 md:p-8)
     <div className="p-4 md:p-8 max-w-5xl mx-auto font-[Outfit] animate-in fade-in duration-500 pb-20">
       
-      {/* 🚩 Redondeado más pequeño en móvil para ganar espacio interno */}
       <div className="bg-white rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 shadow-2xl shadow-gray-200/50 border border-gray-100">
         
         <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -136,7 +155,6 @@ const NotificationManager = () => {
 
         <form onSubmit={handleSubmit} className="space-y-6 md:space-y-8">
           
-          {/* 🚩 Grid adaptable: 1 col en móvil, 3 en desktop */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-4 bg-gray-50 p-4 md:p-6 rounded-[1.5rem] md:rounded-[2.5rem]">
             
             {canSeeCompanies ? (
@@ -202,28 +220,60 @@ const NotificationManager = () => {
 
           {(form.scope === 'individual' || form.scope === 'local') && (
             <div className="space-y-4">
-              <div className="flex flex-col gap-3 px-2">
-                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Personal Seleccionado ({form.selectedTargets.length})</label>
-                <div className="flex flex-wrap gap-2">
-                  {form.selectedTargets.map(id => {
-                    const u = users.find(user => user.id === id);
-                    const { name } = getUserInfo(u);
-                    return (
-                      <span key={id} className="bg-[#87be00] text-white px-3 py-1.5 rounded-full text-[8px] md:text-[9px] font-bold flex items-center gap-1.5 shadow-sm">
-                        {name} <X size={10} className="cursor-pointer bg-white/20 rounded-full" onClick={() => toggleUserSelection(id)}/>
-                      </span>
-                    );
-                  })}
+              
+              {/* 🔍 Buscador y Contador de Seleccionados */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-2">
+                <div className="w-full md:w-1/2">
+                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Buscar Personal</label>
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <input 
+                      type="text" 
+                      placeholder="Buscar por nombre, correo o RUT..."
+                      className="w-full bg-gray-50 border-none rounded-xl px-11 py-3 text-[10px] font-bold outline-none focus:ring-2 focus:ring-[#87be00]/20 transition shadow-inner"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 w-full md:w-1/2 md:text-right">
+                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                    Seleccionados ({form.selectedTargets.length})
+                  </span>
+                  {form.selectedTargets.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 md:justify-end">
+                      {form.selectedTargets.slice(0, 3).map(id => {
+                        const u = users.find(user => user.id === id);
+                        const { name } = getUserInfo(u);
+                        return (
+                          <span key={id} className="bg-[#87be00] text-white px-2 py-1 rounded-full text-[8px] font-bold flex items-center gap-1 shadow-sm">
+                            <span className="max-w-[60px] truncate">{name}</span>
+                            <X size={10} className="cursor-pointer shrink-0" onClick={() => toggleUserSelection(id)}/>
+                          </span>
+                        );
+                      })}
+                      {form.selectedTargets.length > 3 && (
+                        <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded-full text-[8px] font-bold">
+                          +{form.selectedTargets.length - 3} más
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 md:max-h-80 overflow-y-auto p-3 md:p-4 bg-gray-50 rounded-[1.5rem] md:rounded-[2.5rem] border border-gray-100">
                 {fetchingData ? (
                   <div className="col-span-full py-12 flex justify-center"><Loader2 className="animate-spin text-[#87be00]"/></div>
+                ) : filteredUsers.length === 0 ? (
+                  <div className="col-span-full py-8 text-center text-gray-400 text-[10px] font-black uppercase">
+                    No se encontraron usuarios {searchTerm && 'para tu búsqueda'}
+                  </div>
                 ) : (
-                  users.map(u => {
+                  filteredUsers.map(u => {
                     const isSelected = form.selectedTargets.includes(u.id);
-                    const { name, email, role } = getUserInfo(u);
+                    const { name, email, role, rut } = getUserInfo(u);
                     return (
                       <button
                         key={u.id}
@@ -240,6 +290,11 @@ const NotificationManager = () => {
                           <div className="flex items-center gap-1 text-[8px] md:text-[9px] font-medium text-gray-400 truncate">
                             <Mail size={10} className="shrink-0"/> {email}
                           </div>
+                          {rut && (
+                            <div className="flex items-center gap-1 text-[8px] md:text-[9px] font-medium text-gray-400 truncate">
+                              <UserCircle size={10} className="shrink-0"/> {rut}
+                            </div>
+                          )}
                         </div>
                         <div className="flex justify-between items-center mt-3 md:mt-4">
                           <div className={`text-[7px] md:text-[8px] font-black px-2 py-0.5 md:py-1 rounded-lg uppercase truncate ${isSelected ? 'bg-[#87be00] text-white' : 'bg-gray-100 text-gray-500'}`}>
