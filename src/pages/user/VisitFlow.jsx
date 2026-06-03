@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { 
   FiCamera, FiLoader, FiMapPin, FiArrowRight, 
@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 import Scanner from "../../components/Scanner"; 
 import QuestionRenderer from "../../components/modals/QuestionRenderer"; 
 
+// 🚀 FUNCIÓN DE COMPRESIÓN (Optimizada para móvil - Nueva)
 const compressImage = (file, maxWidth = 1024, quality = 0.7) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -20,23 +21,16 @@ const compressImage = (file, maxWidth = 1024, quality = 0.7) => {
         const canvas = document.createElement("canvas");
         let width = img.width;
         let height = img.height;
-
         if (width > maxWidth) {
           height = Math.round((height * maxWidth) / width);
           width = maxWidth;
         }
-
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, width, height);
-
         canvas.toBlob((blob) => {
-          const compressedFile = new File([blob], file.name, {
-            type: "image/jpeg",
-            lastModified: Date.now(),
-          });
-          resolve(compressedFile);
+          resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }));
         }, "image/jpeg", quality);
       };
     };
@@ -48,6 +42,7 @@ const VisitFlow = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const isProcessingScan = useRef(false);
+  const captureStepRef = useRef(1); // 🚀 FIX: Captura el step exacto para evitar cruces
 
   const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -72,6 +67,7 @@ const VisitFlow = () => {
   const [fachadaPhoto, setFachadaPhoto] = useState(null);
   const [gondolaInicialPhoto, setGondolaInicialPhoto] = useState(null);
   const [gondolaTerminoPhoto, setGondolaTerminoPhoto] = useState(null); 
+  const [exitPhoto, setExitPhoto] = useState(null); // 🚀 FIX: Estado de salida
 
   const stepsInfo = {
     1: { key: "foto_fachada", title: "Llegada al Local", sub: "Evidencia de entrada" },
@@ -89,6 +85,12 @@ const VisitFlow = () => {
     if (url.startsWith('http') || url.startsWith('blob:')) return url;
     return `${BASE_URL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
   };
+
+  // 🚀 LÓGICA DE AGRUPACIÓN EAN
+  const groupedScannedCodes = useMemo(() => scannedCodes.reduce((acc, code) => {
+    acc[code] = (acc[code] || 0) + 1;
+    return acc;
+  }, {}), [scannedCodes]);
 
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
@@ -150,11 +152,12 @@ const VisitFlow = () => {
     const toastId = toast.loading("Optimizando y subiendo...");
     
     try {
+      // 🚀 Aplicamos compresión
       const compressedFile = await compressImage(file, 1024, 0.7);
-
+      const activeStepKey = stepsInfo[captureStepRef.current]?.key;
+      
       const formData = new FormData();
-      // Le agregamos la fecha al nombre para que el backend no lo sobreescriba si guarda con el mismo nombre
-      formData.append("photo_type", `${stepsInfo[step].key}_${Date.now()}`);
+      formData.append("photo_type", activeStepKey);
       formData.append("foto", compressedFile); 
       
       const response = await api.post(`/routes/${id}/photo`, formData);
@@ -163,20 +166,18 @@ const VisitFlow = () => {
         ? URL.createObjectURL(compressedFile) 
         : (response.image_url || response.url || URL.createObjectURL(compressedFile));
 
-      // 🚀 ROMPE CACHÉ: Le agregamos "?t=12312312" al final de la URL para obligar a que cargue la foto fresca
+      // 🚀 ROMPE CACHÉ: Añadimos timestamp a la URL
       if (photoPath && !photoPath.startsWith('blob:')) {
-        const separator = photoPath.includes('?') ? '&' : '?';
-        photoPath = `${photoPath}${separator}t=${Date.now()}`;
+        photoPath = `${photoPath}${photoPath.includes('?') ? '&' : '?'}t=${Date.now()}`;
       }
 
-      const currentStepKey = stepsInfo[step].key;
-      if (currentStepKey === "foto_fachada") setFachadaPhoto(photoPath);
-      if (currentStepKey === "foto_gondola_inicio") setGondolaInicialPhoto(photoPath);
-      if (currentStepKey === "foto_gondola_termino") setGondolaTerminoPhoto(photoPath);
-      if (currentStepKey === "foto_salida") setFachadaPhoto(photoPath); // Si se requiere para salida
+      if (activeStepKey === "foto_fachada") setFachadaPhoto(photoPath);
+      if (activeStepKey === "foto_gondola_inicio") setGondolaInicialPhoto(photoPath);
+      if (activeStepKey === "foto_gondola_termino") setGondolaTerminoPhoto(photoPath);
+      if (activeStepKey === "foto_salida") setExitPhoto(photoPath);
       
       toast.success("Captura guardada", { id: toastId });
-      if (step === 1) setStep(prev => prev + 1);
+      if (captureStepRef.current === 1) setStep(prev => prev + 1);
     } catch (err) {
       toast.error("Error al subir imagen", { id: toastId });
     } finally {
@@ -186,19 +187,14 @@ const VisitFlow = () => {
   };
 
   const handleScanSuccess = async (decodedText) => {
-    // 🚀 ELIMINAMOS el bloqueo de códigos repetidos. Ahora sumará unidades.
+    // 🚀 Se permite registro aunque sea duplicado (lógica agrupada)
     if (isProcessingScan.current) return;
     
     isProcessingScan.current = true;
     try {
       await api.post(`/routes/${id}/scans`, { barcode: decodedText });
-      
-      // Agregamos el código al historial (así sea repetido)
       setScannedCodes(prev => [decodedText, ...prev]);
-      
-      // Feedback ligero y rápido
-      toast.success("EAN registrado", { duration: 1000, position: 'bottom-center' });
-      
+      toast.success("EAN registrado", { duration: 800, position: 'bottom-center' });
       setTimeout(() => { isProcessingScan.current = false; }, 600);
     } catch (err) { isProcessingScan.current = false; }
   };
@@ -225,16 +221,11 @@ const VisitFlow = () => {
       await api.post(`/routes/${id}/task`, taskData);
       toast.success("Producto registrado exitosamente", { id: toastId });
 
-      setScannedCodes([]); 
-      setAnswers({}); 
-      setComment("");
-      setGondolaTerminoPhoto(null); 
-      setGondolaInicialPhoto(null);
-      setProductStartTime(null); 
-      setSelectedBrand(""); 
-      setSelectedProduct("");
-      setImageError(false); 
-      isProcessingScan.current = false;
+      // 🚀 LIMPIEZA PROFUNDA: Solución al "Efecto Fantasma"
+      setScannedCodes([]); setAnswers({}); setComment("");
+      setGondolaTerminoPhoto(null); setGondolaInicialPhoto(null);
+      setProductStartTime(null); setSelectedBrand(""); setSelectedProduct("");
+      setImageError(false); isProcessingScan.current = false;
 
       if (proximoPaso === 'NUEVO') setStep(2); 
       else setStep(7); 
@@ -253,24 +244,18 @@ const VisitFlow = () => {
     finally { setLoading(false); }
   };
 
-  // 🚀 LÓGICA DE AGRUPACIÓN VISUAL: Suma cantidades de EANs repetidos
-  const groupedScannedCodes = scannedCodes.reduce((acc, code) => {
-    acc[code] = (acc[code] || 0) + 1;
-    return acc;
-  }, {});
-
-  const renderPhotoContainer = (photoUrl, setPhotoUrl, placeholderText) => {
+  const renderPhotoContainer = (photoUrl, setPhotoUrl, stepKey) => {
     if (photoUrl && !imageError) {
       return (
-        <div className="relative w-full aspect-square bg-gray-50 rounded-[2rem] md:rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-xl group animate-in fade-in zoom-in duration-300">
+        <div className="relative w-full aspect-square bg-gray-50 rounded-[3rem] overflow-hidden border-4 border-gray-100 shadow-xl group animate-in fade-in zoom-in duration-300">
           <img 
             src={formatImageUrl(photoUrl)} 
             className="w-full h-full object-cover" 
-            alt={placeholderText}
+            alt="Foto"
             onError={() => setImageError(true)}
           />
-          <button onClick={(e) => { e.stopPropagation(); setPhotoUrl(null); setImageError(false); }} className="absolute top-3 right-3 md:top-4 md:right-4 bg-red-500 text-white p-3 md:p-4 rounded-full shadow-lg active:scale-90 transition-transform z-10">
-            <FiX size={20}/>
+          <button onClick={(e) => { e.stopPropagation(); setPhotoUrl(null); setImageError(false); }} className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-transform z-10">
+            <FiX size={18}/>
           </button>
         </div>
       );
@@ -278,27 +263,27 @@ const VisitFlow = () => {
     
     if (imageError) {
         return (
-            <div className="w-full aspect-square bg-gray-50 border-4 border-dashed border-red-200 rounded-[2rem] md:rounded-[3rem] flex flex-col items-center justify-center text-red-400 p-4">
+            <div className="w-full aspect-square bg-gray-50 border-4 border-dashed border-red-200 rounded-[3rem] flex flex-col items-center justify-center text-red-400">
                 <FiAlertCircle size={40} className="mb-2" />
-                <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
-                <button onClick={() => setImageError(false)} className="mt-4 text-xs font-bold underline active:scale-95 transition-transform p-2">Reintentar</button>
+                <span className="text-[10px] font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
+                <button onClick={() => setImageError(false)} className="mt-4 text-xs font-bold underline">Reintentar</button>
             </div>
         )
     }
     
     return (
-      <div onClick={() => !capturing && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[2rem] md:rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 hover:border-[#87be00]/50 transition-all group p-4">
+      <div onClick={() => !capturing && (captureStepRef.current = stepKey) && fileInputRef.current.click()} className="w-full aspect-square bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer active:scale-95 hover:border-[#87be00]/50 transition-all group">
         {capturing ? (
           <div className="flex flex-col items-center">
-            <FiLoader className="animate-spin text-[#87be00] mb-3" size={44} />
-            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest">Procesando...</span>
+            <FiLoader className="animate-spin text-[#87be00] mb-2" size={44} />
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Procesando...</span>
           </div>
         ) : (
           <>
-            <div className="bg-white p-5 md:p-6 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform flex items-center justify-center">
-                <FiCamera size={36} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} />
+            <div className="bg-white p-6 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform">
+                <FiCamera size={40} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} />
             </div>
-            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-widest px-4 text-center leading-tight">Capturar {placeholderText}</span>
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 text-center">Capturar</span>
           </>
         )}
       </div>
@@ -306,7 +291,7 @@ const VisitFlow = () => {
   };
 
   return (
-    <div className={`min-h-screen font-[Outfit] p-3 md:p-4 pb-28 flex flex-col items-center transition-colors duration-500 ${isOnline ? 'bg-gray-50' : 'bg-orange-50/40'}`}>
+    <div className={`min-h-screen font-[Outfit] p-4 pb-24 flex flex-col items-center transition-colors duration-500 ${isOnline ? 'bg-gray-50' : 'bg-orange-50/40'}`}>
       
       {!isOnline && (
         <div className="fixed top-0 left-0 w-full bg-orange-500 text-white text-[10px] font-black py-1.5 text-center z-[60] flex items-center justify-center gap-2 shadow-lg">
@@ -314,40 +299,40 @@ const VisitFlow = () => {
         </div>
       )}
 
-      <div className="w-full max-w-md flex justify-between mb-6 sticky top-4 z-20 py-2 px-1">
+      <div className="w-full max-w-md flex justify-between mb-8 sticky top-6 z-20 py-2">
         {[1, 2, 3, 4, 5, 7].map(i => (
-          <div key={i} className={`h-1.5 flex-1 mx-1 rounded-full transition-all duration-700 ${step >= i ? 'bg-[#87be00]' : 'bg-gray-200 shadow-inner'}`} />
+          <div key={i} className={`h-1.5 flex-1 mx-1 rounded-full transition-all duration-700 ${step >= i ? 'bg-[#87be00]' : 'bg-gray-200'}`} />
         ))}
       </div>
 
-      <div className="w-full max-w-md bg-white p-5 md:p-6 rounded-[2rem] md:rounded-[2.5rem] shadow-xl text-center space-y-5 border border-gray-100 relative overflow-hidden">
+      <div className="w-full max-w-md bg-white p-6 rounded-[2.5rem] shadow-xl text-center space-y-6 border border-gray-100 relative overflow-hidden">
         
-        <div className="space-y-1 pt-1">
-            <h2 className="text-lg md:text-xl font-black uppercase text-gray-900 leading-none">{stepsInfo[step]?.title || "Cierre"}</h2>
-            <p className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step]?.sub}</p>
+        <div className="space-y-1 pt-2">
+            <h2 className="text-xl font-black uppercase text-gray-900 leading-none">{stepsInfo[step]?.title || "Cierre"}</h2>
+            <p className={`text-[9px] font-black uppercase tracking-[0.2em] ${isOnline ? 'text-[#87be00]' : 'text-orange-500'}`}>{stepsInfo[step]?.sub}</p>
         </div>
 
-        {/* STEP 1 */}
+        {/* STEP 1: FACHADA */}
         {step === 1 && (
-          <div className="space-y-4 animate-in zoom-in duration-300">
-             {renderPhotoContainer(fachadaPhoto, setFachadaPhoto, stepsInfo[step].title)}
-          </div>
+            <div className="space-y-4 animate-in zoom-in duration-300">
+               {renderPhotoContainer(fachadaPhoto, setFachadaPhoto, 1)}
+            </div>
         )}
 
-        {/* STEP 2 */}
+        {/* STEP 2: MARCA/PRODUCTO + FOTO GÓNDOLA INICIAL */}
         {step === 2 && (
-          <div className="space-y-4 md:space-y-5 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-500">
             <div className="grid grid-cols-1 gap-3">
               <div className="relative text-left">
-                <FiTag className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
-                <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)} className="w-full pl-11 pr-4 py-3.5 md:py-4 bg-gray-50 rounded-2xl md:rounded-[1.5rem] border-none text-xs md:text-sm font-bold outline-none shadow-inner appearance-none truncate">
+                <FiTag className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+                <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)} className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none">
                   <option value="">Seleccione Marca...</option>
                   {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
               <div className="relative text-left">
-                <FiBox className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
-                <select disabled={!selectedBrand} value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full pl-11 pr-4 py-3.5 md:py-4 bg-gray-50 rounded-2xl md:rounded-[1.5rem] border-none text-xs md:text-sm font-bold outline-none shadow-inner appearance-none disabled:opacity-40 truncate">
+                <FiBox className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+                <select disabled={!selectedBrand} value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none disabled:opacity-40">
                   <option value="">Seleccione Producto...</option>
                   {filteredProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
@@ -356,10 +341,10 @@ const VisitFlow = () => {
 
             {selectedProduct && (
               <div className="pt-2 animate-in zoom-in duration-300 space-y-4">
-                {renderPhotoContainer(gondolaInicialPhoto, setGondolaInicialPhoto, "Foto Inicial")}
+                {renderPhotoContainer(gondolaInicialPhoto, setGondolaInicialPhoto, 2)}
                 {gondolaInicialPhoto && (
-                  <button onClick={() => setStep(3)} className="w-full mt-2 bg-[#87be00] text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
-                    Escanear Productos <FiArrowRight size={18}/>
+                  <button onClick={() => setStep(3)} className="w-full mt-4 bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
+                    Escanear Productos <FiArrowRight size={16}/>
                   </button>
                 )}
               </div>
@@ -367,117 +352,96 @@ const VisitFlow = () => {
           </div>
         )}
 
-        {/* STEP 3 - ESCÁNER Y CANTIDADES */}
+        {/* STEP 3: ESCANEO EAN */}
         {step === 3 && (
           <div className="space-y-4 animate-in zoom-in duration-300">
-            <div className="rounded-2xl md:rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
+            <div className="rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
               <Scanner onScanSuccess={handleScanSuccess} />
             </div>
-            <div className="flex flex-col gap-2 max-h-40 md:max-h-48 overflow-y-auto px-1 custom-scrollbar border-y border-gray-50 py-2 md:py-3 text-left">
-                {Object.keys(groupedScannedCodes).length > 0 ? Object.entries(groupedScannedCodes).map(([code, qty], idx) => (
-                  <div key={idx} className="flex items-center justify-between bg-gray-50 p-2.5 md:p-3 rounded-xl md:rounded-2xl border border-gray-100">
-                    <div className="flex items-center gap-2 md:gap-3">
-                      <FiCheckCircle className="text-[#87be00] shrink-0" size={16}/>
-                      <span className="text-[10px] md:text-xs font-bold text-gray-700 truncate">{code}</span>
-                      {qty > 1 && (
-                        <span className="bg-[#87be00] text-white text-[8px] md:text-[9px] font-black px-2 py-0.5 rounded-full shadow-sm animate-in zoom-in">
-                          x{qty}
-                        </span>
-                      )}
+            {/* 🚀 LÓGICA DE AGRUPACIÓN VISUAL */}
+            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto px-1 custom-scrollbar border-y border-gray-50 py-3 text-left">
+                {Object.entries(groupedScannedCodes).map(([code, qty], idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                    <div className="flex items-center gap-3"><FiCheckCircle className="text-[#87be00]" size={14}/><span className="text-[10px] font-bold text-gray-700">{code}</span></div>
+                    <div className="flex items-center gap-2">
+                        {qty > 1 && <span className="bg-[#87be00] text-white text-[9px] font-black px-2 rounded-lg">x{qty}</span>}
+                        <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-red-400 p-1 hover:bg-red-50 rounded-lg"><FiTrash2 size={14}/></button>
                     </div>
-                    {/* Al borrar, borramos todas las instancias de ese código */}
-                    <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-red-400 p-2 hover:bg-red-50 rounded-lg active:scale-90 transition-transform shrink-0"><FiTrash2 size={16}/></button>
                   </div>
-                )) : <p className="text-[9px] md:text-[10px] text-gray-300 font-black uppercase py-6 md:py-8 text-center tracking-widest">Esperando escaneo...</p>}
+                ))}
             </div>
-            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-lg active:scale-95 transition-transform">Validar Encuesta <FiArrowRight size={18}/></button>
+            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-lg">Validar Encuesta <FiArrowRight size={16}/></button>
           </div>
         )}
 
-        {/* STEP 4 */}
+        {/* STEP 4: ENCUESTAS */}
         {step === 4 && (
-           <div className="space-y-4 md:space-y-5 animate-in slide-in-from-right duration-300 text-left">
-             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-               {questions.map((q) => {
-                 const rawConfig = q.config || {};
-                 const normalizedQuestion = {
-                    ...q,
-                    config: rawConfig.config ? rawConfig.config : rawConfig
-                 };
-                 
-                 return (
-                   <div key={q.id} className="bg-gray-50/70 p-4 md:p-5 rounded-2xl md:rounded-[2rem] border border-gray-100 shadow-sm">
-                     <p className="text-[10px] md:text-xs font-black text-gray-800 uppercase tracking-tighter leading-tight mb-3">
-                       {q.question} {q.is_required && <span className="text-red-500 font-black ml-0.5">*</span>}
-                     </p>
-                     <QuestionRenderer 
-                       question={normalizedQuestion} 
-                       answer={answers[q.id]} 
-                       onChange={(val) => setAnswers({...answers, [q.id]: val})} 
-                     />
-                   </div>
-                 );
-               })}
+           <div className="space-y-5 animate-in slide-in-from-right duration-300 text-left">
+             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
+               {questions.map((q) => (
+                 <div key={q.id} className="bg-gray-50/70 p-5 rounded-[2rem] border border-gray-100 shadow-sm">
+                   <p className="text-xs font-black text-gray-800 uppercase tracking-tighter leading-tight mb-3">
+                     {q.question} {q.is_required && <span className="text-red-500">*</span>}
+                   </p>
+                   <QuestionRenderer 
+                     question={q} 
+                     answer={answers[q.id]} 
+                     onChange={(val) => setAnswers({...answers, [q.id]: val})} 
+                   />
+                 </div>
+               ))}
              </div>
-             
-             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-xl active:scale-95 transition-transform">
-               Góndola Final <FiArrowRight size={18}/>
+             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl">
+               Góndola Final <FiArrowRight/>
              </button>
            </div>
         )}
 
-        {/* STEP 5 */}
+        {/* STEP 5: FOTO TERMINO */}
         {step === 5 && (
           <div className="space-y-4 animate-in slide-in-from-right duration-300">
-             {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, "Foto Final")}
-             <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre este producto..." className="w-full h-20 md:h-24 p-4 md:p-5 bg-gray-50 rounded-2xl md:rounded-[2rem] border-none text-[11px] md:text-sm outline-none resize-none shadow-inner focus:ring-2 ring-[#87be00]/20" />
-             <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 disabled:opacity-50 active:scale-95 transition-transform">Confirmar Producto <FiArrowRight size={18}/></button>
+             {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, 5)}
+             <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
+             <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-lg">Confirmar Producto <FiArrowRight size={16}/></button>
           </div>
         )}
 
-        {/* STEP 6 */}
+        {/* STEP 6: DECISIÓN */}
         {step === 6 && (
-          <div className="py-4 md:py-6 space-y-5 md:space-y-6 animate-in zoom-in">
-            <div className="flex flex-col items-center gap-2 md:gap-3">
-              <div className="w-14 h-14 md:w-16 md:h-16 bg-[#87be00]/10 rounded-full flex items-center justify-center text-[#87be00] mb-1 md:mb-2"><FiCheckCircle size={28} className="md:w-8 md:h-8" /></div>
-              <h3 className="text-xs md:text-sm font-black uppercase text-gray-900 tracking-tighter italic">¿Agregar otro producto?</h3>
-              <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight px-4">El tiempo de este producto ha sido registrado.</p>
+          <div className="py-6 space-y-6 animate-in zoom-in">
+            <div className="flex flex-col items-center gap-3">
+              <h3 className="text-sm font-black uppercase text-gray-900 italic">¿Agregar otro producto?</h3>
             </div>
             <div className="flex flex-col gap-3">
-              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-transform hover:bg-[#76a500]">{loading ? <FiLoader className="animate-spin" size={18}/> : <><FiPlusCircle size={18}/> Sí, nuevo producto</>}</button>
-              <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 active:scale-95 transition-transform"><FiLogOut size={18}/> No, finalizar jornada</button>
+              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all">Sí, nuevo producto</button>
+              <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all">Finalizar jornada</button>
             </div>
           </div>
         )}
 
-        {/* STEP 7 - FOTO SALIDA */}
+        {/* STEP 7: REGISTRO SALIDA */}
         {step === 7 && (
           <div className="space-y-4 animate-in slide-in-from-right duration-300">
-             {renderPhotoContainer(fachadaPhoto, setFachadaPhoto, "Foto de Salida")}
-             {fachadaPhoto && (
-                 <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-4 md:py-5 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-[11px] tracking-widest flex items-center justify-center gap-2 md:gap-3 shadow-lg active:scale-95 transition-transform hover:bg-[#76a500]">
-                   Confirmar y Finalizar Visita <FiArrowRight size={18}/>
+             {renderPhotoContainer(exitPhoto, setExitPhoto, 7)}
+             {exitPhoto && (
+                 <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] flex items-center justify-center gap-3 shadow-lg">
+                   Confirmar y Finalizar Visita <FiArrowRight size={16}/>
                  </button>
              )}
           </div>
         )}
 
-        {/* STEP 8 */}
+        {/* STEP 8: CIERRE */}
         {step === 8 && (
-          <div className="py-4 md:py-6 space-y-4 animate-in zoom-in">
-             <div className="bg-[#87be00]/5 p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-[#87be00]/10 text-center mb-4 md:mb-6">
-               <FiCheckCircle className="text-[#87be00] mx-auto mb-2 md:mb-3" size={36} />
-               <p className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Gestión Finalizada</p>
-               <p className="text-[11px] md:text-xs font-bold text-gray-900 mt-1 uppercase italic leading-tight px-2">Has registrado todos los productos y tu salida del local.</p>
-             </div>
-             <button onClick={() => navigate("/usuario/home")} className="w-full bg-black text-white py-4 md:py-6 rounded-2xl md:rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs tracking-widest shadow-2xl flex items-center justify-center gap-2 md:gap-3 active:scale-95 transition-transform">
-               Volver al Inicio
-             </button>
+          <div className="py-6 space-y-4 animate-in zoom-in text-center">
+             <FiCheckCircle className="text-[#87be00] mx-auto" size={60} />
+             <p className="text-xs font-black uppercase">Gestión Finalizada</p>
+             <button onClick={() => navigate("/usuario/home")} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-xs">Volver al inicio</button>
           </div>
         )}
 
-        <div className="pt-4 border-t border-gray-50 flex items-center justify-center gap-2 text-gray-300 text-[7px] md:text-[8px] font-black uppercase tracking-[0.3em]">
-            <FiMapPin size={12} className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /> LOCAL ID: {id?.slice(0,8).toUpperCase()}
+        <div className="pt-4 border-t border-gray-50 flex items-center justify-center gap-2 text-gray-300 text-[8px] font-black uppercase tracking-[0.3em]">
+            <FiMapPin className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /> LOCAL ID: {id?.slice(0,8).toUpperCase()}
         </div>
       </div>
 
