@@ -9,7 +9,7 @@ import toast from "react-hot-toast";
 import Scanner from "../../components/Scanner"; 
 import QuestionRenderer from "../../components/modals/QuestionRenderer"; 
 
-// 🚀 FUNCIÓN DE COMPRESIÓN (Optimizada para móvil - Nueva)
+// 🚀 FUNCIÓN DE COMPRESIÓN (Optimiza carga en móvil)
 const compressImage = (file, maxWidth = 1024, quality = 0.7) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -42,7 +42,7 @@ const VisitFlow = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const isProcessingScan = useRef(false);
-  const captureStepRef = useRef(1); // 🚀 FIX: Captura el step exacto para evitar cruces
+  const captureStepRef = useRef(1); // 🚀 FIX: Captura el paso exacto al disparar cámara
 
   const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -67,7 +67,7 @@ const VisitFlow = () => {
   const [fachadaPhoto, setFachadaPhoto] = useState(null);
   const [gondolaInicialPhoto, setGondolaInicialPhoto] = useState(null);
   const [gondolaTerminoPhoto, setGondolaTerminoPhoto] = useState(null); 
-  const [exitPhoto, setExitPhoto] = useState(null); // 🚀 FIX: Estado de salida
+  const [exitPhoto, setExitPhoto] = useState(null); // 🚀 FIX: Estado salida
 
   const stepsInfo = {
     1: { key: "foto_fachada", title: "Llegada al Local", sub: "Evidencia de entrada" },
@@ -86,7 +86,7 @@ const VisitFlow = () => {
     return `${BASE_URL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
   };
 
-  // 🚀 LÓGICA DE AGRUPACIÓN EAN
+  // 🚀 LÓGICA DE AGRUPACIÓN EAN (Permite duplicados y los cuenta)
   const groupedScannedCodes = useMemo(() => scannedCodes.reduce((acc, code) => {
     acc[code] = (acc[code] || 0) + 1;
     return acc;
@@ -96,10 +96,7 @@ const VisitFlow = () => {
     const handleStatus = () => setIsOnline(navigator.onLine);
     window.addEventListener("online", handleStatus);
     window.addEventListener("offline", handleStatus);
-    return () => {
-      window.removeEventListener("online", handleStatus);
-      window.removeEventListener("offline", handleStatus);
-    };
+    return () => { window.removeEventListener("online", handleStatus); window.removeEventListener("offline", handleStatus); };
   }, []);
 
   useEffect(() => {
@@ -152,7 +149,6 @@ const VisitFlow = () => {
     const toastId = toast.loading("Optimizando y subiendo...");
     
     try {
-      // 🚀 Aplicamos compresión
       const compressedFile = await compressImage(file, 1024, 0.7);
       const activeStepKey = stepsInfo[captureStepRef.current]?.key;
       
@@ -166,11 +162,12 @@ const VisitFlow = () => {
         ? URL.createObjectURL(compressedFile) 
         : (response.image_url || response.url || URL.createObjectURL(compressedFile));
 
-      // 🚀 ROMPE CACHÉ: Añadimos timestamp a la URL
+      // 🚀 ROMPE CACHÉ: Añade timestamp único para forzar refresco visual
       if (photoPath && !photoPath.startsWith('blob:')) {
         photoPath = `${photoPath}${photoPath.includes('?') ? '&' : '?'}t=${Date.now()}`;
       }
 
+      // 🚀 ASIGNACIÓN SEGURA
       if (activeStepKey === "foto_fachada") setFachadaPhoto(photoPath);
       if (activeStepKey === "foto_gondola_inicio") setGondolaInicialPhoto(photoPath);
       if (activeStepKey === "foto_gondola_termino") setGondolaTerminoPhoto(photoPath);
@@ -179,7 +176,7 @@ const VisitFlow = () => {
       toast.success("Captura guardada", { id: toastId });
       if (captureStepRef.current === 1) setStep(prev => prev + 1);
     } catch (err) {
-      toast.error("Error al subir imagen", { id: toastId });
+      toast.error("Error al subir", { id: toastId });
     } finally {
       setCapturing(false);
       e.target.value = "";
@@ -187,7 +184,6 @@ const VisitFlow = () => {
   };
 
   const handleScanSuccess = async (decodedText) => {
-    // 🚀 Se permite registro aunque sea duplicado (lógica agrupada)
     if (isProcessingScan.current) return;
     
     isProcessingScan.current = true;
@@ -221,7 +217,7 @@ const VisitFlow = () => {
       await api.post(`/routes/${id}/task`, taskData);
       toast.success("Producto registrado exitosamente", { id: toastId });
 
-      // 🚀 LIMPIEZA PROFUNDA: Solución al "Efecto Fantasma"
+      // 🚀 LIMPIEZA TOTAL: Evita el efecto fantasma
       setScannedCodes([]); setAnswers({}); setComment("");
       setGondolaTerminoPhoto(null); setGondolaInicialPhoto(null);
       setProductStartTime(null); setSelectedBrand(""); setSelectedProduct("");
@@ -244,6 +240,7 @@ const VisitFlow = () => {
     finally { setLoading(false); }
   };
 
+  // 🚀 RENDERIZADO MEJORADO: Ahora acepta un setPhotoUrl genérico para el Step 7
   const renderPhotoContainer = (photoUrl, setPhotoUrl, stepKey) => {
     if (photoUrl && !imageError) {
       return (
@@ -265,7 +262,7 @@ const VisitFlow = () => {
         return (
             <div className="w-full aspect-square bg-gray-50 border-4 border-dashed border-red-200 rounded-[3rem] flex flex-col items-center justify-center text-red-400">
                 <FiAlertCircle size={40} className="mb-2" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-center">Error al cargar imagen</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-center">Error al cargar</span>
                 <button onClick={() => setImageError(false)} className="mt-4 text-xs font-bold underline">Reintentar</button>
             </div>
         )
@@ -313,40 +310,25 @@ const VisitFlow = () => {
         </div>
 
         {/* STEP 1: FACHADA */}
-        {step === 1 && (
-            <div className="space-y-4 animate-in zoom-in duration-300">
-               {renderPhotoContainer(fachadaPhoto, setFachadaPhoto, 1)}
-            </div>
-        )}
+        {step === 1 && <div className="space-y-4 animate-in zoom-in">{renderPhotoContainer(fachadaPhoto, setFachadaPhoto, 1)}</div>}
 
-        {/* STEP 2: MARCA/PRODUCTO + FOTO GÓNDOLA INICIAL */}
+        {/* STEP 2 */}
         {step === 2 && (
-          <div className="space-y-5 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-5 animate-in slide-in-from-bottom-4">
             <div className="grid grid-cols-1 gap-3">
-              <div className="relative text-left">
-                <FiTag className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
-                <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)} className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none">
-                  <option value="">Seleccione Marca...</option>
-                  {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-              <div className="relative text-left">
-                <FiBox className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
-                <select disabled={!selectedBrand} value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-xs font-bold outline-none shadow-inner appearance-none disabled:opacity-40">
-                  <option value="">Seleccione Producto...</option>
-                  {filteredProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
+              <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)} className="w-full p-4 bg-gray-50 rounded-[1.5rem] text-xs font-bold border-none shadow-inner">
+                <option value="">Seleccione Marca...</option>
+                {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+              <select disabled={!selectedBrand} value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full p-4 bg-gray-50 rounded-[1.5rem] text-xs font-bold border-none shadow-inner">
+                <option value="">Seleccione Producto...</option>
+                {filteredProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
             </div>
-
             {selectedProduct && (
-              <div className="pt-2 animate-in zoom-in duration-300 space-y-4">
+              <div className="space-y-4">
                 {renderPhotoContainer(gondolaInicialPhoto, setGondolaInicialPhoto, 2)}
-                {gondolaInicialPhoto && (
-                  <button onClick={() => setStep(3)} className="w-full mt-4 bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-[#87be00]/20 active:scale-95 transition-all">
-                    Escanear Productos <FiArrowRight size={16}/>
-                  </button>
-                )}
+                {gondolaInicialPhoto && <button onClick={() => setStep(3)} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px] tracking-widest">Escanear Productos</button>}
               </div>
             )}
           </div>
@@ -354,99 +336,73 @@ const VisitFlow = () => {
 
         {/* STEP 3: ESCANEO EAN */}
         {step === 3 && (
-          <div className="space-y-4 animate-in zoom-in duration-300">
-            <div className="rounded-[2.5rem] overflow-hidden border-2 shadow-2xl">
-              <Scanner onScanSuccess={handleScanSuccess} />
-            </div>
-            {/* 🚀 LÓGICA DE AGRUPACIÓN VISUAL */}
-            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto px-1 custom-scrollbar border-y border-gray-50 py-3 text-left">
+          <div className="space-y-4 animate-in zoom-in">
+            <div className="rounded-[2.5rem] overflow-hidden border-2 shadow-2xl"><Scanner onScanSuccess={handleScanSuccess} /></div>
+            <div className="max-h-48 overflow-y-auto space-y-2 text-left">
                 {Object.entries(groupedScannedCodes).map(([code, qty], idx) => (
-                  <div key={idx} className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                    <div className="flex items-center gap-3"><FiCheckCircle className="text-[#87be00]" size={14}/><span className="text-[10px] font-bold text-gray-700">{code}</span></div>
-                    <div className="flex items-center gap-2">
-                        {qty > 1 && <span className="bg-[#87be00] text-white text-[9px] font-black px-2 rounded-lg">x{qty}</span>}
-                        <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-red-400 p-1 hover:bg-red-50 rounded-lg"><FiTrash2 size={14}/></button>
-                    </div>
+                  <div key={idx} className="flex justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                    <div className="flex items-center gap-3"><FiCheckCircle className="text-[#87be00]" size={14}/><span className="text-[10px] font-bold">{code}</span></div>
+                    {qty > 1 && <span className="bg-[#87be00] text-white text-[9px] font-black px-2 rounded-lg">x{qty}</span>}
+                    <button onClick={() => setScannedCodes(prev => prev.filter(c => c !== code))} className="text-red-400 p-1"><FiTrash2 size={14}/></button>
                   </div>
                 ))}
             </div>
-            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-lg">Validar Encuesta <FiArrowRight size={16}/></button>
+            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Validar Encuesta</button>
           </div>
         )}
 
-        {/* STEP 4: ENCUESTAS */}
+        {/* STEP 4: ENCUESTA */}
         {step === 4 && (
-           <div className="space-y-5 animate-in slide-in-from-right duration-300 text-left">
-             <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar">
-               {questions.map((q) => (
-                 <div key={q.id} className="bg-gray-50/70 p-5 rounded-[2rem] border border-gray-100 shadow-sm">
-                   <p className="text-xs font-black text-gray-800 uppercase tracking-tighter leading-tight mb-3">
-                     {q.question} {q.is_required && <span className="text-red-500">*</span>}
-                   </p>
-                   <QuestionRenderer 
-                     question={q} 
-                     answer={answers[q.id]} 
-                     onChange={(val) => setAnswers({...answers, [q.id]: val})} 
-                   />
-                 </div>
-               ))}
-             </div>
-             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-xl">
-               Góndola Final <FiArrowRight/>
-             </button>
+           <div className="space-y-4 text-left">
+             {questions.map((q) => (
+               <div key={q.id} className="bg-gray-50 p-5 rounded-[2rem]">
+                 <p className="text-xs font-black uppercase mb-3">{q.question}</p>
+                 <QuestionRenderer question={q} answer={answers[q.id]} onChange={(val) => setAnswers({...answers, [q.id]: val})} />
+               </div>
+             ))}
+             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Góndola Final</button>
            </div>
         )}
 
-        {/* STEP 5: FOTO TERMINO */}
+        {/* STEP 5: GONDOLA TERMINO */}
         {step === 5 && (
-          <div className="space-y-4 animate-in slide-in-from-right duration-300">
+          <div className="space-y-4">
              {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, 5)}
-             <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
-             <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 shadow-lg">Confirmar Producto <FiArrowRight size={16}/></button>
+             <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
+             <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Confirmar Producto</button>
           </div>
         )}
 
         {/* STEP 6: DECISIÓN */}
         {step === 6 && (
-          <div className="py-6 space-y-6 animate-in zoom-in">
-            <div className="flex flex-col items-center gap-3">
-              <h3 className="text-sm font-black uppercase text-gray-900 italic">¿Agregar otro producto?</h3>
-            </div>
-            <div className="flex flex-col gap-3">
-              <button onClick={() => registrarGestionProducto('NUEVO')} disabled={loading} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all">Sí, nuevo producto</button>
-              <button onClick={() => registrarGestionProducto('SALIR')} disabled={loading} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all">Finalizar jornada</button>
-            </div>
+          <div className="space-y-4 py-6">
+              <button onClick={() => registrarGestionProducto('NUEVO')} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px]">Sí, nuevo producto</button>
+              <button onClick={() => registrarGestionProducto('SALIR')} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black text-[10px]">Finalizar jornada</button>
           </div>
         )}
 
-        {/* STEP 7: REGISTRO SALIDA */}
+        {/* STEP 7: SALIDA */}
         {step === 7 && (
-          <div className="space-y-4 animate-in slide-in-from-right duration-300">
+          <div className="space-y-4">
              {renderPhotoContainer(exitPhoto, setExitPhoto, 7)}
-             {exitPhoto && (
-                 <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-[10px] flex items-center justify-center gap-3 shadow-lg">
-                   Confirmar y Finalizar Visita <FiArrowRight size={16}/>
-                 </button>
-             )}
+             {exitPhoto && <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px]">Confirmar y Finalizar</button>}
           </div>
         )}
 
         {/* STEP 8: CIERRE */}
         {step === 8 && (
-          <div className="py-6 space-y-4 animate-in zoom-in text-center">
-             <FiCheckCircle className="text-[#87be00] mx-auto" size={60} />
-             <p className="text-xs font-black uppercase">Gestión Finalizada</p>
-             <button onClick={() => navigate("/usuario/home")} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black uppercase text-xs">Volver al inicio</button>
+          <div className="py-6 space-y-4">
+             <FiCheckCircle className="text-[#87be00] mx-auto" size={40} />
+             <button onClick={() => navigate("/usuario/home")} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black text-xs">Volver al inicio</button>
           </div>
         )}
 
-        <div className="pt-4 border-t border-gray-50 flex items-center justify-center gap-2 text-gray-300 text-[8px] font-black uppercase tracking-[0.3em]">
-            <FiMapPin className={isOnline ? 'text-[#87be00]' : 'text-orange-500'} /> LOCAL ID: {id?.slice(0,8).toUpperCase()}
+        <div className="pt-4 border-t flex justify-center text-gray-300 text-[8px] font-black uppercase tracking-[0.3em]">
+            <FiMapPin /> LOCAL: {id?.slice(0,8).toUpperCase()}
         </div>
       </div>
 
       <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleCapture} className="hidden" />
-      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #eee; border-radius: 10px; }`}</style>
     </div>
   );
 };
