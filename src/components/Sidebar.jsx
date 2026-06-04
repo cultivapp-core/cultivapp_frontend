@@ -1,22 +1,8 @@
 import { NavLink } from "react-router-dom"
 import {
-  FiBarChart2,
-  FiUsers,
-  FiBriefcase,
-  FiHome,
-  FiHelpCircle,
-  FiSend, 
-  FiBell,  
-  FiClock,
-  FiNavigation,
-  FiMap,
-  FiPackage,    // 🚩 Para CatalogManager
-  FiCheckSquare, // 🚩 Para TaskControl
-  FiUserCheck,   // 🚩 Para AttendanceControl
-  FiCamera,      // 🚩 Para photoValidation
-  FiMonitor,     // 🚩 Nuevo: Para el Radar de Sesiones
-  FiTrendingUp,  // 🚩 Para Reportes
-  FiPieChart     // 🚩 Nuevo: Para Dashboard Ventas
+  FiBarChart2, FiUsers, FiBriefcase, FiHome, FiHelpCircle, FiSend, 
+  FiBell, FiClock, FiNavigation, FiMap, FiPackage, FiCheckSquare, 
+  FiUserCheck, FiCamera, FiMonitor, FiTrendingUp, FiPieChart, FiFileText
 } from "react-icons/fi"
 import { useNotificationContext } from "../context/NotificationContext"
 
@@ -42,27 +28,31 @@ const Sidebar = () => {
 
       <nav className="flex flex-col gap-1.5 overflow-y-auto pr-2 custom-scrollbar">
         
-        {/* 🚩 SECCIÓN REPORTES */}
-        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mb-2 ml-4">Reportes</p>
-        <NavLink to="/root/upload-sales" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          <FiTrendingUp size={18} /> Cargar Ventas
+        {/* MÉTRICAS */}
+        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mb-2 ml-4">Métricas</p>
+        <NavLink to="/root/analytics" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiBarChart2 size={18} /> Dashboard
         </NavLink>
         <NavLink to="/root/sales-report" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiPieChart size={18} /> Dashboard Ventas
         </NavLink>
-
-        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Métricas</p>
-        <NavLink to="/root/analytics" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          <FiBarChart2 size={18} /> Dashboard
-        </NavLink>
-        
         <NavLink to="/root/active-sessions" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiMonitor size={18} /> Radar Sesiones
         </NavLink>
 
+        {/* REPORTES */}
+        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Reportes</p>
+        <NavLink to="/root/upload-sales" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiTrendingUp size={18} /> Cargar Ventas
+        </NavLink>
+        <NavLink to="/root/reports" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiFileText size={18} /> Informe
+        </NavLink>
+
+        {/* COMUNICACIÓN */}
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Comunicación</p>
-        <NavLink to="/root/notifications-manager" className={({ isActive }) => isActive ? actionButton : `${actionButton} opacity-90`}>
-          <FiSend size={18} strokeWidth={3} /> Emitir Alertas
+        <NavLink to="/root/notifications-manager" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiSend size={18} strokeWidth={3} /> Emitir Notificaciones
         </NavLink>
         <NavLink to="/root/notifications" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive} mt-1`}>
           <div className="relative">
@@ -76,9 +66,25 @@ const Sidebar = () => {
           Mi Bandeja
         </NavLink>
 
+        {/* ESTRUCTURA */}
+        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Estructura</p>
+        <NavLink to="/root/users" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiUsers size={18} /> Usuarios
+        </NavLink>
+        <NavLink to="/root/locales" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiHome size={18} /> Locales
+        </NavLink>
+        <NavLink to="/root/companies" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiBriefcase size={18} /> Empresas
+        </NavLink>
+        <NavLink to="/root/catalogo" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+          <FiPackage size={18} /> Productos
+        </NavLink>
+
+        {/* LOGÍSTICA Y RUTAS */}
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Logística y Rutas</p>
         <NavLink to="/root/routes" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          <FiMap size={18} /> Gestión de Rutas
+          <FiMap size={18} /> Planificacion Rutas
         </NavLink>
         <NavLink to="/root/turnos" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiClock size={18} /> Configurar Turnos
@@ -87,6 +93,7 @@ const Sidebar = () => {
           <FiNavigation size={18} /> Monitoreo GPS
         </NavLink>
 
+        {/* AUDITORÍA Y CONTROL */}
         <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Auditoría y Control</p>
         <NavLink to="/root/attendance-control" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiUserCheck size={18} /> Control Asistencia
@@ -97,24 +104,6 @@ const Sidebar = () => {
         <NavLink to="/root/photo-validation" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiCamera size={18} /> Validar Fotos
         </NavLink>
-
-        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Maestros</p>
-        <NavLink to="/root/catalogo" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          <FiPackage size={18} /> Catálogo SKU
-        </NavLink>
-
-        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Estructura</p>
-        <NavLink to="/root/companies" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          <FiBriefcase size={18} /> Empresas
-        </NavLink>
-        <NavLink to="/root/users" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          <FiUsers size={18} /> Usuarios
-        </NavLink>
-        <NavLink to="/root/locales" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-          <FiHome size={18} /> Locales
-        </NavLink>
-
-        <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] mt-6 mb-2 ml-4">Soporte</p>
         <NavLink to="/root/questions" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
           <FiHelpCircle size={18} /> Preguntas
         </NavLink>

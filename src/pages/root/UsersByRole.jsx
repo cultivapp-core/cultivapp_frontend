@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react"
-import { FiPlus, FiTrash2, FiEdit2, FiKey, FiUsers, FiUserCheck, FiUserX, FiBriefcase, FiMail, FiShield, FiCalendar, FiClock } from "react-icons/fi"
+import { useState, useEffect, useMemo } from "react"
+import { FiPlus, FiTrash2, FiEdit2, FiKey, FiUsers, FiUserCheck, FiUserX, FiBriefcase, FiMail, FiShield, FiCalendar, FiClock, FiSearch } from "react-icons/fi"
 import { useAuth } from "../../context/AuthContext"
 import { toast } from "react-hot-toast"
 
@@ -23,9 +23,23 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
 
   const [companies, setCompanies] = useState([])
   const [selectedCompany, setSelectedCompany] = useState("")
+  
+  // 🚩 ESTADO PARA BÚSQUEDA
+  const [searchTerm, setSearchTerm] = useState("")
 
   // 🚩 ESTADO PARA COORDINAR EL QUICK VIEW
   const [activePopover, setActivePopover] = useState(null)
+
+  // 🚩 LÓGICA DE FILTRADO
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm) return users
+    const term = searchTerm.toLowerCase()
+    return users.filter(u => 
+      (u.first_name?.toLowerCase().includes(term)) || 
+      (u.last_name?.toLowerCase().includes(term)) || 
+      (u.email?.toLowerCase().includes(term))
+    )
+  }, [users, searchTerm])
 
   const fetchCompanies = async () => {
     try {
@@ -99,9 +113,9 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
   }
 
   const stats = {
-    total: users.length,
-    activos: users.filter(u => u.is_active).length,
-    inactivos: users.filter(u => !u.is_active).length
+    total: filteredUsers.length,
+    activos: filteredUsers.filter(u => u.is_active).length,
+    inactivos: filteredUsers.filter(u => !u.is_active).length
   }
 
   const formatDate = (dateStr) => {
@@ -111,7 +125,6 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
   };
 
   return (
-    // 🚩 Al hacer click en el fondo cerramos cualquier QuickView abierto
     <div className="space-y-8 animate-in fade-in duration-700 font-[Outfit]" onClick={() => setActivePopover(null)}>
       
       {/* HEADER */}
@@ -142,9 +155,23 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
           <StatCard label="Inactivos" value={stats.inactivos} icon={<FiUserX />} color="text-red-500" />
         </div>
 
-        {loggedUser?.role === "ROOT" && !role && (
-          <div className="lg:w-80">
-            <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-4 mb-2 block italic">Filtrar por Organización</label>
+        <div className="lg:w-80 flex flex-col gap-4">
+          {/* 🚩 BUSCADOR */}
+          <div>
+            <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-4 mb-2 block italic">Buscar Colaborador</label>
+            <div className="relative">
+              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input 
+                type="text"
+                placeholder="Nombre o email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white border border-gray-100 rounded-[1.5rem] pl-12 pr-6 py-4 text-[11px] font-black uppercase tracking-wider outline-none focus:ring-4 focus:ring-[#87be00]/10 shadow-sm transition-all"
+              />
+            </div>
+          </div>
+
+          {loggedUser?.role === "ROOT" && !role && (
             <select
               value={selectedCompany}
               onChange={(e) => setSelectedCompany(e.target.value)}
@@ -153,8 +180,8 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
               <option value="">Todas las empresas</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* TABLA DE USUARIOS */}
@@ -174,21 +201,18 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr><td colSpan="5" className="p-32 text-center"><div className="inline-block animate-spin rounded-full h-10 w-10 border-[6px] border-[#87be00] border-t-transparent" /></td></tr>
-              ) : users.length === 0 ? (
+              ) : filteredUsers.length === 0 ? (
                 <tr><td colSpan="5" className="p-32 text-center text-gray-400 font-black uppercase text-[10px] tracking-widest italic">Sin registros en esta categoría</td></tr>
               ) : (
-                users.map(u => (
+                filteredUsers.map(u => (
                   <tr key={u.id} className="hover:bg-gray-50/50 transition-all group">
                     <td className="p-8">
                       <div className="flex items-center gap-5">
-                        
-                        {/* 🚩 REEMPLAZO DEL AVATAR POR EL COMPONENTE UserQuickView */}
                         <UserQuickView 
                           user={u} 
                           isActive={activePopover === u.id}
                           onToggle={() => setActivePopover(activePopover === u.id ? null : u.id)}
                         />
-
                         <div>
                           <p className="text-base font-black text-gray-900 uppercase tracking-tighter leading-none italic">{u.first_name} {u.last_name}</p>
                           <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-2 font-bold tracking-tight">

@@ -32,9 +32,6 @@ const AdminSidebar = () => {
           <NavLink to="/admin" end className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
             <FiBarChart2 size={18} /> Dashboard
           </NavLink>
-          <NavLink to="/admin/sales-report" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
-            <FiPieChart size={18} /> Dashboard Ventas
-          </NavLink>
           <NavLink to="/admin/informes" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
             <FiFileText size={18} /> Informes
           </NavLink>

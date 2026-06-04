@@ -1,12 +1,16 @@
 import { useState } from "react"
-import { FiX, FiMail, FiPhone, FiSave, FiUser, FiAtSign, FiUsers } from "react-icons/fi"
+import { FiX, FiMail, FiPhone, FiSave, FiShield, FiAtSign, FiUsers, FiClock, FiCalendar } from "react-icons/fi" // FiShield ya estaba importado
 import api from "../api/apiClient"
 import { toast } from "react-hot-toast"
+import { useAuth } from "../context/AuthContext" // Aseguramos acceso al rol del loggedUser
 
 const EditUserContactModal = ({ user, onClose, onUpdated }) => {
+  const { user: loggedUser } = useAuth()
+  
   const [email, setEmail] = useState(user.email || "")
   const [phone, setPhone] = useState(user.phone || "")
-  // 🚩 AGREGADOS: Estados para Supervisor
+  const [role, setRole] = useState(user.role || "OPERARIO") // ✅ Estado para el Rol
+  
   const [supNombre, setSupNombre] = useState(user.supervisor_nombre || "")
   const [supPhone, setSupPhone] = useState(user.supervisor_telefono || "")
   
@@ -15,11 +19,11 @@ const EditUserContactModal = ({ user, onClose, onUpdated }) => {
   const handleSave = async () => {
     try {
       setLoading(true);
-      // Enviamos el objeto completo al endpoint de actualización
       await api.put(`/users/${user.id}`, { 
-        ...user, // Mantenemos los datos actuales
+        ...user, 
         email, 
         phone,
+        role, // ✅ Enviamos el rol actualizado
         supervisor_nombre: supNombre,
         supervisor_telefono: supPhone
       });
@@ -67,7 +71,7 @@ const EditUserContactModal = ({ user, onClose, onUpdated }) => {
                 Editar Perfil
               </h2>
               <p className="text-[10px] font-black text-[#87be00] uppercase tracking-[0.3em] mt-2">
-                Contacto y Supervisión
+                Contacto, Rol y Supervisión
               </p>
             </div>
           </div>
@@ -96,7 +100,24 @@ const EditUserContactModal = ({ user, onClose, onUpdated }) => {
             </InputWrapper>
           </div>
 
-          {/* 🚩 NUEVA SECCIÓN: DATOS SUPERVISOR (CREDENTIAL) */}
+          {/* 🚩 NUEVA SECCIÓN: ROL DEL USUARIO */}
+          <div className="space-y-5">
+            <Label>Perfil de Acceso</Label>
+            <InputWrapper icon={FiShield}>
+               <select 
+                value={role} 
+                onChange={(e) => setRole(e.target.value)} 
+                className={inputClass + " appearance-none"}
+               >
+                 <option value="ADMIN_CLIENTE">ADMIN CLIENTE</option>
+                 <option value="SUPERVISOR">SUPERVISOR</option>
+                 <option value="USUARIO">USUARIO</option>
+                 <option value="VIEWER">VIEWER</option>
+               </select>
+            </InputWrapper>
+          </div>
+
+          {/* SECCIÓN DATOS SUPERVISOR */}
           <div className="space-y-5 bg-gray-900 p-8 rounded-[2.5rem] shadow-xl">
             <div className="flex items-center gap-2 mb-2">
                <FiUsers className="text-[#87be00]" size={16} />

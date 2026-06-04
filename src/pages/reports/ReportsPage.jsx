@@ -24,11 +24,21 @@ const COLUMN_LABELS = {
     status:       "Estado",
   },
   gestion: {
-    fecha:              "Fecha",
-    operario:           "Operario",
-    local:              "Local",
-    tareas_completadas: "Tareas Completadas",
-  },
+  fecha:        "Fecha",
+  operario: "Operario",
+  local: "Local",
+  cantidad_codigos: "Cantidad EAN",
+  codigos_ean: "Códigos EAN",
+  producto: "Producto",
+  marca: "Marca",
+  task_type: "Tipo Tarea",
+  observacion: "Observación",
+  start_time: "Inicio Tarea",
+  end_time: "Fin Tarea",
+  duracion_minutos: "Duración (min)",
+  foto_antes: "Foto Antes",
+  foto_despues: "Foto Después",
+},
 };
 
 // ─── Formatea una fecha/hora ISO a string legible ─────────────────────────────
@@ -142,6 +152,8 @@ const ReportsPage = () => {
           return { ...row, duracion_min };
         });
       }
+
+      console.log(data);
 
       const rows = buildRows(data, filters.type);
 

@@ -34,6 +34,7 @@ import NotificationManager from "./pages/root/NotificationManager"
 import TurnosManager from "./pages/root/TurnosManager"
 import UploadSalesData from "./pages/reports/UploadSalesData" 
 import SalesDashboard from "./pages/reports/SalesDashboard" 
+import ReportsPage from "./pages/reports/ReportsPage" // 🚩 IMPORTADO
 
 /* ================= ADMIN CLIENTE ================= */
 import AdminDashboard from "./pages/admin/AdminDashboard"
@@ -63,7 +64,6 @@ import UserAgenda from "./pages/user/UserAgenda"
 
 /* ================= QUESTIONS & REPORTS ================= */
 import QuestionsManager from "./pages/admin/QuestionsManager"
-import ReportsPage from "./pages/reports/ReportsPage" 
 
 import "./App.css"
 
@@ -122,6 +122,7 @@ function App() {
               <Route path="analytics" element={<Analytics />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
               <Route path="sales-report" element={<SalesDashboard />} />
+              <Route path="reports" element={<ReportsPage />} /> {/* 🚩 RUTA AGREGADA */}
               <Route path="active-sessions" element={<ActiveSessions />} /> 
               <Route path="companies" element={<Companies />} />
               <Route path="users" element={<Users />} />
@@ -165,7 +166,7 @@ function App() {
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
               <Route index element={<AdminOverview />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
-              <Route path="sales-report" element={<SalesDashboard />} /> {/* 🚩 NUEVA RUTA ADMIN */}
+              <Route path="sales-report" element={<SalesDashboard />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="locales" element={<AdminLocales />} />
               <Route path="companies" element={<Companies />} />

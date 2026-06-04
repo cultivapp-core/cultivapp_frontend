@@ -1,11 +1,10 @@
 import React, { useState, useRef } from "react";
-import { FiUploadCloud, FiFileText, FiX, FiCheckCircle, FiAlertCircle } from "react-icons/fi";
+import { FiUploadCloud, FiFileText, FiX, FiCheckCircle, FiAlertCircle, FiInfo } from "react-icons/fi";
 import api from "../../api/apiClient";
 
 const UploadSalesData = () => {
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  // 🚩 Añadimos 'progress' al estado
   const [uploadState, setUploadState] = useState({ loading: false, success: false, error: null, progress: 0 });
   const fileInputRef = useRef(null);
 
@@ -50,7 +49,6 @@ const UploadSalesData = () => {
     setUploadState({ loading: true, success: false, error: null, progress: 0 });
 
     try {
-      // 🚩 AÑADIDO: onUploadProgress para capturar el porcentaje
       await api.post("/sales/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (progressEvent) => {
@@ -125,7 +123,6 @@ const UploadSalesData = () => {
         )}
       </div>
 
-      {/* 🚩 BARRA DE CARGA (UI) */}
       {uploadState.loading && (
         <div className="mt-6">
           <div className="flex justify-between mb-1">
@@ -152,6 +149,16 @@ const UploadSalesData = () => {
         <div className="mt-4 p-4 bg-[#87be00]/10 border border-[#87be00]/20 rounded-2xl flex items-center gap-3 text-[#87be00]">
           <FiCheckCircle size={18} className="shrink-0" />
           <p className="text-[10px] font-black uppercase">¡Datos procesados y sincronizados!</p>
+        </div>
+      )}
+
+      {/* 🚩 AVISO DE SEGURIDAD PARA EL USUARIO */}
+      {!uploadState.loading && file && !uploadState.success && !uploadState.error && (
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3">
+          <FiInfo className="text-blue-500 shrink-0 mt-0.5" size={16} />
+          <p className="text-[9px] font-bold text-blue-800 uppercase tracking-widest leading-relaxed">
+            Protección de datos activa: El sistema añadirá únicamente los registros nuevos. Las ventas previamente cargadas para el mismo día y local no serán duplicadas ni eliminadas.
+          </p>
         </div>
       )}
 
