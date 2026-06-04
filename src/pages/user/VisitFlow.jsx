@@ -9,31 +9,31 @@ import toast from "react-hot-toast";
 import Scanner from "../../components/Scanner"; 
 import QuestionRenderer from "../../components/modals/QuestionRenderer"; 
 
-// 🚀 FUNCIÓN DE COMPRESIÓN (Optimiza carga en móvil)
-const compressImage = (file, maxWidth = 1024, quality = 0.7) => {
+// 🚀 FUNCIÓN DE COMPRESIÓN ACELERADA (createImageBitmap + WebP)
+const compressImage = async (file, maxWidth = 800, quality = 0.6) => {
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement("canvas");
+  
+  let width = bitmap.width;
+  let height = bitmap.height;
+  
+  if (width > maxWidth) {
+    height = Math.round((height * maxWidth) / width);
+    width = maxWidth;
+  }
+  
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+
   return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        canvas.toBlob((blob) => {
-          resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }));
-        }, "image/jpeg", quality);
-      };
-    };
+    canvas.toBlob((blob) => {
+      resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", { 
+        type: "image/webp", 
+        lastModified: Date.now() 
+      }));
+    }, "image/webp", quality);
   });
 };
 
@@ -140,19 +140,34 @@ const VisitFlow = () => {
     }
   }, [step]);
 
-const handleCapture = async (e) => {
+  const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setCapturing(true);
     setImageError(false);
-    const toastId = toast.loading("Optimizando y subiendo...");
     
     try {
-      const compressedFile = await compressImage(file, 1024, 0.7);
       const stepKey = captureStepRef.current;
       
-      // 🚩 MEJORA: Etiquetado dinámico para orden de archivos
+      // 1. Comprimir rápidamente
+      const compressedFile = await compressImage(file, 800, 0.6); 
+      
+      // 2. MOSTRAR INMEDIATAMENTE (Optimistic UI)
+      const localPhotoUrl = URL.createObjectURL(compressedFile);
+      
+      if (stepKey === 1) setFachadaPhoto(localPhotoUrl);
+      else if (stepKey === 2) setGondolaInicialPhoto(localPhotoUrl);
+      else if (stepKey === 5) setGondolaTerminoPhoto(localPhotoUrl);
+      else if (stepKey === 7) setExitPhoto(localPhotoUrl);
+      
+      // 3. Liberar la UI y avanzar sin esperar la red
+      setCapturing(false);
+      if (stepKey === 1) setStep(prev => prev + 1);
+
+      // 4. SUBIR AL SERVIDOR EN SEGUNDO PLANO
+      const toastId = toast.loading("Sincronizando foto en fondo...");
+      
       let evidenceLabel = stepsInfo[stepKey].key; 
       if (stepKey === 1) evidenceLabel = "Inicio_Jornada";
       else if (stepKey === 7) evidenceLabel = "Salida_Jornada";
@@ -160,31 +175,17 @@ const handleCapture = async (e) => {
       else if (stepKey === 5) evidenceLabel = `gondola_fin_producto_${selectedProduct || 'sin_prod'}`;
       
       const formData = new FormData();
-      formData.append("photo_type", evidenceLabel); // Se envía la etiqueta dinámica
+      formData.append("photo_type", evidenceLabel); 
       formData.append("foto", compressedFile); 
       
-      const response = await api.post(`/routes/${id}/photo`, formData);
-      
-      let photoPath = response?.offline 
-        ? URL.createObjectURL(compressedFile) 
-        : (response.image_url || response.url || URL.createObjectURL(compressedFile));
+      api.post(`/routes/${id}/photo`, formData)
+        .then(() => toast.success("Foto sincronizada", { id: toastId, duration: 2000 }))
+        .catch(() => toast.error("La foto se guardará localmente", { id: toastId }));
 
-      if (photoPath && !photoPath.startsWith('blob:')) {
-        photoPath = `${photoPath}${photoPath.includes('?') ? '&' : '?'}t=${Date.now()}`;
-      }
-
-      // ASIGNACIÓN SEGURA
-      if (stepKey === 1) setFachadaPhoto(photoPath);
-      else if (stepKey === 2) setGondolaInicialPhoto(photoPath);
-      else if (stepKey === 5) setGondolaTerminoPhoto(photoPath);
-      else if (stepKey === 7) setExitPhoto(photoPath);
-      
-      toast.success("Captura guardada", { id: toastId });
-      if (stepKey === 1) setStep(prev => prev + 1);
     } catch (err) {
-      toast.error("Error al subir", { id: toastId });
-    } finally {
+      toast.error("Error al procesar imagen");
       setCapturing(false);
+    } finally {
       e.target.value = "";
     }
   };
