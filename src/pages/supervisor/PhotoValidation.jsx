@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { 
   FiSearch, FiFilter, FiCalendar, FiImage, FiHash, FiExternalLink, 
@@ -13,8 +13,10 @@ const PhotoValidation = () => {
 
   const [searchTerm, setSearchTerm] = useState(""); 
   const [debouncedSearch, setDebouncedSearch] = useState(""); 
+  
+  // FIX: Inicializamos con el company_id del usuario si existe, independientemente del rol
   const [filters, setFilters] = useState({
-    empresa_id: isRoot ? "" : user?.company_id,
+    empresa_id: user?.company_id || "", 
     cadena: "",
     codigo: "",
     fecha: new Date().toISOString().split('T')[0], 
@@ -36,7 +38,8 @@ const PhotoValidation = () => {
       });
       return response.data || response || [];
     },
-    enabled: !!filters.empresa_id 
+    // FIX: Habilitado si hay empresa o si es ROOT
+    enabled: !!filters.empresa_id || isRoot
   });
 
   const availableCadenas = useMemo(() => {
@@ -55,13 +58,14 @@ const PhotoValidation = () => {
     queryKey: ["audit-photos", filters.fecha, filters.empresa_id, debouncedSearch], 
     queryFn: async () => {
       const params = {
-        empresa_id: filters.empresa_id,
+        empresa_id: filters.empresa_id || undefined,
         ...(debouncedSearch ? { search: debouncedSearch } : { fecha: filters.fecha })
       };
       const response = await api.get("/reports/photos", { params });
       return response.data || response || [];
     },
-    enabled: !!filters.empresa_id
+    // FIX: Habilitado si hay empresa o si es ROOT
+    enabled: !!filters.empresa_id || isRoot
   });
 
   const filteredPhotos = useMemo(() => {
@@ -73,18 +77,11 @@ const PhotoValidation = () => {
     });
   }, [photos, filters.cadena, filters.codigo]);
 
-  /**
-   * 🛠️ GESTIÓN DINÁMICA DE RUTAS (Soporte Híbrido: Supabase + Local Legacy)
-   */
   const getImageUrl = (item) => {
-    // 🚩 FIX: Soportamos tanto image_url (Supabase) como photo_url (Legacy)
     const path = item.image_url || item.photo_url || "";
     if (!path) return "https://via.placeholder.com/400x300?text=Sin+Imagen";
-    
-    // Si la ruta es externa (Supabase), la devolvemos tal cual
     if (path.startsWith('http')) return path;
 
-    // --- LÓGICA LEGACY PARA FOTOS ANTIGUAS LOCALES ---
     const baseUrl = import.meta.env.VITE_API_URL.split('/api')[0];
     let cleanPath = path.trim().replace(/\\/g, "/").replace(/^uploads\//i, '');
 
@@ -124,7 +121,6 @@ const PhotoValidation = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      // Si falla por CORS de Supabase, abrimos en nueva ventana
       window.open(imageUrl, '_blank');
     }
   };
@@ -132,7 +128,6 @@ const PhotoValidation = () => {
   return (
     <div className="space-y-6 md:space-y-8 font-[Outfit] pb-10">
       
-      {/* HEADER */}
       <div className="flex flex-row justify-between items-start sm:items-center px-2 md:px-4 gap-4">
         <div className="flex-1">
           <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
@@ -149,7 +144,6 @@ const PhotoValidation = () => {
         </div>
       </div>
 
-      {/* FILTROS */}
       <section className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm border border-gray-50 mx-2 md:mx-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <div className="relative">
@@ -199,7 +193,6 @@ const PhotoValidation = () => {
         </div>
       </section>
 
-      {/* GRID */}
       {isLoadingPhotos ? (
         <div className="py-20 text-center text-[10px] font-black uppercase italic animate-pulse text-gray-400">
             Cargando imágenes...
@@ -213,7 +206,6 @@ const PhotoValidation = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 px-2 md:px-4">
           {filteredPhotos.map((item) => {
             const currentUrl = getImageUrl(item);
-            
             return (
               <div key={item.id} className="bg-white rounded-[1.5rem] md:rounded-[2rem] overflow-hidden shadow-sm border border-gray-50 group hover:shadow-xl transition-all flex flex-col">
                 <div className="relative h-48 md:h-60 overflow-hidden bg-gray-50 shrink-0">
