@@ -15,8 +15,9 @@ import {
   FiX,
   FiUsers,
   FiCalendar,
-  FiGlobe, // 🚩 Nuevo Icono
-  FiMapPin // 🚩 Nuevo Icono
+  FiGlobe, 
+  FiMapPin,
+  FiTrash2 // 🚩 Nuevo Icono importado
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
@@ -93,14 +94,13 @@ const AdminRoutes = () => {
   const [companies, setCompanies] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]           = useState(true);
 
   // ESTADOS PARA LOS BUSCADORES Y FILTROS
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterUser, setFilterUser] = useState("");
-  const [filterDate, setFilterDate] = useState("");
+  const [searchTerm, setSearchTerm]     = useState("");
+  const [filterUser, setFilterUser]     = useState("");
+  const [filterDate, setFilterDate]     = useState("");
   
-  // 🚩 NUEVOS ESTADOS PARA UBICACIÓN
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedComuna, setSelectedComuna] = useState("");
 
@@ -137,6 +137,28 @@ const AdminRoutes = () => {
     fetchData();
   }, [fetchData]);
 
+  // 🚩 CONTROLADOR PARA BORRAR LAS RUTAS SELECCIONADAS
+  const handleDeleteRoute = async (group) => {
+    const routeIds = group.route_ids || [group.id];
+    if (routeIds.length === 0) return;
+
+    const confirmacion = window.confirm(
+      `¿Estás completamente seguro de eliminar la planificación de este punto de venta (${group.cadena})? Se removerán ${routeIds.length} asignaciones de forma permanente.`
+    );
+    
+    if (!confirmacion) return;
+
+    const toastId = toast.loading("Eliminando planificación...");
+    try {
+      await Promise.all(routeIds.map(id => api.delete(`/routes/${id}`)));
+      toast.success("Planificación eliminada correctamente", { id: toastId });
+      fetchData();
+    } catch (error) {
+      console.error("❌ Error al eliminar rutas:", error);
+      toast.error("Error al eliminar la planificación", { id: toastId });
+    }
+  };
+
   // CALCULO DE RANGOS DE SEMANA
   const weekRanges = useMemo(() => {
     const today = new Date();
@@ -160,7 +182,7 @@ const AdminRoutes = () => {
     return ranges;
   }, []);
 
-  // 🚩 LÓGICA DE CÁLCULO DE FECHA EXACTA (SEMANA Y DÍA)
+  // LÓGICA DE CÁLCULO DE FECHA EXACTA
   const targetDateInfo = useMemo(() => {
     if (!filterDate) return null;
     const selected = new Date(filterDate + "T12:00:00");
@@ -178,11 +200,10 @@ const AdminRoutes = () => {
     
     return {
       weekNum: calculatedWeek,
-      dayId: selected.getDay() // 0 = Domingo, 1 = Lunes, etc.
+      dayId: selected.getDay()
     };
   }, [filterDate]);
 
-  // Define la semana activa para el diseño del header
   const activeWeekByDate = targetDateInfo ? targetDateInfo.weekNum : null;
 
   const uniqueMercaderistas = useMemo(() => {
@@ -192,7 +213,6 @@ const AdminRoutes = () => {
     return [...new Set(names)].sort();
   }, [routes]);
 
-  // 🚩 OBTENER REGIONES Y COMUNAS ÚNICAS
   const regions = useMemo(() => {
     return [...new Set(locales.map(l => l.region_name || l.region).filter(Boolean))].sort();
   }, [locales]);
@@ -248,7 +268,7 @@ const AdminRoutes = () => {
     e.target.value = "";
   };
 
-  // 🚩 AGRUPACIÓN Y FILTRADO
+  // AGRUPACIÓN Y FILTRADO
   const groupedRoutes = useMemo(() => {
     const groups = {};
     const search = searchTerm.toLowerCase();
@@ -256,18 +276,15 @@ const AdminRoutes = () => {
     routes.forEach((r) => {
       if (!r.local_id) return;
 
-      // 🚩 Obtener datos del local para filtros de ubicación
       const localData = locales.find(l => String(l.id) === String(r.local_id));
       const region = localData?.region_name || localData?.region || "";
       const comuna = localData?.comuna_name || localData?.comuna || "";
 
-      // 🚩 Aplicar filtros de ubicación
       if (selectedRegion && region !== selectedRegion) return;
       if (selectedComuna && comuna !== selectedComuna) return;
       
       const fullName = `${r.first_name} ${r.last_name}`;
 
-      // 1. Text Filters
       const matchText = 
         r.cadena?.toLowerCase().includes(search) ||
         r.direccion?.toLowerCase().includes(search) ||
@@ -285,6 +302,7 @@ const AdminRoutes = () => {
         groups[key] = {
           ...r, 
           id: r.id, 
+          route_ids: [r.id], // 🚩 Guardamos el pool de rutas inicial
           users: new Set([fullName]), 
           scheduled_items: r.day_of_week !== null ? [{ 
             day: r.day_of_week, 
@@ -300,6 +318,7 @@ const AdminRoutes = () => {
         };
       } else {
         groups[key].users.add(fullName);
+        groups[key].route_ids.push(r.id); // 🚩 Añadimos los siguientes IDs recopilados
         
         if (r.day_of_week !== null) {
           const exists = groups[key].scheduled_items.some(
@@ -322,7 +341,6 @@ const AdminRoutes = () => {
       }
     });
 
-    // 2. Filter by Target Date (if selected)
     return Object.values(groups).map(group => ({
       ...group,
       users: Array.from(group.users), 
@@ -330,7 +348,6 @@ const AdminRoutes = () => {
                      group.all_statuses.every(s => s === 'COMPLETED' || s === 'OK') ? 'COMPLETED' : 
                      group.all_statuses.some(s => s === 'COMPLETED' || s === 'OK') ? 'PARTIAL' : 'PENDING'
     })).filter(group => {
-      // Si hay una fecha filtrada, obligar a que el grupo tenga visitas ese día
       if (!targetDateInfo) return true;
       return group.scheduled_items.some(item => 
         parseInt(item.week) === targetDateInfo.weekNum &&
@@ -394,7 +411,7 @@ const AdminRoutes = () => {
           </div>
         </div>
 
-        {/* 🚩 BARRA DE FILTROS AVANZADA (Actualizada a 5 columnas) */}
+        {/* BARRA DE FILTROS AVANZADA */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 pt-4 border-t border-gray-50">
           
           <div className="relative">
@@ -403,7 +420,6 @@ const AdminRoutes = () => {
             {searchTerm && <button onClick={() => setSearchTerm("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
           </div>
 
-          {/* NUEVO FILTRO DE REGIÓN */}
           <div className="relative">
             <FiGlobe className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <select 
@@ -425,7 +441,6 @@ const AdminRoutes = () => {
             {selectedRegion && <button onClick={() => { setSelectedRegion(""); setSelectedComuna(""); }} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 pointer-events-auto"><FiX size={14}/></button>}
           </div>
 
-          {/* NUEVO FILTRO DE COMUNA */}
           <div className="relative">
             <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <select 
@@ -546,10 +561,25 @@ const AdminRoutes = () => {
                       <td className="p-6 text-center">
                         <div className="flex justify-center">{getStatusBadge(r.displayStatus)}</div>
                       </td>
+
                       <td className="p-6 text-right">
-                        <button onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} className="p-3.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all border border-gray-100 hover:border-transparent">
-                          <FiEdit3 size={16}/>
-                        </button>
+                        {/* 🚩 CONTENEDOR DE ACCIONES ALINEADO CON ANCHO SEGURO */}
+                        <div className="flex justify-end items-center gap-2 min-w-[95px] inline-flex">
+                          <button 
+                            onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} 
+                            className="p-3.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all border border-gray-100 hover:border-transparent"
+                            title="Editar"
+                          >
+                            <FiEdit3 size={16}/>
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteRoute(r)} 
+                            className="p-3.5 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded-xl shadow-sm transition-all border border-red-100 hover:border-transparent"
+                            title="Eliminar"
+                          >
+                            <FiTrash2 size={16}/>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -584,9 +614,22 @@ const AdminRoutes = () => {
                   </div>
                   <div className="flex flex-col items-end gap-3 shrink-0">
                     {getStatusBadge(r.displayStatus)}
-                    <button onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} className="p-2.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all">
-                      <FiEdit3 size={16}/>
-                    </button>
+                    
+                    {/* 🚩 ACCIONES EN MÓVIL CON ALTO CONTRASTE */}
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} 
+                        className="p-2.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all border border-gray-100"
+                      >
+                        <FiEdit3 size={16}/>
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteRoute(r)} 
+                        className="p-2.5 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded-xl shadow-sm transition-all border border-red-100"
+                      >
+                        <FiTrash2 size={16}/>
+                      </button>
+                    </div>
                   </div>
                 </div>
                 

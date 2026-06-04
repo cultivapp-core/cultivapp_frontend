@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   FiClock, FiX, FiUser, FiBriefcase,
   FiTrash2, FiLoader, FiCheckCircle, FiLayers, FiCalendar, FiMapPin, FiEdit3, FiInfo, FiSearch, FiCopy
@@ -33,6 +33,48 @@ const getCurrentWeekNumber = () => {
   const calculatedWeek = diffWeeks < 0 ? 1 : Math.min(diffWeeks + 1, 4);
   return calculatedWeek;
 };
+
+// ─── COMPONENTE SELECTOR DE HORA EN FORMATO 24H ───────────────────────────────
+const TimePicker24h = ({ value, onChange, disabled }) => {
+  const [hh, mm] = (value || "00:00").split(":");
+
+  const handleChange = (type, val) => {
+    const newHH = type === "h" ? val.padStart(2, "0") : hh;
+    const newMM = type === "m" ? val.padStart(2, "0") : mm;
+    onChange({ target: { value: `${newHH}:${newMM}` } });
+  };
+
+  return (
+    <div
+      className={`flex items-center justify-center gap-1 w-full bg-white border border-blue-100 rounded-xl px-3 py-2.5 transition-all ${
+        disabled ? "opacity-50 cursor-not-allowed" : "hover:border-blue-300"
+      }`}
+    >
+      <select
+        disabled={disabled}
+        className="bg-transparent text-xs font-bold outline-none cursor-pointer text-gray-800"
+        value={hh}
+        onChange={(e) => handleChange("h", e.target.value)}
+      >
+        {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+          <option key={h} value={h}>{h}</option>
+        ))}
+      </select>
+      <span className="text-xs font-black text-gray-400 select-none">:</span>
+      <select
+        disabled={disabled}
+        className="bg-transparent text-xs font-bold outline-none cursor-pointer text-gray-800"
+        value={mm}
+        onChange={(e) => handleChange("m", e.target.value)}
+      >
+        {["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"].map((m) => (
+          <option key={m} value={m}>{m}</option>
+        ))}
+      </select>
+    </div>
+  );
+};
+// ──────────────────────────────────────────────────────────────────────────────
 
 const ManageRoutesModal = ({
   isOpen, onClose,
@@ -69,10 +111,27 @@ const ManageRoutesModal = ({
   const [showClearMenu, setShowClearMenu] = useState(false);
   const [eraserMode, setEraserMode] = useState(false);
 
+  // ESTADOS DEL BUSCADOR DE REPONEDOR
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  const userDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+        setIsUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       setTargetWeek(getCurrentWeekNumber()); 
       setEraserMode(false);
+      setIsUserDropdownOpen(false);
+      setUserSearchTerm("");
       
       if (initialData) {
         setLocalId(initialData.local_id || "");
@@ -89,7 +148,6 @@ const ManageRoutesModal = ({
             const d = parseInt(item.day, 10);
             const key = `${w}-${d}`;
             
-            // 🚩 FIX RECUPERADO DE CLAUDE: Aseguramos la existencia del ID individual
             const itemUserId = item.user_id;
             if (!itemUserId) return; 
             
@@ -157,6 +215,12 @@ const ManageRoutesModal = ({
     return pool;
   }, [users, companyId, isRoot]);
 
+  const selectedUserText = useMemo(() => {
+    if (!brush.user_id) return "1º Elige Reponedor...";
+    const u = filteredUsers.find(u => String(u.id) === String(brush.user_id));
+    return u ? `${u.first_name} ${u.last_name}` : "1º Elige Reponedor...";
+  }, [brush.user_id, filteredUsers]);
+
   const uniqueCadenas = useMemo(() => {
     const availableLocales = locales.filter(l => !isRoot || !companyId || l.company_id === companyId);
     return [...new Set(availableLocales.map(l => l.cadena))].filter(Boolean).sort();
@@ -212,7 +276,6 @@ const ManageRoutesModal = ({
   const handleCellClick = (w, d) => {
     const key = `${w}-${d}`;
 
-    // 🚩 LÓGICA DEL MODO BORRADOR
     if (eraserMode) {
       setMatrix(prev => {
         const newState = { ...prev };
@@ -269,7 +332,6 @@ const ManageRoutesModal = ({
     toast.success(fillAllMonth ? "Copiado a todo el mes" : `S${targetWeek} rellenada`);
   };
 
-  // 🚩 NUEVAS FUNCIONES DE LIMPIEZA
   const clearWeek = () => {
     if (window.confirm(`¿Seguro que deseas borrar TODA la planificación de la Semana ${targetWeek}?`)) {
       setMatrix(prev => {
@@ -292,7 +354,6 @@ const ManageRoutesModal = ({
     }
   };
 
-  // 🚩 FIX RECUPERADO: Guardado dinámico para múltiples reponedores
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!localId) return toast.error("Selecciona un Local.");
@@ -376,7 +437,7 @@ const ManageRoutesModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center z-[150] sm:p-4 font-[Outfit]">
-      <div className="bg-white w-full h-full sm:h-auto sm:max-w-4xl rounded-none sm:rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[100vh] sm:max-h-[95vh]">
+      <div className="bg-white w-full h-full sm:h-auto sm:max-w-5xl rounded-none sm:rounded-[3rem] shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[100vh] sm:max-h-[95vh]">
         
         {/* HEADER */}
         <div className="flex items-center justify-between px-5 py-4 sm:px-8 sm:py-6 bg-white border-b border-gray-50 shrink-0">
@@ -394,20 +455,21 @@ const ManageRoutesModal = ({
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8">
+          {/* Se ha ajustado el grid a col-span-5 y col-span-7 para ensanchar el lateral izquierdo */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
             
-            {/* HERRAMIENTAS */}
-            <div className="lg:col-span-4 space-y-4 sm:space-y-6">
+            {/* HERRAMIENTAS - Ahora col-span-5 para ser más ancho */}
+            <div className="lg:col-span-5 space-y-4 sm:space-y-6">
               
-              {/* PASO 1: DÓNDE */}
-              <div className="bg-gray-900 p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] text-white shadow-xl">
-                 <div className="flex items-center gap-2 text-[9px] font-black text-[#87be00] uppercase tracking-widest mb-3">
+              {/* PASO 1: DÓNDE (ESTILO ACTUALIZADO) */}
+              <div className="bg-blue-50/50 p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] border border-blue-100 shadow-sm space-y-4">
+                 <div className="flex items-center gap-2 text-[9px] font-black text-blue-600 uppercase tracking-widest">
                     <FiMapPin size={12} /> 1. Dónde (Local)
                  </div>
                  
                  {isRoot && (
                    <select
-                     className="w-full bg-white/10 rounded-xl px-4 py-3 text-xs font-bold border border-white/10 outline-none focus:bg-white/20 transition-all mb-2 h-12"
+                     className="w-full bg-white rounded-xl px-4 py-3 text-xs font-bold border border-blue-100 outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12 text-gray-900"
                      value={companyId} onChange={(e) => { setCompanyId(e.target.value); setLocalId(""); }}
                    >
                      <option value="" className="text-gray-900">Empresa...</option>
@@ -415,9 +477,9 @@ const ManageRoutesModal = ({
                    </select>
                  )}
                  
-                 <div className="grid grid-cols-2 gap-2 mb-2">
+                 <div className="grid grid-cols-2 gap-2">
                    <select
-                     className="w-full bg-white/10 rounded-xl px-3 py-2 text-xs font-bold border border-white/10 outline-none focus:bg-white/20 transition-all h-10"
+                     className="w-full bg-white rounded-xl px-3 py-2 text-xs font-bold border border-blue-100 outline-none focus:ring-4 focus:ring-blue-50 transition-all h-10 text-gray-900"
                      value={cadenaFilter} onChange={(e) => setCadenaFilter(e.target.value)}
                    >
                      <option value="" className="text-gray-900">Cadenas (Todas)</option>
@@ -428,14 +490,14 @@ const ManageRoutesModal = ({
                      <input
                        type="text"
                        placeholder="Cód. Local"
-                       className="w-full bg-white/10 rounded-xl pl-8 pr-3 py-2 text-xs font-bold border border-white/10 outline-none focus:bg-white/20 transition-all text-white placeholder-gray-400 h-10"
+                       className="w-full bg-white rounded-xl pl-8 pr-3 py-2 text-xs font-bold border border-blue-100 outline-none focus:ring-4 focus:ring-blue-50 transition-all text-gray-900 placeholder-gray-400 h-10"
                        value={codigoFilter} onChange={(e) => setCodigoFilter(e.target.value)}
                      />
                    </div>
                  </div>
 
                  <select 
-                   required className={`w-full rounded-xl px-4 py-3 text-xs font-bold border outline-none transition-all h-12 ${localId ? 'bg-[#87be00]/20 border-[#87be00] text-white' : 'bg-white/10 border-white/10 text-gray-900'}`}
+                   required className={`w-full rounded-xl px-4 py-3 text-xs font-bold border outline-none transition-all h-12 ${localId ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-blue-100 text-gray-900'}`}
                    value={localId} onChange={(e) => setLocalId(e.target.value)}
                  >
                     <option value="" className="text-gray-900">
@@ -477,13 +539,56 @@ const ManageRoutesModal = ({
                     </div>
                  </div>
                  
-                 <select 
-                    className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12"
-                    value={brush.user_id} onChange={(e) => setBrush({...brush, user_id: e.target.value})}
-                  >
-                    <option value="">1º Elige Reponedor...</option>
-                    {filteredUsers.map(u => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}
-                 </select>
+                 <div className="relative" ref={userDropdownRef}>
+                   <div
+                     className={`w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12 cursor-pointer flex items-center justify-between ${brush.user_id ? 'text-gray-900' : 'text-gray-500'}`}
+                     onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                   >
+                     <span className="truncate">{selectedUserText}</span>
+                     <svg className={`w-3 h-3 text-blue-400 transition-transform shrink-0 ${isUserDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
+                   </div>
+
+                   {isUserDropdownOpen && (
+                     <div className="absolute top-[calc(100%+4px)] left-0 w-full bg-white border border-blue-100 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-[250px]">
+                       <div className="p-2 border-b border-gray-50 bg-blue-50/30">
+                         <input
+                           type="text"
+                           autoFocus
+                           placeholder="🔍 Buscar nombre o correo..."
+                           className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-[10px] font-bold outline-none focus:border-blue-300 transition-colors"
+                           value={userSearchTerm}
+                           onChange={(e) => setUserSearchTerm(e.target.value)}
+                           onClick={(e) => e.stopPropagation()}
+                         />
+                       </div>
+                       <div className="overflow-y-auto custom-scrollbar p-1.5 space-y-0.5 bg-white">
+                         <div
+                           className="px-3 py-2 text-[10px] font-black uppercase text-gray-500 hover:bg-blue-50 hover:text-blue-600 rounded-lg cursor-pointer transition-colors"
+                           onClick={() => { setBrush({...brush, user_id: ""}); setIsUserDropdownOpen(false); setUserSearchTerm(""); }}
+                         >
+                           1º Elige Reponedor...
+                         </div>
+                         {filteredUsers
+                           .filter(u => {
+                             const fullName = `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase();
+                             const email = (u.email || '').toLowerCase();
+                             const term = userSearchTerm.toLowerCase();
+                             return fullName.includes(term) || email.includes(term);
+                           })
+                           .map(u => (
+                           <div
+                             key={u.id}
+                             className="px-3 py-2 flex flex-col hover:bg-blue-50 rounded-lg cursor-pointer transition-colors group"
+                             onClick={() => { setBrush({...brush, user_id: u.id}); setIsUserDropdownOpen(false); setUserSearchTerm(""); }}
+                           >
+                             <span className="text-[10px] font-black uppercase text-gray-800 group-hover:text-blue-600">{u.first_name} {u.last_name}</span>
+                             {u.email && <span className="text-[9px] font-bold text-gray-400 lowercase truncate mt-0.5">{u.email}</span>}
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                 </div>
 
                  <select 
                     className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12"
@@ -502,17 +607,31 @@ const ManageRoutesModal = ({
                     {brush.rol === "INDIVIDUAL" ? <option value="INDIVIDUAL">Horario Manual</option> : turnosAgrupados.map(t => <option key={t.nombre} value={t.nombre}>{t.nombre}</option>)}
                  </select>
 
+                 {/* ── SELECTORES DE HORA EN FORMATO 24H ── */}
                  {brush.turno_id && (
-                   <div className="flex gap-2">
-                     <input type="time" className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2.5 text-xs font-bold outline-none" value={brush.start_time} onChange={(e) => setBrush({...brush, start_time: e.target.value})} disabled={brush.rol !== "INDIVIDUAL"} />
-                     <input type="time" className="w-full bg-white border border-blue-100 rounded-xl px-3 py-2.5 text-xs font-bold outline-none" value={brush.end_time} onChange={(e) => setBrush({...brush, end_time: e.target.value})} disabled={brush.rol !== "INDIVIDUAL"} />
+                   <div className="space-y-1.5">
+                     <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                       <FiClock size={10} /> Horario (formato 24h)
+                     </label>
+                     <div className="flex gap-2">
+                       <TimePicker24h
+                         value={brush.start_time}
+                         onChange={(e) => setBrush({ ...brush, start_time: e.target.value })}
+                         disabled={brush.rol !== "INDIVIDUAL"}
+                       />
+                       <TimePicker24h
+                         value={brush.end_time}
+                         onChange={(e) => setBrush({ ...brush, end_time: e.target.value })}
+                         disabled={brush.rol !== "INDIVIDUAL"}
+                       />
+                     </div>
                    </div>
                  )}
               </div>
             </div>
 
-            {/* CALENDARIO */}
-            <div className="lg:col-span-8 flex flex-col mt-2 lg:mt-0">
+            {/* CALENDARIO - Ahora col-span-7 */}
+            <div className="lg:col-span-7 flex flex-col mt-2 lg:mt-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 px-1 gap-3">
                 <div className="flex items-center gap-2 text-[10px] font-black text-gray-500 uppercase tracking-widest">
                   <FiCalendar size={14} className="shrink-0" /> 3. Calendario
@@ -521,7 +640,7 @@ const ManageRoutesModal = ({
                   <button type="button" disabled={eraserMode} onClick={() => fillTargetWeek(false)} className={`flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${eraserMode ? 'opacity-50 cursor-not-allowed' : ''}`}><FiCopy/> Llenar S{targetWeek}</button>
                   <button type="button" disabled={eraserMode} onClick={() => fillTargetWeek(true)} className={`flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2.5 rounded-lg transition-all ${eraserMode ? 'opacity-50 cursor-not-allowed' : ''}`}>Llenar Mes</button>
 
-                  {/* 🚩 NUEVO MENÚ DE LIMPIEZA */}
+                  {/* MENÚ DE LIMPIEZA */}
                   {eraserMode ? (
                     <button type="button" onClick={() => setEraserMode(false)} className="flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 bg-red-500 text-white shadow-md hover:bg-red-600">
                       <FiX size={12} /> Quitar Borrador
@@ -579,7 +698,6 @@ const ManageRoutesModal = ({
                         const isActive = cellArray.length > 0;
                         const isTargetWeek = w === targetWeek;
                         
-                        // 🚩 Clases dinámicas para manejar el Modo Borrador visualmente
                         let baseClass = "relative min-h-[4rem] h-20 rounded-xl sm:rounded-2xl flex flex-col items-center justify-start p-1 cursor-pointer transition-all border-2 overflow-y-auto custom-scrollbar";
                         
                         if (eraserMode) {
