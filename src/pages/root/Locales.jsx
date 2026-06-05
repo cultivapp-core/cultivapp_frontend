@@ -17,9 +17,9 @@ const Locales = () => {
   const [companies, setCompanies] = useState([])
   const [selectedCompany, setSelectedCompany] = useState("")
   const [showInactive, setShowInactive] = useState(false)
+  
+  // 🌍 Estados para los filtros y búsqueda
   const [searchTerm, setSearchTerm] = useState("") 
-
-  // 🌍 Nuevos estados para los filtros
   const [selectedRegion, setSelectedRegion] = useState("")
   const [selectedComuna, setSelectedComuna] = useState("")
   const [selectedChain, setSelectedChain] = useState("")
@@ -102,10 +102,10 @@ const Locales = () => {
   const visibleLocales = useMemo(() => {
     return locales.filter(l => {
       const matchesStatus = showInactive || l.is_active;
-      // <-- CORREGIDO AQUÍ: Se cambió l.codigo por l.codigo_local
+      
+      // Búsqueda exclusiva por código y dirección
       const matchesSearch = 
         (l.codigo_local?.toString().toLowerCase() || "").includes(searchTerm.toLowerCase()) || 
-        (l.cadena?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
         (l.direccion?.toLowerCase() || "").includes(searchTerm.toLowerCase());
       
       const matchesRegion = selectedRegion ? l.region === selectedRegion : true;
@@ -154,22 +154,11 @@ const Locales = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-12 space-y-4">
           
-          {/* BARRA PRINCIPAL (Busqueda y Empresa) */}
+          {/* BARRA PRINCIPAL (Empresa y Estado) */}
           <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm">
              <div className="flex flex-wrap items-center gap-4 flex-1">
-                <div className="relative flex items-center min-w-[280px]">
-                  <FiSearch className="absolute left-4 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="BUSCAR POR CÓDIGO, CADENA O DIRECCIÓN..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-gray-50 border-none rounded-xl pl-11 pr-4 py-2.5 text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20 transition uppercase tracking-widest placeholder:text-gray-400"
-                  />
-                </div>
-
                 {hasElevatedAccess ? (
-                  <div className="flex items-center gap-3 border-l pl-4 border-gray-100">
+                  <div className="flex items-center gap-3">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Empresa:</span>
                       <select
                         value={selectedCompany}
@@ -181,7 +170,7 @@ const Locales = () => {
                       </select>
                   </div>
                 ) : (
-                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic border-l pl-4 border-gray-100">
+                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic">
                       Locales de {user?.company_name}
                   </div>
                 )}
@@ -198,47 +187,64 @@ const Locales = () => {
              </button>
           </div>
 
-          {/* BARRA SECUNDARIA (Filtros Específicos) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm">
-            {/* Región */}
-            <div className="relative">
-              <FiGlobe className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" size={16}/>
-              <select 
-                value={selectedRegion} 
-                onChange={(e) => setSelectedRegion(e.target.value)} 
-                className="w-full bg-gray-50 border-none rounded-xl pl-11 py-2.5 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition appearance-none tracking-widest text-gray-700"
-              >
-                <option value="">TODAS LAS REGIONES</option>
-                {regionsList.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
+          {/* BARRA SECUNDARIA (Filtros y Búsqueda) */}
+          <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
             
-            {/* Comuna */}
-            <div className="relative">
-              <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" size={16}/>
-              <select 
-                value={selectedComuna} 
-                onChange={(e) => setSelectedComuna(e.target.value)} 
-                className="w-full bg-gray-50 border-none rounded-xl pl-11 py-2.5 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition appearance-none tracking-widest text-gray-700"
-                disabled={!selectedRegion && comunasList.length === 0}
-              >
-                <option value="">TODAS LAS COMUNAS</option>
-                {comunasList.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+            {/* Fila 1: Filtros Select */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Región */}
+              <div className="relative">
+                <FiGlobe className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" size={16}/>
+                <select 
+                  value={selectedRegion} 
+                  onChange={(e) => setSelectedRegion(e.target.value)} 
+                  className="w-full bg-gray-50 border-none rounded-xl pl-11 py-2.5 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition appearance-none tracking-widest text-gray-700"
+                >
+                  <option value="">TODAS LAS REGIONES</option>
+                  {regionsList.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              
+              {/* Comuna */}
+              <div className="relative">
+                <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" size={16}/>
+                <select 
+                  value={selectedComuna} 
+                  onChange={(e) => setSelectedComuna(e.target.value)} 
+                  className="w-full bg-gray-50 border-none rounded-xl pl-11 py-2.5 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition appearance-none tracking-widest text-gray-700"
+                  disabled={!selectedRegion && comunasList.length === 0}
+                >
+                  <option value="">TODAS LAS COMUNAS</option>
+                  {comunasList.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              {/* Cadena */}
+              <div className="relative">
+                <FiShoppingCart className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" size={16}/>
+                <select 
+                  value={selectedChain} 
+                  onChange={(e) => setSelectedChain(e.target.value)} 
+                  className="w-full bg-gray-50 border-none rounded-xl pl-11 py-2.5 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition appearance-none tracking-widest text-gray-700"
+                >
+                  <option value="">TODAS LAS CADENAS</option>
+                  {chainsList.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
             </div>
 
-            {/* Cadena */}
-            <div className="relative">
-              <FiShoppingCart className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" size={16}/>
-              <select 
-                value={selectedChain} 
-                onChange={(e) => setSelectedChain(e.target.value)} 
-                className="w-full bg-gray-50 border-none rounded-xl pl-11 py-2.5 text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition appearance-none tracking-widest text-gray-700"
-              >
-                <option value="">TODAS LAS CADENAS</option>
-                {chainsList.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+            {/* Fila 2: Buscador nuevo */}
+            <div className="relative flex items-center w-full">
+              <FiSearch className="absolute left-4 text-[#87be00]" size={16} />
+              <input
+                type="text"
+                placeholder="BUSCAR POR CÓDIGO O DIRECCIÓN..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-gray-50 border-none rounded-xl pl-11 pr-4 py-2.5 text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20 transition uppercase tracking-widest placeholder:text-gray-400 text-gray-700"
+              />
             </div>
+
           </div>
 
           <div className="h-[350px] w-full rounded-[2.5rem] overflow-hidden border border-gray-100 shadow-inner bg-gray-50 relative">
@@ -270,7 +276,6 @@ const Locales = () => {
                     onClick={() => setMapSelectedId(local.id)}
                   >
                     <td className="p-5 font-bold text-xs text-[#87be00] uppercase tracking-tighter">
-                      {/* <-- CORREGIDO AQUÍ: Se cambió local.codigo por local.codigo_local */}
                       {local.codigo_local || '—'}
                     </td>
                     <td className="p-5 font-black text-gray-800 uppercase tracking-tight">{local.cadena}</td>
