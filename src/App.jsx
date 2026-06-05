@@ -34,7 +34,7 @@ import NotificationManager from "./pages/root/NotificationManager"
 import TurnosManager from "./pages/root/TurnosManager"
 import UploadSalesData from "./pages/reports/UploadSalesData" 
 import SalesDashboard from "./pages/reports/SalesDashboard" 
-import ReportsPage from "./pages/reports/ReportsPage" // 🚩 IMPORTADO
+import ReportsPage from "./pages/reports/ReportsPage" 
 
 /* ================= ADMIN CLIENTE ================= */
 import AdminDashboard from "./pages/admin/AdminDashboard"
@@ -62,12 +62,17 @@ import UserLocales from "./pages/user/UserLocales"
 import VisitFlow from "./pages/user/VisitFlow" 
 import UserAgenda from "./pages/user/UserAgenda"
 
+/* ================= VIEWER (NUEVO PERFIL) ================= */
+import ViewerLayout from "./pages/viewer/ViewerLayout"
+import ViewerDashboard from "./pages/viewer/ViewerDashboard" 
+import ViewerReports from "./pages/viewer/ViewerReports" // 🚩 NUEVO COMPONENTE
+
 /* ================= QUESTIONS & REPORTS ================= */
 import QuestionsManager from "./pages/admin/QuestionsManager"
 
 import "./App.css"
 
-// 🚩 COMPONENTE MONITOR DE LATIDOS (HEARTBEAT)
+// ... (El resto de funciones HeartbeatMonitor y OfflineMonitor se mantienen igual)
 const HeartbeatMonitor = () => {
   const { user } = useAuth();
   useEffect(() => {
@@ -118,11 +123,12 @@ function App() {
 
             {/* 👑 SECCIÓN ROOT */}
             <Route path="/root" element={<ProtectedRoute role="ROOT"><RootDashboard /></ProtectedRoute>}>
+              {/* ... (Tus rutas actuales de Root) ... */}
               <Route index element={<Analytics />} /> 
               <Route path="analytics" element={<Analytics />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
               <Route path="sales-report" element={<SalesDashboard />} />
-              <Route path="reports" element={<ReportsPage />} /> {/* 🚩 RUTA AGREGADA */}
+              <Route path="reports" element={<ReportsPage />} /> 
               <Route path="active-sessions" element={<ActiveSessions />} /> 
               <Route path="companies" element={<Companies />} />
               <Route path="users" element={<Users />} />
@@ -141,6 +147,7 @@ function App() {
 
             {/* 👤 SECCIÓN USUARIO */}
             <Route path="/usuario" element={<ProtectedRoute role="USUARIO"><UserDashboard /></ProtectedRoute>}>
+              {/* ... (Tus rutas actuales de Usuario) ... */}
               <Route index element={<UserHome />} />
               <Route path="home" element={<UserHome />} />
               <Route path="agenda" element={<UserAgenda />} /> 
@@ -151,6 +158,7 @@ function App() {
 
             {/* 🛡️ SECCIÓN SUPERVISOR */}
             <Route path="/supervisor" element={<ProtectedRoute role="SUPERVISOR"><SupervisorDashboard /></ProtectedRoute>}>
+              {/* ... (Tus rutas actuales de Supervisor) ... */}
               <Route index element={<SupervisorPanel />} />
               <Route path="mapa" element={<LiveMap />} />
               <Route path="alertas" element={<AlertManager />} />
@@ -164,6 +172,7 @@ function App() {
 
             {/* 💼 SECCIÓN ADMIN */}
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
+              {/* ... (Tus rutas actuales de Admin) ... */}
               <Route index element={<AdminOverview />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
               <Route path="sales-report" element={<SalesDashboard />} />
@@ -181,6 +190,13 @@ function App() {
               <Route path="attendance-control" element={<AttendanceControl />} />
               <Route path="photo-validation" element={<PhotoValidation />} />
               <Route path="informes" element={<ReportsPage />} />
+            </Route>
+
+            {/* 👁️ SECCIÓN VIEWER */}
+            <Route path="/viewer" element={<ProtectedRoute roles={["VIEW", "ADMIN_CLIENTE", "ROOT"]}><ViewerLayout /></ProtectedRoute>}>
+              <Route index element={<ViewerDashboard />} />
+              <Route path="dashboard" element={<ViewerDashboard />} />
+              <Route path="reportes" element={<ViewerReports />} /> {/* 🚩 RUTA INTEGRADA */}
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

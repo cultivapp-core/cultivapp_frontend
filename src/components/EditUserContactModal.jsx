@@ -112,7 +112,7 @@ const EditUserContactModal = ({ user, onClose, onUpdated }) => {
                  <option value="ADMIN_CLIENTE">ADMIN CLIENTE</option>
                  <option value="SUPERVISOR">SUPERVISOR</option>
                  <option value="USUARIO">USUARIO</option>
-                 <option value="VIEWER">VIEWER</option>
+                 <option value="VIEW">VIEW</option>
                </select>
             </InputWrapper>
           </div>

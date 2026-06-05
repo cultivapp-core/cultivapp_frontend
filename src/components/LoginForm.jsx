@@ -79,7 +79,8 @@ const LoginForm = () => {
         ADMIN_CLIENTE: "/admin",
         SUPERVISOR: "/supervisor",
         USER: "/usuario",
-        USUARIO: "/usuario"
+        USUARIO: "/usuario",
+        VIEW: "/viewer"
       }
 
       const redirect = roleRoutes[data.user.role]
