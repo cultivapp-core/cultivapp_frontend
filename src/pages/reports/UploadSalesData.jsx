@@ -42,10 +42,8 @@ const UploadSalesData = () => {
 
   const handleUpload = async () => {
     if (!file) return;
-
     const formData = new FormData();
     formData.append("file", file);
-
     setUploadState({ loading: true, success: false, error: null, progress: 0 });
 
     try {
@@ -56,13 +54,10 @@ const UploadSalesData = () => {
           setUploadState(prev => ({ ...prev, progress: percentCompleted }));
         }
       });
-
       setUploadState({ loading: false, success: true, error: null, progress: 100 });
       setFile(null);
       setTimeout(() => setUploadState(prev => ({ ...prev, success: false })), 3000);
-
     } catch (error) {
-      console.error("Error al subir archivo:", error);
       setUploadState({ 
         loading: false, 
         success: false, 
@@ -73,9 +68,10 @@ const UploadSalesData = () => {
   };
 
   return (
-    <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100 font-[Outfit]">
-      <div className="mb-6">
-        <h3 className="text-xl font-black text-gray-900 uppercase italic tracking-tighter">
+    // CAMBIO CLAVE: Quitamos anchos fijos, usamos 'max-w-4xl mx-auto' para que respire en PC y ajuste en móvil
+    <div className="w-full max-w-4xl mx-auto bg-white p-6 md:p-10 rounded-[2rem] shadow-sm border border-gray-100 font-[Outfit]">
+      <div className="mb-8">
+        <h3 className="text-2xl font-black text-gray-900 uppercase italic tracking-tighter">
           Actualizar Base de Ventas
         </h3>
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
@@ -88,7 +84,7 @@ const UploadSalesData = () => {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => !file && !uploadState.loading && fileInputRef.current.click()}
-        className={`relative flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-3xl transition-all duration-300 ${
+        className={`relative flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-3xl transition-all duration-300 ${
           isDragging ? 'border-[#87be00] bg-[#87be00]/5' : file ? 'border-gray-200 bg-gray-50' : 'border-gray-200 hover:border-[#87be00]/50 hover:bg-gray-50 cursor-pointer'
         }`}
       >
@@ -124,40 +120,34 @@ const UploadSalesData = () => {
       </div>
 
       {uploadState.loading && (
-        <div className="mt-6">
-          <div className="flex justify-between mb-1">
-            <span className="text-[10px] font-black uppercase text-gray-500">Subiendo al servidor...</span>
+        <div className="mt-8">
+          <div className="flex justify-between mb-2">
+            <span className="text-[10px] font-black uppercase text-gray-500">Procesando archivo...</span>
             <span className="text-[10px] font-black uppercase text-[#87be00]">{uploadState.progress}%</span>
           </div>
           <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
             <div 
-              className="bg-[#87be00] h-2 rounded-full transition-all duration-300 ease-out" 
+              className="bg-[#87be00] h-2 rounded-full transition-all duration-300" 
               style={{ width: `${uploadState.progress}%` }}
             ></div>
           </div>
         </div>
       )}
 
-      {uploadState.error && (
-        <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600">
-          <FiAlertCircle size={18} className="shrink-0" />
-          <p className="text-[10px] font-black uppercase">{uploadState.error}</p>
+      {/* Mensajes de error/éxito */}
+      {(uploadState.error || uploadState.success) && (
+        <div className={`mt-6 p-4 rounded-2xl flex items-center gap-3 ${uploadState.error ? 'bg-red-50 text-red-600' : 'bg-[#87be00]/10 text-[#87be00]'}`}>
+          {uploadState.error ? <FiAlertCircle size={18} /> : <FiCheckCircle size={18} />}
+          <p className="text-[10px] font-black uppercase">{uploadState.error || "¡Datos procesados y sincronizados!"}</p>
         </div>
       )}
 
-      {uploadState.success && (
-        <div className="mt-4 p-4 bg-[#87be00]/10 border border-[#87be00]/20 rounded-2xl flex items-center gap-3 text-[#87be00]">
-          <FiCheckCircle size={18} className="shrink-0" />
-          <p className="text-[10px] font-black uppercase">¡Datos procesados y sincronizados!</p>
-        </div>
-      )}
-
-      {/* 🚩 AVISO DE SEGURIDAD PARA EL USUARIO */}
+      {/* Aviso de seguridad */}
       {!uploadState.loading && file && !uploadState.success && !uploadState.error && (
-        <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-3">
-          <FiInfo className="text-blue-500 shrink-0 mt-0.5" size={16} />
-          <p className="text-[9px] font-bold text-blue-800 uppercase tracking-widest leading-relaxed">
-            Protección de datos activa: El sistema añadirá únicamente los registros nuevos. Las ventas previamente cargadas para el mismo día y local no serán duplicadas ni eliminadas.
+        <div className="mt-6 p-5 bg-blue-50 border border-blue-100 rounded-2xl flex items-start gap-4">
+          <FiInfo className="text-blue-500 shrink-0 mt-0.5" size={18} />
+          <p className="text-[10px] font-bold text-blue-800 uppercase tracking-widest leading-relaxed">
+            El sistema añadirá únicamente los registros nuevos. Las ventas previamente cargadas para el mismo día y local no serán duplicadas.
           </p>
         </div>
       )}
@@ -166,13 +156,13 @@ const UploadSalesData = () => {
         <button 
           onClick={handleUpload}
           disabled={!file}
-          className={`w-full mt-6 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
+          className={`w-full mt-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
             !file 
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
               : 'bg-[#87be00] text-white hover:bg-[#76a600] shadow-lg shadow-[#87be00]/20 active:scale-[0.98]'
           }`}
         >
-          <FiUploadCloud size={16} /> Subir y Sincronizar Datos
+          <FiUploadCloud size={16} /> Subir y Sincronizar
         </button>
       )}
     </div>

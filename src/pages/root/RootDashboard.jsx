@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import { useNavigate, Outlet, useLocation } from "react-router-dom"
 import { FiMenu, FiLogOut, FiActivity } from "react-icons/fi"
-import Sidebar from "../../components/Sidebar"
 import LocalesMap from "../../components/LocalesMap"
 import api from "../../api/apiClient"
 
@@ -121,25 +120,12 @@ const RootDashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex font-[Outfit]">
-      
-       <div className="hidden md:flex md:flex-col md:w-72 bg-white border-r border-gray-100 min-h-screen px-8 py-10 shadow-sm z-20">
-        <Sidebar />
-        <div className="mt-auto pt-6 border-t border-gray-50">
-          <button 
-            onClick={handleLogout} 
-            className="flex items-center gap-3 text-gray-400 hover:text-red-500 hover:bg-red-50 px-6 py-4 rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest w-full"
-          >
-            <FiLogOut size={18}/> Cerrar sesión
-          </button>
-        </div>
-      </div>
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         
         {/* TOPBAR */}
         <div className="bg-white border-b border-gray-50 px-10 py-6 flex items-center justify-between shrink-0 z-10 shadow-sm">
           <div className="flex items-center gap-6">
-            <button className="md:hidden text-gray-600"><FiMenu size={22}/></button>
             <div className="flex items-center gap-3">
               <div className="p-3 bg-gray-50 rounded-2xl text-gray-800">
                  <Globe size={20} className="animate-pulse" />

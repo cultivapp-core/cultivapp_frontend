@@ -24,6 +24,7 @@ import NotificationsLayout from "./components/NotificationsLayout"
 import AlertsHistory from "./components/AlertsHistory" 
 
 /* ================= ROOT ================= */
+import RootLayout from "./pages/root/RootLayout" // 🚩 NUEVO LAYOUT
 import RootDashboard from "./pages/root/RootDashboard"
 import Analytics from "./pages/root/Analytics"
 import ActiveSessions from "./pages/root/ActiveSession" 
@@ -66,7 +67,6 @@ import UserAgenda from "./pages/user/UserAgenda"
 import ViewerLayout from "./pages/viewer/ViewerLayout"
 import ViewerDashboard from "./pages/viewer/ViewerDashboard" 
 import ViewerReports from "./pages/viewer/ViewerReports" 
-// 🚩 NUEVO COMPONENTE DE PLANNING
 import RoutePlanningMap from "./pages/viewer/RoutePlanningMap" 
 
 /* ================= QUESTIONS & REPORTS ================= */
@@ -122,9 +122,9 @@ function App() {
             <Route path="/verify/:id" element={<UserCredential />} />
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
 
-            {/* 👑 SECCIÓN ROOT */}
-            <Route path="/root" element={<ProtectedRoute role="ROOT"><RootDashboard /></ProtectedRoute>}>
-              <Route index element={<Analytics />} /> 
+            {/* 👑 SECCIÓN ROOT - AHORA CON ROOTLAYOUT */}
+            <Route path="/root" element={<ProtectedRoute role="ROOT"><RootLayout /></ProtectedRoute>}>
+              <Route index element={<Analytics  />} /> 
               <Route path="analytics" element={<Analytics />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
               <Route path="sales-report" element={<SalesDashboard />} />
@@ -194,7 +194,7 @@ function App() {
               <Route index element={<ViewerDashboard />} />
               <Route path="dashboard" element={<ViewerDashboard />} />
               <Route path="reportes" element={<ViewerReports />} />
-              <Route path="planificacion" element={<RoutePlanningMap />} /> {/* 🚩 RUTA INTEGRADA */}
+              <Route path="planificacion" element={<RoutePlanningMap />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />
