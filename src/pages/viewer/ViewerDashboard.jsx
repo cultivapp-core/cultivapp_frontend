@@ -5,6 +5,7 @@ import {
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
+import InventoryModule from "../inventory/InventoryModule"; 
 
 // ─── Helpers de formato ──────────────────────────────────────────────────────
 const formatMoney = (value) => {
@@ -63,19 +64,6 @@ const ChainRow = ({ chain }) => {
     </div>
   );
 };
-
-// ─── Módulo de Inventario ───────────────────────────────────────────────────
-const InventoryModule = () => (
-  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 animate-in fade-in duration-500">
-    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-      <h3 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-4">Estado de Inventario</h3>
-      <p className="text-xs text-gray-400">Modulo de control de stock activo. Configura alertas de reposición aquí.</p>
-    </div>
-    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-      <h3 className="text-[11px] font-black text-gray-900 uppercase tracking-widest mb-4">Alertas de Quiebre</h3>
-    </div>
-  </div>
-);
 
 // ─── Componente principal ────────────────────────────────────────────────────
 const ViewerDashboard = () => {
