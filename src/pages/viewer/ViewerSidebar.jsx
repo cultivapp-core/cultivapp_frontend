@@ -1,15 +1,17 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FiPieChart, FiBarChart2, FiMap, FiCamera, FiAlertCircle, FiLogOut } from "react-icons/fi";
-import { useAuth } from "../../context/AuthContext"; // 🚩 Asegúrate de que esta ruta sea la correcta
+import { FiPieChart, FiBarChart2, FiMap, FiCamera, FiAlertCircle, FiLogOut, FiNavigation } from "react-icons/fi";
+import { useAuth } from "../../context/AuthContext";
 
 const ViewerSidebar = () => {
   const location = useLocation();
-  const { logout } = useAuth(); // 🚩 Hook para el logout
+  const { logout } = useAuth();
 
   const menuItems = [
     { path: "/viewer/dashboard", name: "Panorama", icon: <FiPieChart size={18} /> },
     { path: "/viewer/reportes", name: "Métricas", icon: <FiBarChart2 size={18} /> },
+    // 🚩 Aquí vinculamos el Mapa de Planificación
+    { path: "/viewer/planificacion", name: "Planificación", icon: <FiNavigation size={18} /> },
     { path: "/viewer/mapa", name: "Monitoreo GPS", icon: <FiMap size={18} /> },
     { path: "/viewer/galeria", name: "Evidencias", icon: <FiCamera size={18} /> },
     { path: "/viewer/alertas", name: "Alertas", icon: <FiAlertCircle size={18} /> },
@@ -18,7 +20,6 @@ const ViewerSidebar = () => {
   return (
     <div className="flex flex-col justify-between h-full w-full font-[Outfit] mt-6 px-2">
       
-      {/* SECCIÓN DEL MENÚ */}
       <div>
         <span className="text-[9px] font-black text-gray-300 uppercase tracking-[0.2em] px-4 block mb-4">
           Módulo Gerencial
@@ -26,6 +27,7 @@ const ViewerSidebar = () => {
         
         <nav className="flex flex-col gap-2">
           {menuItems.map((item) => {
+            // Ajuste para que active el ítem aunque la ruta sea sub-ruta
             const isActive = location.pathname.includes(item.path);
             return (
               <Link
@@ -57,7 +59,6 @@ const ViewerSidebar = () => {
         </nav>
       </div>
 
-      {/* 🚩 BOTÓN CERRAR SESIÓN */}
       <div className="pt-6 pb-6 border-t border-gray-100">
         <button 
           onClick={logout} 
@@ -66,7 +67,6 @@ const ViewerSidebar = () => {
           <FiLogOut size={16} /> Cerrar Sesión
         </button>
       </div>
-
     </div>
   );
 };

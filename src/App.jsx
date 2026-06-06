@@ -65,14 +65,15 @@ import UserAgenda from "./pages/user/UserAgenda"
 /* ================= VIEWER (NUEVO PERFIL) ================= */
 import ViewerLayout from "./pages/viewer/ViewerLayout"
 import ViewerDashboard from "./pages/viewer/ViewerDashboard" 
-import ViewerReports from "./pages/viewer/ViewerReports" // 🚩 NUEVO COMPONENTE
+import ViewerReports from "./pages/viewer/ViewerReports" 
+// 🚩 NUEVO COMPONENTE DE PLANNING
+import RoutePlanningMap from "./pages/viewer/RoutePlanningMap" 
 
 /* ================= QUESTIONS & REPORTS ================= */
 import QuestionsManager from "./pages/admin/QuestionsManager"
 
 import "./App.css"
 
-// ... (El resto de funciones HeartbeatMonitor y OfflineMonitor se mantienen igual)
 const HeartbeatMonitor = () => {
   const { user } = useAuth();
   useEffect(() => {
@@ -123,7 +124,6 @@ function App() {
 
             {/* 👑 SECCIÓN ROOT */}
             <Route path="/root" element={<ProtectedRoute role="ROOT"><RootDashboard /></ProtectedRoute>}>
-              {/* ... (Tus rutas actuales de Root) ... */}
               <Route index element={<Analytics />} /> 
               <Route path="analytics" element={<Analytics />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
@@ -147,7 +147,6 @@ function App() {
 
             {/* 👤 SECCIÓN USUARIO */}
             <Route path="/usuario" element={<ProtectedRoute role="USUARIO"><UserDashboard /></ProtectedRoute>}>
-              {/* ... (Tus rutas actuales de Usuario) ... */}
               <Route index element={<UserHome />} />
               <Route path="home" element={<UserHome />} />
               <Route path="agenda" element={<UserAgenda />} /> 
@@ -158,7 +157,6 @@ function App() {
 
             {/* 🛡️ SECCIÓN SUPERVISOR */}
             <Route path="/supervisor" element={<ProtectedRoute role="SUPERVISOR"><SupervisorDashboard /></ProtectedRoute>}>
-              {/* ... (Tus rutas actuales de Supervisor) ... */}
               <Route index element={<SupervisorPanel />} />
               <Route path="mapa" element={<LiveMap />} />
               <Route path="alertas" element={<AlertManager />} />
@@ -172,7 +170,6 @@ function App() {
 
             {/* 💼 SECCIÓN ADMIN */}
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
-              {/* ... (Tus rutas actuales de Admin) ... */}
               <Route index element={<AdminOverview />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
               <Route path="sales-report" element={<SalesDashboard />} />
@@ -196,7 +193,8 @@ function App() {
             <Route path="/viewer" element={<ProtectedRoute roles={["VIEW", "ADMIN_CLIENTE", "ROOT"]}><ViewerLayout /></ProtectedRoute>}>
               <Route index element={<ViewerDashboard />} />
               <Route path="dashboard" element={<ViewerDashboard />} />
-              <Route path="reportes" element={<ViewerReports />} /> {/* 🚩 RUTA INTEGRADA */}
+              <Route path="reportes" element={<ViewerReports />} />
+              <Route path="planificacion" element={<RoutePlanningMap />} /> {/* 🚩 RUTA INTEGRADA */}
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />
