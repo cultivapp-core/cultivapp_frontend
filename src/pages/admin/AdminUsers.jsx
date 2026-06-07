@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react"
+import React, { useEffect, useState, useCallback, useRef } from "react"
 import {
   FiUserPlus,
   FiRotateCw,
@@ -13,7 +13,8 @@ import {
   FiUploadCloud,
   FiMoreVertical,
   FiCheckCircle,
-  FiPhone 
+  FiPhone,
+  FiSearch
 } from "react-icons/fi"
 import { toast } from "react-hot-toast"
 import api from "../../api/apiClient"
@@ -21,8 +22,9 @@ import api from "../../api/apiClient"
 import CreateAdminUserModal from "../../components/CreateAdminUserModal"
 import EditAdminUserModal from "../../components/EditAdminUserModal"
 import ResetPasswordAdminModal from "../../components/ResetPasswordAdminModal"
-import AssignLocalesModal from "./AssignLocalesModal" 
-import UserQuickView from "../../components/UserQuickView" 
+import AssignLocalesModal from "./AssignLocalesModal"
+import AssignUsersModal from "./AssignUsersModal"
+import UserQuickView from "../../components/UserQuickView"
 import { motion, AnimatePresence } from "framer-motion"
 
 const AdminUsers = () => {
@@ -32,13 +34,22 @@ const AdminUsers = () => {
   const [editUser, setEditUser] = useState(null)
   const [resetUser, setResetUser] = useState(null)
   const [assignSupervisor, setAssignSupervisor] = useState(null)
+  const [assignViewUser, setAssignViewUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [bulkLoading, setBulkLoading] = useState(false)
-
+  
+  const [searchTerm, setSearchTerm] = useState("")
   const [activePopover, setActivePopover] = useState(null)
 
   const fileInputRef = useRef(null)
   const userLocal = JSON.parse(localStorage.getItem("user"))
+
+  const filteredUsers = users.filter((user) => {
+    const term = searchTerm.toLowerCase()
+    const fullName = `${user.first_name} ${user.last_name}`.toLowerCase()
+    const email = user.email?.toLowerCase() || ""
+    return fullName.includes(term) || email.includes(term)
+  })
 
   const safe = (value) => {
     const num = Number(value)
@@ -69,11 +80,9 @@ const AdminUsers = () => {
   const handleBulkUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-
     const formData = new FormData()
     formData.append("excel", file)
     formData.append("company_id", userLocal.company_id)
-
     try {
       setBulkLoading(true)
       const res = await api.post("/users/bulk", formData)
@@ -185,7 +194,6 @@ const AdminUsers = () => {
         </div>
       </div>
 
-      {/* STATS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 px-2 md:px-0">
         <ProgressCard title="Supervisores" used={usedSupervisors} max={maxSupervisors} color="bg-[#87be00]" icon={<FiShield size={20}/>} />
         <ProgressCard title="Mercaderistas" used={usedUsers} max={maxUsers} color="bg-blue-600" icon={<FiUsers size={20}/>} />
@@ -194,8 +202,19 @@ const AdminUsers = () => {
 
       {/* VISTA MÓVIL */}
       <div className="md:hidden space-y-4 px-2">
-        {users.map((user, idx) => (
-          <motion.div 
+        <div className="relative w-full my-4">
+          <FiSearch className="absolute left-4 top-4 text-gray-400" size={18} />
+          <input
+            type="text"
+            placeholder="Buscar..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-white border border-gray-100 pl-12 pr-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest outline-none focus:border-[#87be00] transition-all shadow-sm"
+          />
+        </div>
+
+        {filteredUsers.map((user, idx) => (
+          <motion.div
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}
             key={user.id}
             className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col gap-4 relative overflow-hidden"
@@ -230,8 +249,15 @@ const AdminUsers = () => {
             </div>
 
             <div className="grid grid-cols-4 gap-2 pt-1">
-              {user.role === 'SUPERVISOR' && (
-                <button onClick={() => setAssignSupervisor(user)} className="py-2.5 bg-gray-50 text-[#87be00] rounded-xl flex items-center justify-center border border-gray-100"><FiMapPin size={16}/></button>
+              {(user.role === 'SUPERVISOR' || user.role === 'VIEW') && (
+                <button onClick={() => setAssignSupervisor(user)} className="py-2.5 bg-gray-50 text-[#87be00] rounded-xl flex items-center justify-center border border-gray-100" title="Asignar Locales">
+                  <FiMapPin size={16}/>
+                </button>
+              )}
+              {user.role === 'VIEW' && (
+                <button onClick={() => setAssignViewUser(user)} className="py-2.5 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center border border-blue-100" title="Asignar Usuarios">
+                  <FiUsers size={16}/>
+                </button>
               )}
               <button onClick={() => setEditUser(user)} className="py-2.5 bg-gray-50 text-gray-700 rounded-xl flex items-center justify-center border border-gray-100"><FiEdit size={16}/></button>
               <button onClick={() => setResetUser(user)} className="py-2.5 bg-gray-50 text-gray-700 rounded-xl flex items-center justify-center border border-gray-100"><FiRotateCw size={16}/></button>
@@ -245,6 +271,20 @@ const AdminUsers = () => {
 
       {/* VISTA DESKTOP */}
       <div className="hidden md:block bg-white rounded-[2rem] shadow-xl shadow-gray-100/50 border border-gray-100 overflow-hidden mx-2 lg:mx-0">
+        
+        <div className="px-6 py-6 border-b border-gray-100 bg-gray-50/30">
+          <div className="relative w-full">
+            <FiSearch className="absolute left-4 top-4 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Buscar por nombre o correo electrónico..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-white border border-gray-200 pl-12 pr-6 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none focus:border-[#87be00] transition-all shadow-sm"
+            />
+          </div>
+        </div>
+        
         <div className="max-h-[65vh] overflow-auto custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-max">
             <thead className="sticky top-0 bg-white z-20 border-b border-gray-100 shadow-sm">
@@ -259,13 +299,13 @@ const AdminUsers = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50/50">
-              {users.map(user => (
+              {filteredUsers.map(user => (
                 <tr key={user.id} className="hover:bg-gray-50/80 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-5">
-                      <UserQuickView 
-                        user={user} 
-                        isActive={activePopover === user.id} 
+                      <UserQuickView
+                        user={user}
+                        isActive={activePopover === user.id}
                         onToggle={() => setActivePopover(activePopover === user.id ? null : user.id)}
                       />
                       <div className="min-w-0">
@@ -302,8 +342,15 @@ const AdminUsers = () => {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 text-gray-400">
-                      {user.role === 'SUPERVISOR' && (
-                        <button onClick={() => setAssignSupervisor(user)} className="p-2.5 bg-gray-50 rounded-xl hover:bg-gray-900 hover:text-white transition-all shadow-sm" title="Asignar Cobertura"><FiMapPin size={16} /></button>
+                      {(user.role === 'SUPERVISOR' || user.role === 'VIEW') && (
+                        <button onClick={() => setAssignSupervisor(user)} className="p-2.5 bg-gray-50 rounded-xl hover:bg-gray-900 hover:text-white transition-all shadow-sm" title="Asignar Locales">
+                          <FiMapPin size={16} />
+                        </button>
+                      )}
+                      {user.role === 'VIEW' && (
+                        <button onClick={() => setAssignViewUser(user)} className="p-2.5 bg-blue-50 text-blue-400 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-sm" title="Asignar Usuarios">
+                          <FiUsers size={16} />
+                        </button>
                       )}
                       <button onClick={() => setEditUser(user)} className="p-2.5 bg-gray-50 rounded-xl hover:bg-gray-900 hover:text-[#87be00] transition-all shadow-sm"><FiEdit size={16} /></button>
                       <button onClick={() => setResetUser(user)} className="p-2.5 bg-gray-50 rounded-xl hover:bg-gray-900 hover:text-yellow-400 transition-all shadow-sm"><FiRotateCw size={16} /></button>
@@ -323,6 +370,7 @@ const AdminUsers = () => {
       <EditAdminUserModal isOpen={!!editUser} user={editUser} stats={stats} onClose={() => setEditUser(null)} onUpdated={fetchData} />
       {resetUser && <ResetPasswordAdminModal user={resetUser} onClose={() => setResetUser(null)} onUpdated={fetchData} />}
       {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchData} />}
+      {assignViewUser && <AssignUsersModal viewUser={assignViewUser} onClose={() => setAssignViewUser(null)} onRefresh={fetchData} />}
     </div>
   )
 }
