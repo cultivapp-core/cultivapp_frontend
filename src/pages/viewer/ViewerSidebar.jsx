@@ -1,73 +1,135 @@
-import React from "react";
-import { Link, useLocation } from "react-router-dom";
-import { FiPieChart, FiBarChart2, FiMap, FiCamera, FiAlertCircle, FiLogOut, FiNavigation } from "react-icons/fi";
+import React, { useState, useEffect } from "react";
+import { NavLink, Link, useLocation } from "react-router-dom";
+import {
+  FiPieChart, FiBarChart2, FiNavigation, FiMap, FiCamera, 
+  FiAlertCircle, FiLogOut, FiMenu, FiX, FiChevronLeft, FiChevronRight
+} from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 
-const ViewerSidebar = () => {
+const ViewerSidebar = ({ isCollapsed, setIsCollapsed }) => {
+  const { user, logout } = useAuth();
   const location = useLocation();
-  const { logout } = useAuth();
+  
+  const [isOpen, setIsOpen] = useState(false);
 
-  const menuItems = [
-    { path: "/viewer/dashboard", name: "Panorama", icon: <FiPieChart size={18} /> },
-    { path: "/viewer/reportes", name: "Métricas", icon: <FiBarChart2 size={18} /> },
-    // 🚩 Aquí vinculamos el Mapa de Planificación
-    { path: "/viewer/planificacion", name: "Planificación", icon: <FiNavigation size={18} /> },
-    { path: "/viewer/mapa", name: "Monitoreo GPS", icon: <FiMap size={18} /> },
-    { path: "/viewer/galeria", name: "Evidencias", icon: <FiCamera size={18} /> },
-    { path: "/viewer/alertas", name: "Alertas", icon: <FiAlertCircle size={18} /> },
-  ];
+  // Cerrar menú móvil al cambiar de ruta
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location]);
+
+  // --- SUB-COMPONENTE NAVITEM ---
+  const NavItem = ({ to, icon: Icon, label }) => (
+    <NavLink 
+      to={to} 
+      className={({ isActive }) => `
+        relative flex items-center gap-3 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 group
+        ${isActive ? 'bg-[#87be00]/10 text-[#87be00] shadow-sm shadow-[#87be00]/5' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-900'}
+        ${isCollapsed ? 'justify-center px-0 md:mx-2' : 'px-4'} 
+      `}
+    >
+      <div className="relative flex items-center justify-center">
+        <Icon size={isCollapsed ? 20 : 18} className="min-w-[20px] transition-all duration-300" />
+      </div>
+
+      <span className={`whitespace-nowrap transition-all duration-300 overflow-hidden ${isCollapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'w-auto opacity-100 block'}`}>
+        {label}
+      </span>
+
+      <div className={`
+        absolute left-full ml-4 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-2xl 
+        opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[99999] whitespace-nowrap
+        ${isCollapsed ? 'md:block hidden' : 'hidden'}
+      `}>
+        {label}
+      </div>
+    </NavLink>
+  );
+
+  // --- SUB-COMPONENTE SECTION TITLE ---
+  const SectionTitle = ({ title }) => (
+    <div className="mt-6 mb-2">
+      <p className={`text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] ml-4 transition-all duration-300 ${isCollapsed ? 'md:hidden block' : 'block'}`}>
+        {title}
+      </p>
+      <div className={`h-[1px] bg-gray-100 mx-4 transition-all duration-300 ${isCollapsed ? 'md:block hidden' : 'hidden'}`} />
+    </div>
+  );
 
   return (
-    <div className="flex flex-col justify-between h-full w-full font-[Outfit] mt-6 px-2">
-      
-      <div>
-        <span className="text-[9px] font-black text-gray-300 uppercase tracking-[0.2em] px-4 block mb-4">
-          Módulo Gerencial
-        </span>
-        
-        <nav className="flex flex-col gap-2">
-          {menuItems.map((item) => {
-            // Ajuste para que active el ítem aunque la ruta sea sub-ruta
-            const isActive = location.pathname.includes(item.path);
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`
-                  group flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-300
-                  ${isActive 
-                    ? "bg-[#87be00] text-white shadow-lg shadow-[#87be00]/30" 
-                    : "text-gray-400 hover:bg-gray-50 hover:text-gray-900"
-                  }
-                `}
-              >
-                <span className={`
-                  transition-transform duration-300
-                  ${isActive ? "scale-110 text-white" : "group-hover:scale-110 group-hover:text-[#87be00] text-gray-400"}
-                `}>
-                  {item.icon}
-                </span>
-                <span className={`
-                  text-[10px] font-black uppercase tracking-widest transition-transform duration-300
-                  ${!isActive && "group-hover:translate-x-1"}
-                `}>
-                  {item.name}
-                </span>
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
+    <>
+      {/* 1. BOTÓN HAMBURGUESA MÓVIL */}
+      {!isOpen && (
+        <div className="md:hidden fixed top-4 left-4 z-[9990]">
+          <button
+            onClick={() => setIsOpen(true)}
+            className="p-3 bg-white rounded-xl shadow-lg text-gray-800 border border-gray-100 hover:bg-gray-50 active:scale-95 transition-all"
+          >
+            <FiMenu size={24} />
+          </button>
+        </div>
+      )}
 
-      <div className="pt-6 pb-6 border-t border-gray-100">
-        <button 
-          onClick={logout} 
-          className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-50 transition-all duration-300"
-        >
-          <FiLogOut size={16} /> Cerrar Sesión
+      {/* 2. OVERLAY MÓVIL */}
+      {isOpen && <div onClick={() => setIsOpen(false)} className="md:hidden fixed inset-0 bg-black/60 z-[9995] backdrop-blur-sm" />}
+
+      {/* 3. SIDEBAR PRINCIPAL */}
+      <div className={`
+        fixed md:relative inset-y-0 left-0 z-[9999] bg-white h-full flex flex-col justify-between font-[Outfit] shadow-2xl md:shadow-none border-r border-gray-100
+        transition-all duration-300 ease-in-out
+        ${isOpen ? "translate-x-0 w-72" : "-translate-x-full md:translate-x-0"}
+        ${isCollapsed ? "md:w-20" : "md:w-72"} 
+      `}>
+        
+        <button onClick={() => setIsOpen(false)} className="md:hidden absolute top-4 right-4 p-2.5 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors z-50"><FiX size={20} /></button>
+        
+        {/* BOTÓN COLAPSAR DESKTOP */}
+        <button onClick={() => setIsCollapsed(!isCollapsed)} className="hidden md:flex absolute -right-3 top-12 bg-white border border-gray-100 shadow-md rounded-full p-1.5 text-gray-400 hover:text-[#87be00] hover:scale-110 transition-all z-50">
+          {isCollapsed ? <FiChevronRight size={14} /> : <FiChevronLeft size={14} />}
         </button>
+
+        <div className={`overflow-x-visible pr-2 flex-1 pb-4 ${isCollapsed ? 'overflow-visible' : 'overflow-y-auto custom-scrollbar'}`}>
+          
+          <Link to="/viewer" className={`block mt-10 md:mt-8 mb-10 transition-all duration-300 hover:opacity-80 ${isCollapsed ? 'md:justify-center md:flex' : 'px-6'}`}>
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-[#87be00] animate-pulse flex-shrink-0 shadow-[0_0_8px_rgba(135,190,0,0.6)]" />
+              <div className={`overflow-hidden transition-all duration-300 ${isCollapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'w-auto opacity-100 block'}`}>
+                <h2 className="text-xl font-black text-gray-900 tracking-tighter uppercase leading-none">Cultiva<span className="text-[#87be00]">App</span></h2>
+                <p className="text-[8px] font-black text-gray-400 uppercase tracking-[0.3em] mt-1">Viewer Control</p>
+              </div>
+            </div>
+          </Link>
+
+          <nav className={`flex flex-col gap-1.5 ${isCollapsed ? 'md:px-2' : 'px-4'}`}>
+            <SectionTitle title="Métricas" />
+            <NavItem to="/viewer/dashboard" icon={FiPieChart} label="Panorama" />
+            <NavItem to="/viewer/reportes" icon={FiBarChart2} label="Métricas" />
+
+            <SectionTitle title="Logística" />
+            <NavItem to="/viewer/planificacion" icon={FiNavigation} label="Monitoreo Rutas" />
+
+            <SectionTitle title="Control" />
+            <NavItem to="/viewer/galeria" icon={FiCamera} label="Evidencias" />
+            <NavItem to="/viewer/alertas" icon={FiAlertCircle} label="Alertas" />
+            
+            <SectionTitle title="Cuenta" />
+            <button 
+              onClick={logout} 
+              className={`relative flex items-center gap-3 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 group text-gray-400 hover:bg-red-50 hover:text-red-500 ${isCollapsed ? 'justify-center px-0 md:mx-2' : 'px-4'}`}
+            >
+              <FiLogOut size={isCollapsed ? 20 : 18} />
+              <span className={`whitespace-nowrap ${isCollapsed ? 'md:hidden' : 'block'}`}>Cerrar Sesión</span>
+            </button>
+          </nav>
+        </div>
+
+        <div className="py-6 border-t border-gray-100 flex items-center justify-center">
+          <div className={`overflow-hidden transition-all ${isCollapsed ? 'md:hidden' : 'w-full px-6'}`}>
+            <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Empresa Cliente</p>
+            <p className="text-[10px] font-black text-[#87be00] uppercase truncate italic">{user?.company_name || "Viewer Control"}</p>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

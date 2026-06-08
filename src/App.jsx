@@ -14,17 +14,14 @@ import Login from "./pages/Login"
 import ChangePassword from "./pages/auth/ChangePassword"
 import ForgotPassword from "./pages/auth/ForgotPassword"
 import ResetPassword from "./pages/auth/ResetPassword"
-
-// 🚩 IMPORTACIÓN DE CREDENCIALES (PARA EL QR)
 import UserCredential from "./components/UserCredential"
 
 // --- COMPONENTES GLOBALES ---
 import ProtectedRoute from "./components/ProtectedRoute"
 import NotificationsLayout from "./components/NotificationsLayout" 
-import AlertsHistory from "./components/AlertsHistory" 
 
 /* ================= ROOT ================= */
-import RootLayout from "./pages/root/RootLayout" // 🚩 NUEVO LAYOUT
+import RootLayout from "./pages/root/RootLayout" 
 import RootDashboard from "./pages/root/RootDashboard"
 import Analytics from "./pages/root/Analytics"
 import ActiveSessions from "./pages/root/ActiveSession" 
@@ -38,39 +35,37 @@ import SalesDashboard from "./pages/reports/SalesDashboard"
 import ReportsPage from "./pages/reports/ReportsPage" 
 
 /* ================= ADMIN CLIENTE ================= */
-import AdminDashboard from "./pages/admin/AdminDashboard"
+import AdminLayout from "./pages/admin/AdminLayout" // Asegúrate de tener este layout creado
 import AdminOverview from "./pages/admin/AdminOverview"
 import AdminUsers from "./pages/admin/AdminUsers"
 import AdminLocales from "./pages/admin/AdminLocales"
 import AdminRoutes from "./pages/admin/AdminRoutes"
 import GpsMonitor from "./pages/admin/GpsMonitor" 
 import CatalogManager from "./pages/admin/CatalogManager"
+import QuestionsManager from "./pages/admin/QuestionsManager"
+import TaskControl from "./pages/supervisor/TaskControl"
+import AttendanceControl from "./pages/supervisor/AttendanceControl"
+import PhotoValidation from "./pages/supervisor/PhotoValidation"
 
 /* ================= SUPERVISOR ================= */
 import SupervisorDashboard from "./pages/supervisor/SupervisorDashboard"
 import SupervisorPanel from "./pages/supervisor/SupervisorPanel"
 import LiveMap from "./pages/supervisor/LiveMap"
 import AlertManager from "./pages/supervisor/AlertManager"
-import AttendanceControl from "./pages/supervisor/AttendanceControl"
-import PhotoValidation from "./pages/supervisor/PhotoValidation"
-import TaskControl from "./pages/supervisor/TaskControl"
 import SupervisorVisitFlow from "./pages/supervisor/SupervisorVisitFlow" 
 
-/* ================= USUARIO (MERCADERISTA) ================= */
+/* ================= USUARIO ================= */
 import UserDashboard from "./pages/user/UserDashboard"
 import UserHome from "./pages/user/UserHome" 
 import UserLocales from "./pages/user/UserLocales"
 import VisitFlow from "./pages/user/VisitFlow" 
 import UserAgenda from "./pages/user/UserAgenda"
 
-/* ================= VIEWER (NUEVO PERFIL) ================= */
+/* ================= VIEWER ================= */
 import ViewerLayout from "./pages/viewer/ViewerLayout"
 import ViewerDashboard from "./pages/viewer/ViewerDashboard" 
 import ViewerReports from "./pages/viewer/ViewerReports" 
 import RoutePlanningMap from "./pages/viewer/RoutePlanningMap" 
-
-/* ================= QUESTIONS & REPORTS ================= */
-import QuestionsManager from "./pages/admin/QuestionsManager"
 
 import "./App.css"
 
@@ -122,9 +117,9 @@ function App() {
             <Route path="/verify/:id" element={<UserCredential />} />
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
 
-            {/* 👑 SECCIÓN ROOT - AHORA CON ROOTLAYOUT */}
+            {/* ROOT */}
             <Route path="/root" element={<ProtectedRoute role="ROOT"><RootLayout /></ProtectedRoute>}>
-              <Route index element={<Analytics  />} /> 
+              <Route index element={<Analytics />} /> 
               <Route path="analytics" element={<Analytics />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
               <Route path="sales-report" element={<SalesDashboard />} />
@@ -145,7 +140,7 @@ function App() {
               <Route path="photo-validation" element={<PhotoValidation />} />
             </Route>
 
-            {/* 👤 SECCIÓN USUARIO */}
+            {/* USUARIO */}
             <Route path="/usuario" element={<ProtectedRoute role="USUARIO"><UserDashboard /></ProtectedRoute>}>
               <Route index element={<UserHome />} />
               <Route path="home" element={<UserHome />} />
@@ -155,7 +150,7 @@ function App() {
               <Route path="notifications" element={<NotificationsLayout userRole="MERCADERISTA" />} />
             </Route>
 
-            {/* 🛡️ SECCIÓN SUPERVISOR */}
+            {/* SUPERVISOR */}
             <Route path="/supervisor" element={<ProtectedRoute role="SUPERVISOR"><SupervisorDashboard /></ProtectedRoute>}>
               <Route index element={<SupervisorPanel />} />
               <Route path="mapa" element={<LiveMap />} />
@@ -168,9 +163,10 @@ function App() {
               <Route path="informes" element={<ReportsPage />} />
             </Route>
 
-            {/* 💼 SECCIÓN ADMIN */}
-            <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminDashboard /></ProtectedRoute>}>
+            {/* ADMIN */}
+            <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminLayout /></ProtectedRoute>}>
               <Route index element={<AdminOverview />} />
+              <Route path="informes" element={<ReportsPage />} />
               <Route path="upload-sales" element={<UploadSalesData />} />
               <Route path="sales-report" element={<SalesDashboard />} />
               <Route path="users" element={<AdminUsers />} />
@@ -186,10 +182,9 @@ function App() {
               <Route path="task-control" element={<TaskControl />} />
               <Route path="attendance-control" element={<AttendanceControl />} />
               <Route path="photo-validation" element={<PhotoValidation />} />
-              <Route path="informes" element={<ReportsPage />} />
             </Route>
 
-            {/* 👁️ SECCIÓN VIEWER */}
+            {/* VIEWER */}
             <Route path="/viewer" element={<ProtectedRoute roles={["VIEW", "ADMIN_CLIENTE", "ROOT"]}><ViewerLayout /></ProtectedRoute>}>
               <Route index element={<ViewerDashboard />} />
               <Route path="dashboard" element={<ViewerDashboard />} />
