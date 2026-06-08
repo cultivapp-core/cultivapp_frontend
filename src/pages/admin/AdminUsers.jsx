@@ -34,7 +34,10 @@ const AdminUsers = () => {
   const [editUser, setEditUser] = useState(null)
   const [resetUser, setResetUser] = useState(null)
   const [assignSupervisor, setAssignSupervisor] = useState(null)
-  const [assignViewUser, setAssignViewUser] = useState(null)
+  
+  // ESTADO UNIFICADO PARA ASIGNACIÓN DE USUARIOS
+  const [assignUser, setAssignUser] = useState(null)
+  
   const [loading, setLoading] = useState(true)
   const [bulkLoading, setBulkLoading] = useState(false)
   
@@ -254,8 +257,9 @@ const AdminUsers = () => {
                   <FiMapPin size={16}/>
                 </button>
               )}
-              {user.role === 'VIEW' && (
-                <button onClick={() => setAssignViewUser(user)} className="py-2.5 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center border border-blue-100" title="Asignar Usuarios">
+              {/* CORRECCIÓN: Botón unificado */}
+              {(user.role === 'VIEW' || user.role === 'SUPERVISOR') && (
+                <button onClick={() => setAssignUser(user)} className="py-2.5 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center border border-blue-100" title="Asignar Usuarios">
                   <FiUsers size={16}/>
                 </button>
               )}
@@ -347,8 +351,9 @@ const AdminUsers = () => {
                           <FiMapPin size={16} />
                         </button>
                       )}
-                      {user.role === 'VIEW' && (
-                        <button onClick={() => setAssignViewUser(user)} className="p-2.5 bg-blue-50 text-blue-400 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-sm" title="Asignar Usuarios">
+                      {/* CORRECCIÓN: Botón unificado */}
+                      {(user.role === 'VIEW' || user.role === 'SUPERVISOR') && (
+                        <button onClick={() => setAssignUser(user)} className="p-2.5 bg-blue-50 text-blue-400 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-sm" title="Asignar Usuarios">
                           <FiUsers size={16} />
                         </button>
                       )}
@@ -370,7 +375,9 @@ const AdminUsers = () => {
       <EditAdminUserModal isOpen={!!editUser} user={editUser} stats={stats} onClose={() => setEditUser(null)} onUpdated={fetchData} />
       {resetUser && <ResetPasswordAdminModal user={resetUser} onClose={() => setResetUser(null)} onUpdated={fetchData} />}
       {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchData} />}
-      {assignViewUser && <AssignUsersModal viewUser={assignViewUser} onClose={() => setAssignViewUser(null)} onRefresh={fetchData} />}
+      
+      {/* CORRECCIÓN: Modal invocado correctamente */}
+      {assignUser && <AssignUsersModal targetUser={assignUser} onClose={() => setAssignUser(null)} onRefresh={fetchData} />}
     </div>
   )
 }

@@ -3,7 +3,11 @@ import { FiX, FiCheck, FiSearch, FiUsers, FiLoader, FiMinusCircle } from 'react-
 import api from '../../api/apiClient';
 import toast from 'react-hot-toast';
 
-const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
+// 🚩 Se adapta el prop para recibir cualquier usuario gestor (VIEW o SUPERVISOR)
+const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
+  // Mantenemos compatibilidad por si el padre aún manda 'viewUser'
+  const managerUser = targetUser || viewUser;
+
   const [allUsers, setAllUsers] = useState([]);
   const [assignedIds, setAssignedIds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,8 +15,10 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    fetchData();
-  }, [viewUser.id]);
+    if (managerUser?.id) {
+      fetchData();
+    }
+  }, [managerUser]);
 
   const fetchData = async () => {
     try {
@@ -21,13 +27,17 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
       // 1. Traer todos los usuarios con rol USUARIO de la empresa
       const usersRes = await api.get(`/users`);
       const onlyUsers = Array.isArray(usersRes)
-        ? usersRes.filter(u => u.role === 'USUARIO' && u.is_active)
+        ? usersRes.filter(u => 
+            u.role === 'USUARIO' && 
+            u.is_active && 
+            u.id !== managerUser.id // 🚩 Evita que el gestor se asigne a sí mismo
+          )
         : [];
 
-      // 2. Traer los ya asignados a este VIEW
+      // 2. Traer los ya asignados a este SUPERVISOR o VIEW
       let currentIds = [];
       try {
-        const currentRes = await api.get(`/users/${viewUser.id}/assigned-users`);
+        const currentRes = await api.get(`/users/${managerUser.id}/assigned-users`);
         currentIds = Array.isArray(currentRes) ? currentRes.map(u => u.id) : [];
       } catch (e) {
         if (e.status !== 404) console.error("Error al obtener asignados:", e);
@@ -51,8 +61,8 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
   const handleSave = async () => {
     try {
       setSaving(true);
-      await api.post(`/users/${viewUser.id}/assign-users`, { userIds: assignedIds });
-      toast.success("Usuarios asignados con éxito");
+      await api.post(`/users/${managerUser.id}/assign-users`, { userIds: assignedIds });
+      toast.success(`Usuarios asignados al ${managerUser.role} con éxito`);
       onRefresh();
       onClose();
     } catch (error) {
@@ -77,6 +87,15 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
       });
   }, [allUsers, assignedIds, searchTerm]);
 
+  // Color dinámico según el rol (verde Cultiva para Supervisor, Azul para View)
+  const isSupervisor = managerUser.role === 'SUPERVISOR';
+  const themeColor = isSupervisor ? 'text-[#87be00]' : 'text-blue-400';
+  const themeBg = isSupervisor ? 'bg-[#87be00]' : 'bg-blue-500';
+  const themeHoverBg = isSupervisor ? 'hover:bg-[#75a600]' : 'hover:bg-blue-600';
+  const themeRing = isSupervisor ? 'ring-[#87be00]/30' : 'ring-blue-200';
+  const themeBorder = isSupervisor ? 'border-[#87be00]' : 'border-blue-400';
+  const themeLightBg = isSupervisor ? 'bg-[#87be00]/5' : 'bg-blue-50/50';
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 font-[Outfit]">
       <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
@@ -84,9 +103,11 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
         {/* HEADER */}
         <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-900 text-white">
           <div>
-            <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest italic">Asignación de Usuarios</p>
+            <p className={`text-[10px] font-black uppercase tracking-widest italic mb-1 ${themeColor}`}>
+              Asignación de Personal • Perfil {managerUser.role || 'Gestor'}
+            </p>
             <h2 className="text-2xl font-black italic uppercase leading-none">
-              {viewUser.first_name} {viewUser.last_name}
+              {managerUser.first_name} {managerUser.last_name}
             </h2>
           </div>
           <button onClick={onClose} className="p-3 bg-white/10 rounded-2xl hover:bg-red-500 transition-colors group">
@@ -95,20 +116,20 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
         </div>
 
         {/* BUSCADOR */}
-        <div className="p-6 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-4">
-          <div className="relative flex-1">
+        <div className="p-6 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:flex-1">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Buscar por nombre o correo..."
-              className="w-full pl-12 pr-4 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-400 text-sm font-bold shadow-inner"
+              className={`w-full pl-12 pr-4 py-4 rounded-2xl border-none focus:ring-2 focus:${themeRing} text-sm font-bold shadow-inner outline-none transition-all`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-[10px] font-black text-gray-400 uppercase leading-none">Asignados</p>
-            <p className="text-xl font-black text-blue-500 italic leading-none">{assignedIds.length}</p>
+          <div className="text-right shrink-0 w-full sm:w-auto flex justify-between sm:block px-2 sm:px-0">
+            <p className="text-[10px] font-black text-gray-400 uppercase leading-none sm:mb-1">Asignados</p>
+            <p className={`text-xl font-black italic leading-none ${themeColor}`}>{assignedIds.length}</p>
           </div>
         </div>
 
@@ -133,19 +154,19 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
                   onClick={() => toggleUser(user.id)}
                   className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group ${
                     isAssigned
-                      ? 'border-blue-400 bg-blue-50/50 shadow-sm ring-1 ring-blue-200'
+                      ? `${themeBorder} ${themeLightBg} shadow-sm ring-1 ${themeRing}`
                       : 'border-gray-100 hover:border-gray-300 bg-white hover:bg-gray-50'
                   }`}
                 >
                   {/* Avatar inicial */}
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 transition-all ${
-                    isAssigned ? 'bg-blue-500 text-white shadow-md shadow-blue-200' : 'bg-gray-100 text-gray-400'
+                    isAssigned ? `${themeBg} text-white shadow-md shadow-black/10` : 'bg-gray-100 text-gray-400'
                   }`}>
                     {user.first_name?.charAt(0)}
                   </div>
 
                   <div className="overflow-hidden flex-1">
-                    <p className={`text-[11px] font-black uppercase leading-none mb-1 italic ${isAssigned ? 'text-blue-600' : 'text-gray-800'}`}>
+                    <p className={`text-[11px] font-black uppercase leading-none mb-1 italic ${isAssigned ? 'text-gray-900' : 'text-gray-600'}`}>
                       {user.first_name} {user.last_name}
                     </p>
                     <p className="text-[9px] font-bold text-gray-400 truncate">{user.email}</p>
@@ -153,7 +174,7 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
 
                   {/* Checkbox visual */}
                   <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 border-2 transition-all ${
-                    isAssigned ? 'bg-blue-500 border-blue-500 scale-110 shadow-md shadow-blue-200' : 'border-gray-200'
+                    isAssigned ? `${themeBg} ${themeBorder} scale-110 shadow-md` : 'border-gray-200'
                   }`}>
                     {isAssigned
                       ? <FiCheck className="text-white" size={14} />
@@ -166,7 +187,7 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
                     {isAssigned ? (
                       <FiMinusCircle className="text-red-400" size={16} />
                     ) : (
-                      <FiCheck className="text-blue-400" size={16} />
+                      <FiCheck className={themeColor} size={16} />
                     )}
                   </div>
                 </button>
@@ -186,7 +207,7 @@ const AssignUsersModal = ({ viewUser, onClose, onRefresh }) => {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 bg-blue-500 text-white py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`flex-1 ${themeBg} text-white py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 ${themeHoverBg} transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {saving ? <FiLoader className="animate-spin" /> : <FiCheck size={16} />}
             Guardar Asignación
