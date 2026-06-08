@@ -6,8 +6,8 @@ import {
   FiUserCheck, FiCamera, FiMonitor, FiTrendingUp, FiPieChart, FiFileText,
   FiMenu, FiX, FiChevronLeft, FiChevronRight, FiLogOut 
 } from "react-icons/fi";
-import { useAuth } from "../context/AuthContext";
-import { useNotificationContext } from "../context/NotificationContext";
+import { useAuth } from "../../context/AuthContext";
+import { useNotificationContext } from "../../context/NotificationContext";
 
 const Sidebar = () => {
   const { user, logout } = useAuth(); 

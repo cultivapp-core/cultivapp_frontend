@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { FiX, FiUserPlus, FiBriefcase, FiMail, FiLock, FiCalendar, FiShield, FiSave, FiPhone, FiUser } from "react-icons/fi"
-import api from "../api/apiClient"
+import api from "../../api/apiClient"
 import { toast } from "react-hot-toast"
 
 const CreateUserModal = ({

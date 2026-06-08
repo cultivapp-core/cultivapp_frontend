@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { FiX, FiMail, FiPhone, FiSave, FiShield, FiAtSign, FiUsers, FiClock, FiCalendar } from "react-icons/fi" // FiShield ya estaba importado
-import api from "../api/apiClient"
+import api from "../../api/apiClient"
 import { toast } from "react-hot-toast"
-import { useAuth } from "../context/AuthContext" // Aseguramos acceso al rol del loggedUser
+import { useAuth } from "../../context/AuthContext" // Aseguramos acceso al rol del loggedUser
 
 const EditUserContactModal = ({ user, onClose, onUpdated }) => {
   const { user: loggedUser } = useAuth()

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { FiX, FiMapPin, FiHash, FiCheckCircle, FiLoader } from "react-icons/fi";
-import api from "../api/apiClient";
+import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;

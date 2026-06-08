@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { FiX, FiUpload, FiFileText, FiCheckCircle, FiAlertCircle, FiLoader, FiInfo } from "react-icons/fi";
-import api from "../api/apiClient";
+import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 
 const UploadLocalesModal = ({

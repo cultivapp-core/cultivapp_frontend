@@ -5,8 +5,8 @@ import {
   FiBox, FiClipboard, FiUserCheck, FiFileText, FiTrendingUp,
   FiPieChart, FiCamera // 🚩 IMPORTA FI-CAMERA AQUÍ
 } from "react-icons/fi"
-import { useAuth } from "../context/AuthContext"
-import { useNotificationContext } from "../context/NotificationContext" 
+import { useAuth } from "../../context/AuthContext"
+import { useNotificationContext } from "../../context/NotificationContext" 
 
 const AdminSidebar = () => {
   const { user } = useAuth()

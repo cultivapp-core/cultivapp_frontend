@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   FiX, FiUploadCloud, FiFileText, FiCheck, FiSave, FiUser, FiShield, FiBriefcase 
 } from "react-icons/fi";
-import api from "../api/apiClient";
+import api from "../../api/apiClient";
 
 const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
   const [form, setForm] = useState({

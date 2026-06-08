@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { Outlet, useNavigate, useLocation } from "react-router-dom"
 import { FiLogOut, FiLayout, FiMenu, FiX } from "react-icons/fi" // 🚩 Añadido FiX
-import AdminSidebar from "../../components/AdminSidebar" 
+import AdminSidebar from "../admin/AdminSidebar" 
 import Notifications from "../../components/Notifications" 
 import { useAuth } from "../../context/AuthContext"
 import { useNotificationContext } from "../../context/NotificationContext"

@@ -96,6 +96,7 @@ const LiveMap = () => {
 
   // 🔍 ESTADO DEL BUSCADOR
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   // Estados acordeón
   const [expandedLocales, setExpandedLocales] = useState({});
@@ -139,16 +140,34 @@ const LiveMap = () => {
 
   // 🔍 LÓGICA DE FILTRADO (Buscador)
   const filteredRoutes = useMemo(() => {
-    if (!searchTerm.trim()) return routes;
-    
+  let result = [...routes];
+
+  // filtro búsqueda
+  if (searchTerm.trim()) {
     const term = searchTerm.toLowerCase();
-    return routes.filter(r => 
-      (r.codigo_local && r.codigo_local.toLowerCase().includes(term)) ||
-      (r.cadena && r.cadena.toLowerCase().includes(term)) ||
-      (r.usuario_nombre && r.usuario_nombre.toLowerCase().includes(term)) ||
-      (r.usuario_email && r.usuario_email.toLowerCase().includes(term))
+
+    result = result.filter(
+      (r) =>
+        (r.codigo_local &&
+          r.codigo_local.toLowerCase().includes(term)) ||
+        (r.cadena &&
+          r.cadena.toLowerCase().includes(term)) ||
+        (r.usuario_nombre &&
+          r.usuario_nombre.toLowerCase().includes(term)) ||
+        (r.usuario_email &&
+          r.usuario_email.toLowerCase().includes(term))
     );
-  }, [routes, searchTerm]);
+  }
+
+  // filtro estado
+  if (statusFilter !== "ALL") {
+    result = result.filter(
+      (r) => r.status === statusFilter
+    );
+  }
+
+  return result;
+}, [routes, searchTerm, statusFilter]);
 
   // Memorización de datos para el panel lateral (Basado en rutas filtradas)
   const stats = useMemo(() => ({
@@ -160,7 +179,7 @@ const LiveMap = () => {
 
   // Lógica Robusta: Filtra por presencia de datos (usando las rutas filtradas por búsqueda)
   const routesLocales  = useMemo(() => filteredRoutes.filter(r => r.codigo_local || r.cadena), [filteredRoutes]);
-  const routesUsuarios = useMemo(() => filteredRoutes.filter(r => !r.codigo_local && r.usuario_nombre), [filteredRoutes]);
+  const routesUsuarios = useMemo(() => filteredRoutes.filter(r => r.usuario_nombre), [filteredRoutes]);
 
   const routesByLocale = useMemo(() => {
     return routesLocales.reduce((acc, route) => {
@@ -179,6 +198,12 @@ const LiveMap = () => {
   }, [routesLocales]);
 
   const routesByUser = useMemo(() => {
+
+    console.log("TOTAL ROUTES", routes.length);
+    console.log("FILTERED ROUTES", filteredRoutes.length);
+    console.log("ROUTES LOCALES", routesLocales.length);
+    console.log("ROUTES USUARIOS", routesUsuarios.length);    
+
     return routesUsuarios.reduce((acc, route) => {
       const key = route.usuario_nombre || 'Sin usuario';
       if (!acc[key]) acc[key] = [];
@@ -455,6 +480,53 @@ const LiveMap = () => {
                   </button>
                 )}
               </div>
+              {/* FILTROS DE ESTADO */}
+  <div className="grid grid-cols-2 gap-2">
+    <button
+      onClick={() => setStatusFilter("ALL")}
+      className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${
+        statusFilter === "ALL"
+          ? "bg-gray-900 text-white"
+          : "bg-gray-50 text-gray-500"
+      }`}
+    >
+      Todas
+    </button>
+
+    <button
+      onClick={() => setStatusFilter("PENDING")}
+      className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${
+        statusFilter === "PENDING"
+          ? "bg-red-500 text-white"
+          : "bg-red-50 text-red-500"
+      }`}
+    >
+      Pendientes
+    </button>
+
+    <button
+      onClick={() => setStatusFilter("IN_PROGRESS")}
+      className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${
+        statusFilter === "IN_PROGRESS"
+          ? "bg-[#87be00] text-white"
+          : "bg-[#87be00]/10 text-[#87be00]"
+      }`}
+    >
+      En Proceso
+    </button>
+
+    <button
+      onClick={() => setStatusFilter("COMPLETED")}
+      className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${
+        statusFilter === "COMPLETED"
+          ? "bg-blue-500 text-white"
+          : "bg-blue-50 text-blue-500"
+      }`}
+    >
+      Completadas
+    </button>
+  </div>
+
             </div>
 
             <div className="overflow-y-auto flex-1 custom-scrollbar">

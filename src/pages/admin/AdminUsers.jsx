@@ -19,8 +19,8 @@ import {
 import { toast } from "react-hot-toast"
 import api from "../../api/apiClient"
 
-import CreateAdminUserModal from "../../components/CreateAdminUserModal"
-import EditAdminUserModal from "../../components/EditAdminUserModal"
+import CreateAdminUserModal from "../admin/CreateAdminUserModal"
+import EditAdminUserModal from "./EditAdminUserModal"
 import ResetPasswordAdminModal from "../../components/ResetPasswordAdminModal"
 import AssignLocalesModal from "./AssignLocalesModal"
 import AssignUsersModal from "./AssignUsersModal"

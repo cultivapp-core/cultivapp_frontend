@@ -3,12 +3,12 @@ import {
   FiPlus, FiUpload, FiTrash2, FiEdit, FiMapPin, 
   FiSearch, FiShoppingCart, FiGlobe 
 } from "react-icons/fi"; 
-import api from "../api/apiClient";
+import api from "../../api/apiClient";
 import toast from "react-hot-toast";
-import CreateLocalModal from "../components/CreateLocalModal";
-import UploadLocalesModal from "../components/UploadLocalesModal";
-import EditLocalModal from "../components/EditLocalModal";
-import LocalesMap from "../components/LocalesMap";
+import CreateLocalModal from "../root/CreateLocalModal";
+import UploadLocalesModal from "../root/UploadLocalesModal";
+import EditLocalModal from "../root/EditUserContactModal";
+import LocalesMap from "../../components/LocalesMap";
 import { motion } from "framer-motion";
 
 const AdminLocales = () => {

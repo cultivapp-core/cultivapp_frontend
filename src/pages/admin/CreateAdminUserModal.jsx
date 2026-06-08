@@ -11,7 +11,7 @@ import {
   FiShield,
   FiBriefcase
 } from "react-icons/fi";
-import api from "../api/apiClient";
+import api from "../../api/apiClient";
 
 const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
   const userAdmin = JSON.parse(localStorage.getItem("user"));

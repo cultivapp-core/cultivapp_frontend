@@ -358,9 +358,9 @@ const Planificacion = () => {
 
       {/* ══ HEADER ══════════════════════════════════════════════ */}
       <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100 space-y-6">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5 ">
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-black text-gray-900 uppercase italic tracking-tight leading-none">
+            <h1 className="text-2xl font-black text-gray-900 uppercase italic tracking-tight leading-none text-right lg:text-left">
               Planificación Mensual
             </h1>
             <div className="flex gap-2 mt-4 overflow-x-auto pb-1 custom-scrollbar">
