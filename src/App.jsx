@@ -66,6 +66,7 @@ import ViewerLayout from "./pages/viewer/ViewerLayout"
 import ViewerDashboard from "./pages/viewer/ViewerDashboard" 
 import ViewerReports from "./pages/viewer/ViewerReports" 
 import RoutePlanningMap from "./pages/viewer/RoutePlanningMap" 
+import ConsolidatedControl from "./pages/viewer/ConsolidatedControl"
 
 import "./App.css"
 
@@ -190,6 +191,8 @@ function App() {
               <Route path="dashboard" element={<ViewerDashboard />} />
               <Route path="reportes" element={<ViewerReports />} />
               <Route path="planificacion" element={<RoutePlanningMap />} />
+              <Route path="consolidado" element={<ConsolidatedControl />} />
+              <Route path="galeria" element={<PhotoValidation />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

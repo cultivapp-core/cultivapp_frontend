@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import {
-  FiPieChart, FiBarChart2, FiNavigation, FiMap, FiCamera, 
-  FiAlertCircle, FiLogOut, FiMenu, FiX, FiChevronLeft, FiChevronRight
+  FiPieChart, FiBarChart2, FiNavigation, FiCamera, 
+  FiAlertCircle, FiLogOut, FiMenu, FiX, FiChevronLeft, FiChevronRight, FiActivity, FiUserCheck
 } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 
@@ -108,9 +108,9 @@ const ViewerSidebar = ({ isCollapsed, setIsCollapsed }) => {
             <NavItem to="/viewer/planificacion" icon={FiNavigation} label="Monitoreo Rutas" />
 
             <SectionTitle title="Control" />
-            <NavItem to="/viewer/galeria" icon={FiCamera} label="Evidencias" />
-            <NavItem to="/viewer/alertas" icon={FiAlertCircle} label="Alertas" />
-            
+            <NavItem to="/viewer/galeria" icon={FiCamera} label="Validar Fotos" />
+            <NavItem to="/viewer/consolidado" icon={FiActivity} label="Consolidado Operativo" />
+                        
             <SectionTitle title="Cuenta" />
             <button 
               onClick={logout} 
