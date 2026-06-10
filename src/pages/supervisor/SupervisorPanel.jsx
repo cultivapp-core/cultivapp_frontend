@@ -188,22 +188,64 @@ const SupervisorPanel = () => {
   const fPct = (p + e + f + s) > 0 ? Math.round((f / (p + e + f + s)) * 100) : 0;
   const sPct = (p + e + f + s) > 0 ? Math.round((s / (p + e + f + s)) * 100) : 0;
 
-  const WeekPlan = ({ plan = [] }) => {
-    const days = ['L', 'M', 'X', 'J', 'V'];
+  /**
+   * WeekPlan
+   * 
+   * plan             → array de letras planificadas, ej: ['L','M','X','J','V']
+   * dayOfWeek        → entero de user_routes.day_of_week  (0=Dom … 6=Sab)
+   *                    Para visitas INDIVIDUALES se deriva de visit_date.
+   * visitDate        → string ISO de user_routes.visit_date, ej: "2025-06-10"
+   * origin           → user_routes.origin: 'INDIVIDUAL' | 'RECURRING' | etc.
+   *
+   * Regla de pintado:
+   *   - INDIVIDUAL  → se pinta el día que cae visit_date (ignorando plan)
+   *   - RECURRING   → se pinta el día indicado por day_of_week dentro del plan
+   *   - Sin datos   → comportamiento anterior (solo resalta días en plan)
+   */
+  const WeekPlan = ({ plan = [], dayOfWeek = null, visitDate = null, origin = null }) => {
+    const days = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+    // JS getDay():  0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sab
+    const jsToLetter = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+
+    // Calcular la letra del día de la visita
+    let visitDayLetter = null;
+
+    if (origin === 'INDIVIDUAL' && visitDate) {
+      // Para individuales usamos la fecha exacta
+      const d = new Date(visitDate + 'T00:00:00'); // forzar medianoche local
+      visitDayLetter = jsToLetter[d.getDay()];
+    } else if (dayOfWeek !== null && dayOfWeek !== undefined) {
+      // Para recurrentes / turnos usamos day_of_week
+      visitDayLetter = jsToLetter[dayOfWeek];
+    }
+
     return (
       <div className="flex gap-1">
-        {days.map(day => (
-          <div 
-            key={day} 
-            className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black transition-colors ${
-              plan.includes(day) 
-                ? 'bg-[#87be00] text-white shadow-sm' 
-                : 'bg-gray-100 text-gray-400'
-            }`}
-          >
-            {day}
-          </div>
-        ))}
+        {days.map(day => {
+          const isPlanned    = plan.includes(day);
+          const isVisitDay   = visitDayLetter !== null ? day === visitDayLetter : false;
+
+          // Prioridad: si tenemos info de visita, pintamos ese día en verde fuerte
+          // Los demás días planificados quedan en verde suave
+          // El día de visita no planificado (caso raro) igual se pinta
+          let colorClass = '';
+          if (isVisitDay) {
+            colorClass = 'bg-[#87be00] text-white shadow-md ring-2 ring-[#87be00] ring-offset-1 scale-110';
+          } else if (isPlanned) {
+            colorClass = 'bg-[#87be00]/40 text-[#4a6a00] shadow-sm';
+          } else {
+            colorClass = 'bg-gray-100 text-gray-400';
+          }
+
+          return (
+            <div
+              key={day}
+              className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black transition-all ${colorClass}`}
+            >
+              {day}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -398,7 +440,7 @@ const SupervisorPanel = () => {
                     >
                       Todos
                     </button>
-                    {['L', 'M', 'X', 'J', 'V'].map(day => (
+                    {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(day => (
                       <button 
                         key={day} 
                         onClick={() => setSelectedDay(day)} 
@@ -563,18 +605,20 @@ const SupervisorPanel = () => {
                           )}
                           
                           <div className="flex justify-between items-center pt-1">
-                            <WeekPlan plan={item.dias_planificados || ['L', 'M', 'X', 'J', 'V']} />
+                            <WeekPlan 
+                              plan={item.dias_planificados || ['L', 'M', 'X', 'J', 'V']} 
+                              dayOfWeek={item.day_of_week}
+                              visitDate={item.visit_date}
+                              origin={item.origin}
+                            />
                             <span className="text-[9px] font-bold text-gray-400 uppercase">{item.horario_plan || '07:30 - 14:30 hrs'}</span>
                           </div>
                         </>
                       )}
                     </div>
 
-                    {item.estado === 'sin_planificacion' ? (
-                      <button className="w-full bg-gray-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm">
-                        Crear Planificación
-                      </button>
-                    ) : (
+                    {/* MÓVIL: Sin botón de acción para sin_planificacion cuando filtro es sin_ruta */}
+                    {item.estado !== 'sin_planificacion' && (
                       <button className="w-full bg-white border border-gray-200 text-gray-600 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors">
                         Ver Ficha <FiExternalLink size={12} />
                       </button>
@@ -713,7 +757,10 @@ const SupervisorPanel = () => {
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/5">Estado / Local</th>
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Horarios Registrados</th>
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Planificación</th>
-                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-right">Acción</th>
+                    {/* MEJORA: columna Acción oculta cuando el filtro es sin_ruta */}
+                    {activeFilter !== 'sin_ruta' && (
+                      <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-right">Acción</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -794,27 +841,35 @@ const SupervisorPanel = () => {
                                  <FiCalendar size={12} className="text-gray-400" />
                                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Planificación Semanal</span>
                                </div>
-                               <WeekPlan plan={item.dias_planificados || ['L', 'M', 'X', 'J', 'V']} />
+                               <WeekPlan 
+                                 plan={item.dias_planificados || ['L', 'M', 'X', 'J', 'V']} 
+                                 dayOfWeek={item.day_of_week}
+                                 visitDate={item.visit_date}
+                                 origin={item.origin}
+                               />
                                <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Horario: {item.horario_plan || '07:30 - 14:30 hrs'}</p>
                              </div>
                           </td>
 
-                          <td className="px-8 py-6 text-right">
-                            {item.estado === 'sin_planificacion' ? (
-                              <button className="bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm">
-                                Crear Plan
-                              </button>
-                            ) : (
-                              <button className="w-10 h-10 bg-gray-50 text-gray-400 rounded-2xl flex items-center justify-center ml-auto group-hover:bg-gray-900 group-hover:text-[#87be00] transition-all duration-300 shadow-sm group-hover:shadow-lg group-hover:-translate-y-1">
-                                <FiExternalLink size={16} />
-                              </button>
-                            )}
-                          </td>
+                          {/* MEJORA: celda Acción oculta cuando el filtro es sin_ruta */}
+                          {activeFilter !== 'sin_ruta' && (
+                            <td className="px-8 py-6 text-right">
+                              {item.estado === 'sin_planificacion' ? (
+                                <button className="bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm">
+                                  Crear Plan
+                                </button>
+                              ) : (
+                                <button className="w-10 h-10 bg-gray-50 text-gray-400 rounded-2xl flex items-center justify-center ml-auto group-hover:bg-gray-900 group-hover:text-[#87be00] transition-all duration-300 shadow-sm group-hover:shadow-lg group-hover:-translate-y-1">
+                                  <FiExternalLink size={16} />
+                                </button>
+                              )}
+                            </td>
+                          )}
                         </motion.tr>
                       ))
                     ) : (
                       <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                        <td colSpan="5" className="py-24 text-center">
+                        <td colSpan={activeFilter !== 'sin_ruta' ? 5 : 4} className="py-24 text-center">
                             <div className="bg-gray-50 w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 text-gray-200">
                                 <FiMapPin size={32} />
                             </div>
