@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import {
   FiPieChart, FiBarChart2, FiNavigation, FiCamera, 
-  FiAlertCircle, FiLogOut, FiMenu, FiX, FiChevronLeft, FiChevronRight, FiActivity, FiUserCheck
+  FiAlertCircle, FiLogOut, FiMenu, FiX, FiChevronLeft, FiChevronRight, FiActivity, FiUserCheck,FiPackage
 } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 
@@ -103,6 +103,11 @@ const ViewerSidebar = ({ isCollapsed, setIsCollapsed }) => {
             <SectionTitle title="Métricas" />
             <NavItem to="/viewer/dashboard" icon={FiPieChart} label="Panorama" />
             <NavItem to="/viewer/reportes" icon={FiBarChart2} label="Métricas" />
+            {/* 🚩 NUEVO ÍTEM DE MERCADERISTAS */}
+            <NavItem to="/viewer/mercaderistas" icon={FiUserCheck} label="Mercaderistas" />
+            <NavItem to="/viewer/trend" icon={FiBarChart2} label="Tendencia Ventas" />
+            <NavItem to="/viewer/productos" icon={FiPackage} label="Productos" />
+
 
             <SectionTitle title="Logística" />
             <NavItem to="/viewer/planificacion" icon={FiNavigation} label="Monitoreo Rutas" />

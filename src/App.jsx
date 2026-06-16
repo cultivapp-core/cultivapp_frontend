@@ -67,6 +67,9 @@ import ViewerDashboard from "./pages/viewer/ViewerDashboard"
 import ViewerReports from "./pages/viewer/ViewerReports" 
 import RoutePlanningMap from "./pages/viewer/RoutePlanningMap" 
 import ConsolidatedControl from "./pages/viewer/ConsolidatedControl"
+import MercaderistaReport from "./pages/reports/MercaderistaReport"
+import SalesTrendReport from "./pages/reports/SalesTrendReport";
+import ProductReport from "./pages/reports/ProductReport";
 
 import "./App.css"
 
@@ -193,6 +196,9 @@ function App() {
               <Route path="planificacion" element={<RoutePlanningMap />} />
               <Route path="consolidado" element={<ConsolidatedControl />} />
               <Route path="galeria" element={<PhotoValidation />} />
+              <Route path="mercaderistas" element={<MercaderistaReport />} />
+              <Route path="trend" element={<SalesTrendReport />} />
+              <Route path="productos" element={<ProductReport />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />
