@@ -27,7 +27,9 @@ const ProductReport = () => {
       setLoading(true);
       try {
         const result = await api.get("/sales/report/productos", { params: selected });
-        setData(Array.isArray(result) ? result : []);
+        // Invertimos el orden para que los productos con más venta queden arriba en el gráfico horizontal
+        const sortedData = [...(Array.isArray(result) ? result : [])].reverse();
+        setData(sortedData);
       } catch (err) { console.error(err); } 
       finally { setLoading(false); }
     };
@@ -60,16 +62,27 @@ const ProductReport = () => {
           className="col-span-2 md:col-span-1 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase">Limpiar</button>
       </div>
 
-      {/* 🚩 SOLUCIÓN: Div contenedor con altura fija h-[300px] */}
+      {/* 🚩 GRÁFICO DE BARRAS HORIZONTAL */}
       {data.length > 0 ? (
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-8 h-[300px] w-full">
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-8 h-[600px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="producto" axisLine={false} tickLine={false} fontSize={10} />
-              <YAxis axisLine={false} tickLine={false} fontSize={10} tickFormatter={formatNumber} />
+            {/* layout="vertical" permite que las barras se dibujen de izquierda a derecha */}
+            <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              {/* XAxis ahora mide los valores numéricos */}
+              <XAxis type="number" hide />
+              {/* YAxis ahora mide las categorías (los nombres de productos) */}
+              <YAxis 
+                type="category" 
+                dataKey="producto" 
+                axisLine={false} 
+                tickLine={false} 
+                fontSize={10} 
+                width={150} 
+                tick={{fontSize: 10}}
+              />
               <Tooltip formatter={(value) => formatNumber(value)} />
-              <Bar dataKey="total_ventas" fill="#87be00" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="total_ventas" fill="#87be00" radius={[0, 8, 8, 0]} barSize={20} />
             </BarChart>
           </ResponsiveContainer>
         </div>

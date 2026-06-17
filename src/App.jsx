@@ -70,6 +70,7 @@ import ConsolidatedControl from "./pages/viewer/ConsolidatedControl"
 import MercaderistaReport from "./pages/reports/MercaderistaReport"
 import SalesTrendReport from "./pages/reports/SalesTrendReport";
 import ProductReport from "./pages/reports/ProductReport";
+import GeoChainReport from "./pages/reports/GeoChainReport";
 
 import "./App.css"
 
@@ -199,6 +200,7 @@ function App() {
               <Route path="mercaderistas" element={<MercaderistaReport />} />
               <Route path="trend" element={<SalesTrendReport />} />
               <Route path="productos" element={<ProductReport />} />
+              <Route path="geo-chain" element={<GeoChainReport />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

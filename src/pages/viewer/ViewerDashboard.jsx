@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import {
   FiDollarSign, FiActivity, FiAlertTriangle, FiUsers,
-  FiLoader, FiTrendingUp, FiLayout, FiFilter, FiBarChart2, FiBox, FiPackage
+  FiLoader, FiTrendingUp, FiLayout, FiBarChart2, FiInfo
 } from "react-icons/fi";
+import { BarChart, Bar, ResponsiveContainer, Tooltip } from 'recharts';
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 import InventoryModule from "../inventory/InventoryModule"; 
@@ -26,13 +27,6 @@ const formatPercent = (value) => {
   return `${num.toLocaleString("es-CL", { maximumFractionDigits: 1 })}%`;
 };
 
-const extractData = (response) => {
-  if (response?.data?.data && typeof response.data.data === "object") return response.data.data;
-  if (response?.data?.monthlySales !== undefined) return response.data;
-  if (response?.monthlySales !== undefined) return response;
-  return null;
-};
-
 // ─── Componentes internos ────────────────────────────────────────────────────
 const StatCard = ({ title, value, subtitle, icon, iconBg, iconColor }) => (
   <div className="bg-white p-6 lg:p-8 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-5 hover:shadow-md transition-all duration-300">
@@ -50,17 +44,19 @@ const StatCard = ({ title, value, subtitle, icon, iconBg, iconColor }) => (
 );
 
 const ChainRow = ({ chain }) => {
-  const barColor = chain.compliance >= 90 ? "bg-[#87be00]" : chain.compliance >= 80 ? "bg-orange-400" : "bg-red-500";
+  const compliance = Math.min(Math.max(chain.compliance || 0, 0), 100);
+  const barColor = compliance >= 90 ? "bg-[#87be00]" : compliance >= 80 ? "bg-orange-400" : "bg-red-500";
+  
   return (
     <div className="flex flex-col gap-2">
       <div className="flex justify-between items-end">
-        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-wide truncate max-w-[65%]">{chain.name}</h4>
-        <span className="text-[10px] font-bold text-gray-500 shrink-0">{chain.sales}</span>
+        <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-wide truncate max-w-[65%]">{chain.name || "Sin nombre"}</h4>
+        <span className="text-[10px] font-bold text-gray-500 shrink-0">{chain.sales ? `$${formatMoney(chain.sales)}` : "$0"}</span>
       </div>
       <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-1000 ${barColor}`} style={{ width: `${Math.min(Math.max(chain.compliance, 0), 100)}%` }} />
+        <div className={`h-full rounded-full transition-all duration-1000 ${barColor}`} style={{ width: `${compliance}%` }} />
       </div>
-      <div className="text-[8px] font-black text-gray-400 uppercase tracking-widest text-right">Cobertura {formatPercent(chain.compliance)}</div>
+      <div className="text-[8px] font-black text-gray-400 uppercase tracking-widest text-right">Cobertura {formatPercent(compliance)}</div>
     </div>
   );
 };
@@ -69,15 +65,22 @@ const ChainRow = ({ chain }) => {
 const ViewerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState("executive");
-  const [stats, setStats] = useState({ monthlySales: 0, coverage: 0, stockouts: 0, activeStaff: 0, topChains: [] });
+  const [stats, setStats] = useState({ 
+    monthlySales: 0, 
+    coverage: 0, 
+    stockouts: 0, 
+    activeStaff: 0, 
+    topChains: [],
+    activityTrend: [] 
+  });
 
   useEffect(() => {
     let cancelled = false;
+
     const fetchExecutiveData = async () => {
       try {
-        setLoading(true);
         const response = await api.get("/viewer/dashboard-stats");
-        const raw = extractData(response);
+        const raw = response?.data?.data || response?.data || response;
         if (raw && !cancelled) {
           setStats({
             monthlySales: raw.monthlySales ?? 0,
@@ -85,16 +88,22 @@ const ViewerDashboard = () => {
             stockouts:    raw.stockouts    ?? 0,
             activeStaff:  raw.activeStaff  ?? 0,
             topChains:    Array.isArray(raw.topChains) ? raw.topChains : [],
+            activityTrend: Array.isArray(raw.activityTrend) ? raw.activityTrend : [],
           });
         }
       } catch (err) {
-        if (!cancelled) toast.error("Error al sincronizar");
+        if (!cancelled) toast.error("Error al actualizar datos");
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
+
     fetchExecutiveData();
-    return () => { cancelled = true; };
+    const interval = setInterval(fetchExecutiveData, 300000);
+    return () => { 
+      cancelled = true; 
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading) {
@@ -110,8 +119,8 @@ const ViewerDashboard = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 font-[Outfit]">
-
-      {/* BARRA DE CONTEXTO Y TABS ESTILO BOTÓN */}
+      
+      {/* BARRA DE TABS */}
       <div className="bg-white p-6 lg:px-8 lg:py-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-4 z-10">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-[#87be00]/10 text-[#87be00] flex items-center justify-center">
@@ -119,31 +128,10 @@ const ViewerDashboard = () => {
           </div>
           <div>
             <h2 className="text-sm font-black text-gray-900 uppercase tracking-tighter">Reporte Consolidado</h2>
-            
-            {/* NUEVA BARRA DE BOTONES (TABS) */}
             <div className="flex gap-2 bg-gray-50 p-1 rounded-2xl border border-gray-100 mt-2 w-fit">
-              <button 
-                onClick={() => setActiveView('executive')} 
-                className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                  activeView === 'executive' 
-                    ? 'bg-white text-[#87be00] shadow-sm' 
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                Vista Comercial
-              </button>
-              <button 
-                onClick={() => setActiveView('inventory')} 
-                className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                  activeView === 'inventory' 
-                    ? 'bg-white text-[#87be00] shadow-sm' 
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                Vista Inventario
-              </button>
+              <button onClick={() => setActiveView('executive')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${activeView === 'executive' ? 'bg-white text-[#87be00] shadow-sm' : 'text-gray-400'}`}>Vista Comercial</button>
+              <button onClick={() => setActiveView('inventory')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${activeView === 'inventory' ? 'bg-white text-[#87be00] shadow-sm' : 'text-gray-400'}`}>Vista Inventario</button>
             </div>
-
           </div>
         </div>
       </div>
@@ -158,23 +146,36 @@ const ViewerDashboard = () => {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            
+            {/* GRÁFICO DE ACTIVIDAD OPERATIVA */}
             <div className="xl:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[420px]">
               <div className="flex items-center justify-between mb-8">
                 <div>
                   <h2 className="text-[11px] font-black text-gray-900 uppercase tracking-widest">Actividad Operativa</h2>
-                  <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Tendencia Mensual</p>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Visitas por Semana</p>
                 </div>
-                <FiBarChart2 className="text-gray-300" size={20} />
               </div>
-              <div className="flex-1 flex items-end justify-between gap-3 border-b-2 border-gray-50 pb-4 mt-8">
-                {[65, 45, 80, 55, 90, 75, 100].map((height, i) => (
-                  <div key={i} className="w-full relative flex flex-col items-center justify-end h-full group z-10">
-                    <div className="w-full max-w-[40px] bg-[#87be00] rounded-t-xl transition-all duration-500 group-hover:bg-[#76a600] shadow-[0_4px_15px_rgba(135,190,0,0.2)]" style={{ height: `${height}%` }} />
+              
+              {/* 🚩 SOLUCIÓN RECHARTS: Contenedor con dimensiones estrictas */}
+              <div className="flex-1 w-full min-h-[250px] relative">
+                {stats.activityTrend && stats.activityTrend.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={250} minHeight={250}>
+                      <BarChart data={stats.activityTrend}>
+                        <Tooltip cursor={{fill: '#f9fafb'}} formatter={(value) => [`${value} Visitas`, 'Total']} />
+                        <Bar dataKey="val" fill="#87be00" radius={[8, 8, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="flex justify-between mt-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] px-2">
+                      {stats.activityTrend.map((d, i) => <span key={i}>{d.name}</span>)}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[250px] opacity-40">
+                    <FiInfo size={32} className="mb-2 text-gray-300" />
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Aún no hay visitas registradas</p>
                   </div>
-                ))}
-              </div>
-              <div className="flex justify-between mt-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] px-2">
-                <span>Sem 1</span><span>Sem 2</span><span>Sem 3</span><span>Sem 4</span><span>Sem 5</span><span>Sem 6</span><span>Actual</span>
+                )}
               </div>
             </div>
 
@@ -184,7 +185,7 @@ const ViewerDashboard = () => {
                 <FiTrendingUp className="text-gray-300" size={18} />
               </div>
               <div className="flex-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2">
-                {stats.topChains.length > 0 ? stats.topChains.map((chain) => <ChainRow key={chain.name} chain={chain} />) : <p className="text-[10px] font-bold text-gray-400 text-center mt-10">Sin datos</p>}
+                {stats.topChains.length > 0 ? stats.topChains.map((chain) => <ChainRow key={chain.name} chain={chain} />) : <p className="text-[10px] font-bold text-gray-400 text-center mt-10">Sin datos disponibles</p>}
               </div>
             </div>
           </div>

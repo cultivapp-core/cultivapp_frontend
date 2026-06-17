@@ -14,6 +14,14 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // 🚩 LÓGICA DE JERARQUÍA: Determinar qué rol vamos a buscar según el rol del gestor
+  const isViewer = managerUser.role === 'VIEW' || managerUser.role === 'VIEWER';
+  const isSupervisor = managerUser.role === 'SUPERVISOR';
+  
+  // Si es Viewer, le asignamos Supervisores. Si es Supervisor, le asignamos Usuarios.
+  const targetRole = isViewer ? 'SUPERVISOR' : 'USUARIO';
+  const targetLabel = isViewer ? 'Supervisores' : 'Usuarios';
+
   useEffect(() => {
     if (managerUser?.id) {
       fetchData();
@@ -24,13 +32,13 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
     try {
       setLoading(true);
 
-      // 1. Traer todos los usuarios con rol USUARIO de la empresa
+      // 1. Traer todos los usuarios de la empresa y filtrar por el rol objetivo (targetRole)
       const usersRes = await api.get(`/users`);
       const onlyUsers = Array.isArray(usersRes)
         ? usersRes.filter(u => 
-            u.role === 'USUARIO' && 
+            u.role === targetRole && 
             u.is_active && 
-            u.id !== managerUser.id // 🚩 Evita que el gestor se asigne a sí mismo
+            u.id !== managerUser.id // Evita que el gestor se asigne a sí mismo
           )
         : [];
 
@@ -46,7 +54,7 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
       setAllUsers(onlyUsers);
       setAssignedIds(currentIds);
     } catch (error) {
-      toast.error("Error al cargar usuarios de la empresa");
+      toast.error(`Error al cargar la lista de ${targetLabel.toLowerCase()}`);
     } finally {
       setLoading(false);
     }
@@ -62,7 +70,7 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
     try {
       setSaving(true);
       await api.post(`/users/${managerUser.id}/assign-users`, { userIds: assignedIds });
-      toast.success(`Usuarios asignados al ${managerUser.role} con éxito`);
+      toast.success(`${targetLabel} asignados al ${managerUser.role} con éxito`);
       onRefresh();
       onClose();
     } catch (error) {
@@ -87,8 +95,7 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
       });
   }, [allUsers, assignedIds, searchTerm]);
 
-  // Color dinámico según el rol (verde Cultiva para Supervisor, Azul para View)
-  const isSupervisor = managerUser.role === 'SUPERVISOR';
+  // Color dinámico según el rol del gestor
   const themeColor = isSupervisor ? 'text-[#87be00]' : 'text-blue-400';
   const themeBg = isSupervisor ? 'bg-[#87be00]' : 'bg-blue-500';
   const themeHoverBg = isSupervisor ? 'hover:bg-[#75a600]' : 'hover:bg-blue-600';
@@ -104,7 +111,7 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
         <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-900 text-white">
           <div>
             <p className={`text-[10px] font-black uppercase tracking-widest italic mb-1 ${themeColor}`}>
-              Asignación de Personal • Perfil {managerUser.role || 'Gestor'}
+              Asignación de {targetLabel} • Perfil {managerUser.role || 'Gestor'}
             </p>
             <h2 className="text-2xl font-black italic uppercase leading-none">
               {managerUser.first_name} {managerUser.last_name}
@@ -121,7 +128,7 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por nombre o correo..."
+              placeholder={`Buscar ${targetLabel.toLowerCase()}...`}
               className={`w-full pl-12 pr-4 py-4 rounded-2xl border-none focus:ring-2 focus:${themeRing} text-sm font-bold shadow-inner outline-none transition-all`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -138,12 +145,12 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
           {loading ? (
             <div className="col-span-full py-20 flex flex-col items-center opacity-20">
               <FiLoader className="animate-spin mb-2" size={30} />
-              <p className="text-[10px] font-black uppercase tracking-widest">Cargando usuarios...</p>
+              <p className="text-[10px] font-black uppercase tracking-widest">Cargando {targetLabel.toLowerCase()}...</p>
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="col-span-full py-16 text-center opacity-40">
               <FiUsers size={32} className="mx-auto mb-2 text-gray-300" />
-              <p className="italic text-sm font-bold uppercase tracking-tighter">No se encontraron usuarios</p>
+              <p className="italic text-sm font-bold uppercase tracking-tighter">No se encontraron {targetLabel.toLowerCase()}</p>
             </div>
           ) : (
             filteredUsers.map(user => {
