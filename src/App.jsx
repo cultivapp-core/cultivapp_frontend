@@ -114,7 +114,30 @@ function App() {
         <BrowserRouter>
           <OfflineMonitor />
           <HeartbeatMonitor /> 
-          <Toaster position="top-right" />
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              // Estilo base para todos los toasts
+              style: {
+                borderRadius: '1rem',
+                background: '#fff',
+                color: '#1e293b',
+                fontFamily: 'Outfit, sans-serif',
+                border: '1px solid #e5e7eb',
+                padding: '16px',
+              },
+              // Configuración específica para éxitos
+              success: {
+                style: { border: '1px solid #87be00' },
+                iconTheme: { primary: '#87be00', secondary: '#fff' },
+              },
+              // Configuración específica para errores
+              error: {
+                style: { border: '1px solid #ef4444' },
+                iconTheme: { primary: '#ef4444', secondary: '#fff' },
+              },
+            }}
+          />
           <Routes>
             <Route path="/" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />

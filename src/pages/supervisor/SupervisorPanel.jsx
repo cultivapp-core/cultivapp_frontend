@@ -93,10 +93,11 @@ const SupervisorPanel = () => {
     return () => socket.disconnect();
   }, [user?.company_id, queryClient]);
 
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading, error, isFetching } = useQuery({
+    
     queryKey: ['dashboard-stats', user?.company_id, user?.id],
     queryFn: async () => {
-      const response = await api.get("/supervisor/dashboard-stats", {
+      const response = await api.get("/reports/dashboard-stats", {
         params: { 
           company_id: user?.company_id,
           supervisor_id: user?.id 
@@ -118,7 +119,11 @@ const SupervisorPanel = () => {
     if (activeFilter === 'locales') {
       const uniqueMap = new Map();
       baseData.forEach(l => {
-        if (!uniqueMap.has(l.id)) uniqueMap.set(l.id, l);
+        const key = l.id || l.local_id || l.codigo_local;
+
+if (!uniqueMap.has(key)) {
+  uniqueMap.set(key, l);
+}
       });
       baseData = Array.from(uniqueMap.values());
     } else if (activeFilter === 'pendientes') {
@@ -266,6 +271,9 @@ const SupervisorPanel = () => {
       Cargando Cartera de Supervisor...
     </div>
   );
+
+  console.log("🔥 FINAL STATS EN COMPONENTE:", stats);
+console.log("📊 locales_detalle:", stats?.locales_detalle);
 
   return (
     <div className="space-y-6 md:space-y-8 font-[Outfit] pb-24 md:pb-20">

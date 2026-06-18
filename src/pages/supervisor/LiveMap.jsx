@@ -77,28 +77,23 @@ const LiveMap = () => {
   const mapContainer = useRef(null);
   const map = useRef(null);
   
-  // Referencias para limpiar marcadores y capas independientemente
   const routeMarkers = useRef([]);
   const liveMarkers = useRef([]);
   const circleLayersRef = useRef([]);
   const pollRef = useRef(null);
 
-  // Estados de Datos
-  const [routes, setRoutes] = useState([]); // Planificación
-  const [activeRoutes, setActiveRoutes] = useState([]); // GPS Vivo
+  const [routes, setRoutes] = useState([]); 
+  const [activeRoutes, setActiveRoutes] = useState([]); 
   
-  // Estados de UI
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedRoute, setSelectedRoute] = useState(null);
 
-  // 🔍 ESTADO DEL BUSCADOR
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
 
-  // Estados acordeón
   const [expandedLocales, setExpandedLocales] = useState({});
   const [expandedLocaleUsers, setExpandedLocaleUsers] = useState({});
   const [expandedUsers, setExpandedUsers] = useState({});
@@ -107,25 +102,31 @@ const LiveMap = () => {
   const toggleExpandLocaleUser = (key) => setExpandedLocaleUsers(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandUser       = (key) => setExpandedUsers(prev => ({ ...prev, [key]: !prev[key] }));
 
-  // Obtener ambas datas simultáneamente
+  // 🚩 OBTENER DATOS FILTRADOS POR SUPERVISOR (Actualizado con /routes)
   const fetchData = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       else setRefreshing(true);
 
       const [planningRes, liveRes] = await Promise.all([
-        api.get("/planning"),
-        api.get("/routes/monitoring/live")
+        api.get("/routes/planning/supervisor"), // Llama al endpoint correcto del supervisor
+        api.get("/routes/monitoring/supervisor-live") // Llama al endpoint correcto del supervisor
       ]);
 
-      setRoutes(Array.isArray(planningRes) ? planningRes : []);
+      setRoutes(Array.isArray(planningRes.data) ? planningRes.data : (Array.isArray(planningRes) ? planningRes : []));
       
-      const active = (Array.isArray(liveRes) ? liveRes : []).filter((r) => !isNaN(parseFloat(r.lat_in)) && !isNaN(parseFloat(r.lng_in)));
+      const liveData = Array.isArray(liveRes.data) ? liveRes.data : (Array.isArray(liveRes) ? liveRes : []);
+      const active = liveData.filter((r) => !isNaN(parseFloat(r.lat_in)) && !isNaN(parseFloat(r.lng_in)));
       setActiveRoutes(active);
 
       setLastUpdated(new Date());
     } catch (error) {
-      console.error("Error cargando el dashboard vivo:", error);
+      console.error("❌ ERROR DETALLADO DE API:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: error.config?.url
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -138,38 +139,22 @@ const LiveMap = () => {
     return () => clearInterval(pollRef.current);
   }, [fetchData]);
 
-  // 🔍 LÓGICA DE FILTRADO (Buscador)
   const filteredRoutes = useMemo(() => {
-  let result = [...routes];
+    let result = [...routes];
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(
+        (r) =>
+          (r.codigo_local && r.codigo_local.toLowerCase().includes(term)) ||
+          (r.cadena && r.cadena.toLowerCase().includes(term)) ||
+          (r.usuario_nombre && r.usuario_nombre.toLowerCase().includes(term)) ||
+          (r.usuario_email && r.usuario_email.toLowerCase().includes(term))
+      );
+    }
+    if (statusFilter !== "ALL") result = result.filter((r) => r.status === statusFilter);
+    return result;
+  }, [routes, searchTerm, statusFilter]);
 
-  // filtro búsqueda
-  if (searchTerm.trim()) {
-    const term = searchTerm.toLowerCase();
-
-    result = result.filter(
-      (r) =>
-        (r.codigo_local &&
-          r.codigo_local.toLowerCase().includes(term)) ||
-        (r.cadena &&
-          r.cadena.toLowerCase().includes(term)) ||
-        (r.usuario_nombre &&
-          r.usuario_nombre.toLowerCase().includes(term)) ||
-        (r.usuario_email &&
-          r.usuario_email.toLowerCase().includes(term))
-    );
-  }
-
-  // filtro estado
-  if (statusFilter !== "ALL") {
-    result = result.filter(
-      (r) => r.status === statusFilter
-    );
-  }
-
-  return result;
-}, [routes, searchTerm, statusFilter]);
-
-  // Memorización de datos para el panel lateral (Basado en rutas filtradas)
   const stats = useMemo(() => ({
     total: filteredRoutes.length,
     pending: filteredRoutes.filter(r => r.status === 'PENDING').length,
@@ -177,7 +162,6 @@ const LiveMap = () => {
     completed: filteredRoutes.filter(r => r.status === 'COMPLETED').length,
   }), [filteredRoutes]);
 
-  // Lógica Robusta: Filtra por presencia de datos (usando las rutas filtradas por búsqueda)
   const routesLocales  = useMemo(() => filteredRoutes.filter(r => r.codigo_local || r.cadena), [filteredRoutes]);
   const routesUsuarios = useMemo(() => filteredRoutes.filter(r => r.usuario_nombre), [filteredRoutes]);
 
@@ -198,12 +182,6 @@ const LiveMap = () => {
   }, [routesLocales]);
 
   const routesByUser = useMemo(() => {
-
-    console.log("TOTAL ROUTES", routes.length);
-    console.log("FILTERED ROUTES", filteredRoutes.length);
-    console.log("ROUTES LOCALES", routesLocales.length);
-    console.log("ROUTES USUARIOS", routesUsuarios.length);    
-
     return routesUsuarios.reduce((acc, route) => {
       const key = route.usuario_nombre || 'Sin usuario';
       if (!acc[key]) acc[key] = [];
@@ -212,7 +190,6 @@ const LiveMap = () => {
     }, {});
   }, [routesUsuarios]);
 
-  // Inicializar Mapa
   useEffect(() => {
     if (map.current) return;
     map.current = new mapboxgl.Map({
@@ -224,7 +201,6 @@ const LiveMap = () => {
     map.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
   }, []);
 
-  // Redimensionar al abrir/cerrar panel
   useEffect(() => {
     if (map.current) {
       const resizeTimer = setTimeout(() => map.current.resize(), 500);
@@ -232,7 +208,6 @@ const LiveMap = () => {
     }
   }, [panelOpen]);
 
-  // Pintar Marcadores (Planificación Filtrada + Vivo)
   useEffect(() => {
     if (!map.current) return;
 
@@ -251,11 +226,9 @@ const LiveMap = () => {
       const bounds = new mapboxgl.LngLatBounds();
       let hasCoords = false;
 
-      // ── PINTAR RUTAS FILTRADAS ──
       filteredRoutes.forEach((route) => {
         if (!route.lat || !route.lng) return;
         hasCoords = true;
-        
         const el = document.createElement("div");
         el.style.cssText = `width:22px;height:22px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.2);cursor:pointer;transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
         el.onmouseenter = () => el.style.transform = 'scale(1.4)';
@@ -276,14 +249,12 @@ const LiveMap = () => {
         bounds.extend([parseFloat(route.lng), parseFloat(route.lat)]);
       });
 
-      // ── PINTAR USUARIOS EN VIVO ──
       activeRoutes.forEach((route, index) => {
         const lng = parseFloat(route.lng_in);
         const lat = parseFloat(route.lat_in);
         hasCoords = true;
         const userColor = stringToColor(route.user_id || "default");
         
-        // Círculo GeoJSON
         const circleGeoJSON = createGeoJSONCircle([lng, lat], 0.3);
 
         map.current.addSource(`circle-source-${index}`, { type: "geojson", data: circleGeoJSON });
@@ -302,7 +273,6 @@ const LiveMap = () => {
 
         circleLayersRef.current.push(index);
 
-        // Marcador Avatar
         const el = document.createElement("div");
         el.className = "custom-marker";
         el.style.cssText = `
@@ -338,7 +308,7 @@ const LiveMap = () => {
 
     if (map.current.isStyleLoaded()) paintMap();
     else map.current.once('style.load', paintMap);
-  }, [filteredRoutes, activeRoutes]); // El mapa reacciona a los filtros
+  }, [filteredRoutes, activeRoutes]);
 
   const flyToRoute = (route) => {
     if (!map.current || !route.lat || !route.lng) return;
@@ -354,8 +324,6 @@ const LiveMap = () => {
 
   return (
     <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/50">
-
-      {/* HEADER VISUAL IDENTICO AL ROUTE PLANNING MAP + USUARIOS ACTIVOS */}
       <div className="bg-white border-b border-gray-100 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
         <div>
           <div className="flex items-center gap-3">
@@ -389,10 +357,7 @@ const LiveMap = () => {
         </div>
       </div>
 
-      {/* CONTENIDO */}
       <div className="flex-1 flex p-4 md:p-8 gap-6 overflow-hidden relative">
-
-        {/* MAPA */}
         <div className="flex-1 bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden">
           {!loading && filteredRoutes.length === 0 && activeRoutes.length === 0 && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
@@ -417,14 +382,12 @@ const LiveMap = () => {
           )}
         </div>
 
-        {/* PANEL LATERAL (DISEÑO ROUTE PLANNING MAP) */}
         <div className={`
           absolute lg:relative right-4 md:right-8 top-4 md:top-8 bottom-4 md:bottom-8 lg:right-0 lg:top-0 lg:bottom-0
           transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-30 flex flex-col gap-4
           ${panelOpen ? 'w-[calc(100%-2rem)] sm:w-80 translate-x-0 opacity-100' : 'w-0 translate-x-full lg:translate-x-10 opacity-0 pointer-events-none lg:w-0'}
         `}>
 
-          {/* STATS */}
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 p-6 flex flex-col shrink-0">
             <div className="flex items-center justify-between mb-5">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Resumen Rutas</p>
@@ -455,7 +418,6 @@ const LiveMap = () => {
             </div>
           </div>
 
-          {/* LISTA DE ACORDEONES + BUSCADOR */}
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden flex-1 min-h-0">
             <div className="px-6 py-5 border-b border-gray-50 flex flex-col gap-4 bg-white shrink-0">
               <div className="flex items-center justify-between">
@@ -463,8 +425,6 @@ const LiveMap = () => {
                   <FiList size={14} className="text-[#87be00]" /> Despliegue
                 </p>
               </div>
-              
-              {/* 🔍 INPUT DE BÚSQUEDA */}
               <div className="relative w-full">
                 <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                 <input
@@ -480,53 +440,12 @@ const LiveMap = () => {
                   </button>
                 )}
               </div>
-              {/* FILTROS DE ESTADO */}
-  <div className="grid grid-cols-2 gap-2">
-    <button
-      onClick={() => setStatusFilter("ALL")}
-      className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${
-        statusFilter === "ALL"
-          ? "bg-gray-900 text-white"
-          : "bg-gray-50 text-gray-500"
-      }`}
-    >
-      Todas
-    </button>
-
-    <button
-      onClick={() => setStatusFilter("PENDING")}
-      className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${
-        statusFilter === "PENDING"
-          ? "bg-red-500 text-white"
-          : "bg-red-50 text-red-500"
-      }`}
-    >
-      Pendientes
-    </button>
-
-    <button
-      onClick={() => setStatusFilter("IN_PROGRESS")}
-      className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${
-        statusFilter === "IN_PROGRESS"
-          ? "bg-[#87be00] text-white"
-          : "bg-[#87be00]/10 text-[#87be00]"
-      }`}
-    >
-      En Proceso
-    </button>
-
-    <button
-      onClick={() => setStatusFilter("COMPLETED")}
-      className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${
-        statusFilter === "COMPLETED"
-          ? "bg-blue-500 text-white"
-          : "bg-blue-50 text-blue-500"
-      }`}
-    >
-      Completadas
-    </button>
-  </div>
-
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setStatusFilter("ALL")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "ALL" ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-500"}`}>Todas</button>
+                <button onClick={() => setStatusFilter("PENDING")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "PENDING" ? "bg-red-500 text-white" : "bg-red-50 text-red-500"}`}>Pendientes</button>
+                <button onClick={() => setStatusFilter("IN_PROGRESS")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "IN_PROGRESS" ? "bg-[#87be00] text-white" : "bg-[#87be00]/10 text-[#87be00]"}`}>En Proceso</button>
+                <button onClick={() => setStatusFilter("COMPLETED")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "COMPLETED" ? "bg-blue-500 text-white" : "bg-blue-50 text-blue-500"}`}>Completadas</button>
+              </div>
             </div>
 
             <div className="overflow-y-auto flex-1 custom-scrollbar">
@@ -539,8 +458,6 @@ const LiveMap = () => {
                 </div>
               ) : (
                 <div className="p-2">
-
-                  {/* ── LOCALES ASIGNADOS ── */}
                   {routesLocales.length > 0 && (
                     <div className="mb-1">
                       <div className="flex items-center gap-2 px-4 py-2.5">
@@ -548,9 +465,7 @@ const LiveMap = () => {
                         <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#87be00]">Locales Asignados</p>
                         <span className="ml-auto text-[9px] font-black text-gray-300">{Object.keys(routesByLocale).length}</span>
                       </div>
-
                       {Object.entries(routesByLocale).map(([localKey, localData]) => {
-                        // 🟢 Auto expandir el acordeón si hay una búsqueda activa, o usar el toggle manual si está vacío
                         const isExpanded  = searchTerm.trim() !== "" ? true : expandedLocales[localKey];
                         const allRoutes   = Object.values(localData.routes).flat();
                         const pendiente   = allRoutes.filter(r => r.status === 'PENDING').length;
@@ -559,18 +474,10 @@ const LiveMap = () => {
 
                         return (
                           <div key={localKey} className="mx-2 mb-1">
-                            {/* Cabecera local */}
-                            <button
-                              onClick={() => toggleExpandLocale(localKey)}
-                              className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-[#87be00]/5 transition-all group"
-                            >
-                              <div className="w-8 h-8 rounded-xl bg-[#87be00]/10 text-[#87be00] flex items-center justify-center shrink-0">
-                                <FiMapPin size={14} />
-                              </div>
+                            <button onClick={() => toggleExpandLocale(localKey)} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-[#87be00]/5 transition-all group">
+                              <div className="w-8 h-8 rounded-xl bg-[#87be00]/10 text-[#87be00] flex items-center justify-center shrink-0"><FiMapPin size={14} /></div>
                               <div className="flex-1 min-w-0 text-left">
-                                <p className="text-[10px] font-black uppercase italic text-gray-900 truncate leading-none mb-1 group-hover:text-[#87be00] transition-colors">
-                                  {localData.cadena || 'Sin nombre'}
-                                </p>
+                                <p className="text-[10px] font-black uppercase italic text-gray-900 truncate leading-none mb-1 group-hover:text-[#87be00] transition-colors">{localData.cadena || 'Sin nombre'}</p>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[7px] font-bold text-gray-300 uppercase">{localData.codigo || 'S/N'} · {localData.comuna}</span>
                                   {pendiente  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span>{pendiente}</span>}
@@ -580,61 +487,29 @@ const LiveMap = () => {
                               </div>
                               <FiChevronRight size={14} className={`text-gray-300 group-hover:text-[#87be00] transition-all duration-300 shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
                             </button>
-
-                            {/* Acordeón local → usuarios */}
                             <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
                               <div className="ml-4 border-l-2 border-[#87be00]/20 pl-3 py-1 space-y-1">
                                 {Object.entries(localData.routes).map(([userName, userRoutes]) => {
                                   const userKey      = `${localKey}-${userName}`;
-                                  // 🟢 Auto expandir también los subniveles al buscar
                                   const isUserExpanded = searchTerm.trim() !== "" ? true : expandedLocaleUsers[userKey];
-                                  const uPendiente   = userRoutes.filter(r => r.status === 'PENDING').length;
-                                  const uEnProceso   = userRoutes.filter(r => r.status === 'IN_PROGRESS').length;
-                                  const uCompletada  = userRoutes.filter(r => r.status === 'COMPLETED').length;
-
                                   return (
                                     <div key={userKey}>
-                                      {/* Cabecera usuario dentro del local */}
-                                      <button
-                                        onClick={() => toggleExpandLocaleUser(userKey)}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-all group"
-                                      >
-                                        <div className="w-7 h-7 rounded-lg bg-gray-900 text-[#87be00] flex items-center justify-center font-black text-[10px] shrink-0">
-                                          {userName?.charAt(0)}
-                                        </div>
+                                      <button onClick={() => toggleExpandLocaleUser(userKey)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-all group">
+                                        <div className="w-7 h-7 rounded-lg bg-gray-900 text-[#87be00] flex items-center justify-center font-black text-[10px] shrink-0">{userName?.charAt(0)}</div>
                                         <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-[9px] font-black uppercase italic text-gray-800 truncate leading-none mb-0.5 group-hover:text-[#87be00] transition-colors">
-                                            {userName}
-                                          </p>
-                                          <div className="flex items-center gap-2">
-                                            {uPendiente  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span>{uPendiente}</span>}
-                                            {uEnProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#87be00]"><span className="w-1.5 h-1.5 rounded-full bg-[#87be00]"></span>{uEnProceso}</span>}
-                                            {uCompletada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{uCompletada}</span>}
-                                            <span className="text-[7px] font-black text-gray-300 ml-auto">{userRoutes.length} rutas</span>
-                                          </div>
+                                          <p className="text-[9px] font-black uppercase italic text-gray-800 truncate leading-none mb-0.5 group-hover:text-[#87be00] transition-colors">{userName}</p>
                                         </div>
                                         <FiChevronRight size={12} className={`text-gray-300 group-hover:text-[#87be00] transition-all duration-300 shrink-0 ${isUserExpanded ? 'rotate-90' : ''}`} />
                                       </button>
-
-                                      {/* Rutas del usuario dentro del local */}
                                       <div className={`overflow-hidden transition-all duration-300 ${isUserExpanded ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="ml-4 border-l-2 border-gray-100 pl-3 py-1 space-y-1">
                                           {userRoutes.map((route, idx) => (
-                                            <button
-                                              key={idx}
-                                              onClick={() => flyToRoute(route)}
-                                              className={`w-full text-left px-3 py-2.5 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-[#87be00]/5 ring-1 ring-[#87be00]/20' : 'hover:bg-gray-50'}`}
-                                            >
-                                              <span className="w-2 h-2 rounded-full block mt-1 shrink-0 shadow-sm transition-transform group-hover:scale-125" style={{ backgroundColor: statusToColor(route.status) }} />
+                                            <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left px-3 py-2.5 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-[#87be00]/5 ring-1 ring-[#87be00]/20' : 'hover:bg-gray-50'}`}>
+                                              <span className="w-2 h-2 rounded-full block mt-1 shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
                                               <div className="flex-1 min-w-0">
-                                                <p className="text-[9px] font-black uppercase italic truncate text-gray-700 group-hover:text-[#87be00] transition-colors leading-none mb-0.5">
-                                                  {route.cadena || 'Sin nombre'}
-                                                </p>
-                                                <span className={`mt-1 inline-flex items-center text-[7px] font-black uppercase px-2 py-0.5 rounded-lg border ${statusBg(route.status)}`}>
-                                                  {statusLabel(route.status)}
-                                                </span>
+                                                <p className="text-[9px] font-black uppercase italic truncate text-gray-700 group-hover:text-[#87be00] transition-colors leading-none mb-0.5">{route.cadena || 'Sin nombre'}</p>
+                                                <span className={`mt-1 inline-flex items-center text-[7px] font-black uppercase px-2 py-0.5 rounded-lg border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
                                               </div>
-                                              <FiChevronRight size={11} className="text-gray-300 group-hover:text-[#87be00] group-hover:translate-x-1 mt-1 shrink-0 transition-all" />
                                             </button>
                                           ))}
                                         </div>
@@ -644,19 +519,14 @@ const LiveMap = () => {
                                 })}
                               </div>
                             </div>
-
                           </div>
                         );
                       })}
                     </div>
                   )}
 
-                  {/* SEPARADOR */}
-                  {routesLocales.length > 0 && routesUsuarios.length > 0 && (
-                    <div className="mx-4 my-2 border-t border-gray-100" />
-                  )}
+                  {routesLocales.length > 0 && routesUsuarios.length > 0 && <div className="mx-4 my-2 border-t border-gray-100" />}
 
-                  {/* ── USUARIOS ASIGNADOS ── */}
                   {routesUsuarios.length > 0 && (
                     <div className="mt-1">
                       <div className="flex items-center gap-2 px-4 py-2.5">
@@ -664,77 +534,39 @@ const LiveMap = () => {
                         <p className="text-[8px] font-black uppercase tracking-[0.2em] text-blue-400">Usuarios Asignados</p>
                         <span className="ml-auto text-[9px] font-black text-gray-300">{Object.keys(routesByUser).length}</span>
                       </div>
-
                       {Object.entries(routesByUser).map(([nombre, userRoutes]) => {
-                        // 🟢 Auto expandir usuarios al buscar
                         const isExpanded = searchTerm.trim() !== "" ? true : expandedUsers[nombre];
-                        const pendiente  = userRoutes.filter(r => r.status === 'PENDING').length;
-                        const enProceso  = userRoutes.filter(r => r.status === 'IN_PROGRESS').length;
-                        const completada = userRoutes.filter(r => r.status === 'COMPLETED').length;
-
                         return (
                           <div key={nombre} className="mx-2 mb-1">
-
-                            {/* Cabecera usuario */}
-                            <button
-                              onClick={() => toggleExpandUser(nombre)}
-                              className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-blue-50 transition-all group"
-                            >
-                              <div className="w-8 h-8 rounded-xl bg-gray-900 text-[#87be00] flex items-center justify-center font-black text-xs shrink-0">
-                                {nombre?.charAt(0)}
-                              </div>
+                            <button onClick={() => toggleExpandUser(nombre)} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-blue-50 transition-all group">
+                              <div className="w-8 h-8 rounded-xl bg-gray-900 text-[#87be00] flex items-center justify-center font-black text-xs shrink-0">{nombre?.charAt(0)}</div>
                               <div className="flex-1 min-w-0 text-left">
-                                <p className="text-[10px] font-black uppercase italic text-gray-900 truncate leading-none mb-1 group-hover:text-blue-500 transition-colors">
-                                  {nombre}
-                                </p>
-                                <div className="flex items-center gap-2">
-                                  {pendiente  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span>{pendiente}</span>}
-                                  {enProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#87be00]"><span className="w-1.5 h-1.5 rounded-full bg-[#87be00]"></span>{enProceso}</span>}
-                                  {completada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{completada}</span>}
-                                  <span className="text-[7px] font-black text-gray-300 ml-auto">{userRoutes.length} rutas</span>
-                                </div>
+                                <p className="text-[10px] font-black uppercase italic text-gray-900 truncate leading-none mb-1 group-hover:text-blue-500 transition-colors">{nombre}</p>
                               </div>
                               <FiChevronRight size={14} className={`text-gray-300 group-hover:text-blue-400 transition-all duration-300 shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
                             </button>
-
-                            {/* Rutas del usuario */}
                             <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
                               <div className="ml-4 border-l-2 border-blue-100 pl-3 py-1 space-y-1">
                                 {userRoutes.map((route, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => flyToRoute(route)}
-                                    className={`w-full text-left px-3 py-3 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'}`}
-                                  >
-                                    <span className="w-2.5 h-2.5 rounded-full block mt-1 shrink-0 shadow-sm transition-transform group-hover:scale-125" style={{ backgroundColor: statusToColor(route.status) }} />
+                                  <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left px-3 py-3 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'}`}>
+                                    <span className="w-2.5 h-2.5 rounded-full block mt-1 shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
                                     <div className="flex-1 min-w-0">
-                                      <p className="text-[10px] font-black uppercase italic truncate text-gray-800 group-hover:text-blue-500 transition-colors leading-none mb-0.5">
-                                        {route.cadena || 'Sin nombre'}
-                                      </p>
-                                      <p className="text-[8px] font-bold text-gray-300 uppercase truncate">
-                                        {route.codigo_local || 'S/N'} · {route.comuna}
-                                      </p>
-                                      <span className={`mt-1 inline-flex items-center text-[7px] font-black uppercase px-2 py-0.5 rounded-lg border ${statusBg(route.status)}`}>
-                                        {statusLabel(route.status)}
-                                      </span>
+                                      <p className="text-[10px] font-black uppercase italic truncate text-gray-800 group-hover:text-blue-500 transition-colors leading-none mb-0.5">{route.cadena || 'Sin nombre'}</p>
+                                      <p className="text-[8px] font-bold text-gray-300 uppercase truncate">{route.codigo_local || 'S/N'} · {route.comuna}</p>
                                     </div>
-                                    <FiChevronRight size={12} className="text-gray-300 group-hover:text-blue-400 group-hover:translate-x-1 mt-1 shrink-0 transition-all" />
                                   </button>
                                 ))}
                               </div>
                             </div>
-
                           </div>
                         );
                       })}
                     </div>
                   )}
-
                 </div>
               )}
             </div>
           </div>
-
         </div>
       </div>
     </div>

@@ -108,9 +108,9 @@ const GeoChainReport = () => {
 
       {/* GRÁFICO CONDICIONAL */}
       {data.length > 0 && (
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-8 h-[400px] w-full">
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-8 h-[400px] min-h-[400px] w-full">
           <h3 className="text-[10px] font-black text-gray-400 uppercase mb-4">{isDrillDown ? "Ventas por Comuna" : "Tendencia por Región"}</h3>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer key={isDrillDown ? 'drill' : 'general'} width="100%" height="100%">
             {isDrillDown ? (
               <LineChart data={chartData} margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
