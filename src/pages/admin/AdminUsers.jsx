@@ -47,11 +47,14 @@ const AdminUsers = () => {
   const fileInputRef = useRef(null)
   const userLocal = JSON.parse(localStorage.getItem("user"))
 
+  // LÓGICA DE FILTRADO ACTUALIZADA CON RUT
   const filteredUsers = users.filter((user) => {
     const term = searchTerm.toLowerCase()
     const fullName = `${user.first_name} ${user.last_name}`.toLowerCase()
     const email = user.email?.toLowerCase() || ""
-    return fullName.includes(term) || email.includes(term)
+    const rut = user.rut?.toLowerCase() || ""
+    
+    return fullName.includes(term) || email.includes(term) || rut.includes(term)
   })
 
   const safe = (value) => {
@@ -209,7 +212,7 @@ const AdminUsers = () => {
           <FiSearch className="absolute left-4 top-4 text-gray-400" size={18} />
           <input
             type="text"
-            placeholder="Buscar..."
+            placeholder="Buscar por nombre, correo o RUT..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-white border border-gray-100 pl-12 pr-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest outline-none focus:border-[#87be00] transition-all shadow-sm"
@@ -281,7 +284,7 @@ const AdminUsers = () => {
             <FiSearch className="absolute left-4 top-4 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Buscar por nombre o correo electrónico..."
+              placeholder="Buscar por nombre, correo o RUT..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-white border border-gray-200 pl-12 pr-6 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none focus:border-[#87be00] transition-all shadow-sm"
