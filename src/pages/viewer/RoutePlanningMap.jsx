@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import api from "../../api/apiClient";
-import { FiNavigation, FiAlertCircle, FiMapPin, FiChevronRight, FiList, FiRefreshCw, FiUsers } from "react-icons/fi";
+import { FiNavigation, FiAlertCircle, FiMapPin, FiChevronRight, FiList, FiRefreshCw, FiUsers, FiUserCheck } from "react-icons/fi";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -11,10 +11,10 @@ const POLL_INTERVAL = 15000;
 
 const statusToColor = (status) => {
   switch (status) {
-    case 'IN_PROGRESS': return '#87be00';
-    case 'PENDING':     return '#ef4444';
-    case 'COMPLETED':   return '#2563eb';
-    default:            return '#94a3b8';
+    case 'IN_PROGRESS': return '#87be00'; // Verde
+    case 'PENDING':     return '#ef4444'; // Rojo
+    case 'COMPLETED':   return '#2563eb'; // Azul
+    default:            return '#94a3b8'; // Gris
   }
 };
 
@@ -49,13 +49,13 @@ const RoutePlanningMap = () => {
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedRoute, setSelectedRoute] = useState(null);
 
-  // Estados acordeón locales
+  // Estados Acordeones Jerarquía
+  const [expandedSupervisors, setExpandedSupervisors] = useState({});
   const [expandedLocales, setExpandedLocales] = useState({});
   const [expandedLocaleUsers, setExpandedLocaleUsers] = useState({});
-
-  // Estados acordeón usuarios
   const [expandedUsers, setExpandedUsers] = useState({});
 
+  const toggleExpandSupervisor = (key) => setExpandedSupervisors(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandLocale     = (key) => setExpandedLocales(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandLocaleUser = (key) => setExpandedLocaleUsers(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandUser       = (key) => setExpandedUsers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -64,9 +64,24 @@ const RoutePlanningMap = () => {
     try {
       if (!silent) setLoading(true);
       else setRefreshing(true);
+      
       const response = await api.get("/planning");
-      setRoutes(Array.isArray(response) ? response : []);
+      
+      // 🚩 FIX CRÍTICO 1: Asegurar la extracción correcta de los datos desde Axios
+      const rawData = response.data || response;
+      const data = Array.isArray(rawData) ? rawData : [];
+      
+      setRoutes(data);
       setLastUpdated(new Date());
+
+      // Expandir supervisores por defecto al cargar
+      if (!silent && data.length > 0) {
+        const uniqueSups = [...new Set(data.map(r => r.supervisor_nombre || 'Sin Supervisor'))];
+        const initialExpand = {};
+        uniqueSups.forEach(sup => initialExpand[sup] = true);
+        setExpandedSupervisors(initialExpand);
+      }
+
     } catch (error) {
       console.error("Error cargando planificación:", error);
     } finally {
@@ -88,35 +103,50 @@ const RoutePlanningMap = () => {
     completed: routes.filter(r => r.status === 'COMPLETED').length,
   }), [routes]);
 
-  const routesLocales  = useMemo(() => routes.filter(r => r.origen === 'LOCAL'),   [routes]);
-  const routesUsuarios = useMemo(() => routes.filter(r => r.origen === 'USUARIO'), [routes]);
+  // ─── ESTRUCTURA AGRUPADA POR SUPERVISOR ───
+  const groupedData = useMemo(() => {
+    const mapObj = {};
 
-  // Locales agrupados por codigo_local → usuario
-  const routesByLocale = useMemo(() => {
-    return routesLocales.reduce((acc, route) => {
-      const localKey = route.codigo_local || route.cadena || 'SIN_CODIGO';
-      if (!acc[localKey]) acc[localKey] = {
-        cadena: route.cadena,
-        comuna: route.comuna,
-        codigo: route.codigo_local,
-        routes: {}
-      };
-      const userKey = route.usuario_nombre || 'Sin usuario';
-      if (!acc[localKey].routes[userKey]) acc[localKey].routes[userKey] = [];
-      acc[localKey].routes[userKey].push(route);
-      return acc;
-    }, {});
-  }, [routesLocales]);
+    routes.forEach(route => {
+      const supName = route.supervisor_nombre || 'Sin Supervisor';
+      
+      if (!mapObj[supName]) {
+        mapObj[supName] = {
+          localesMap: {},
+          usuariosMap: {}
+        };
+      }
 
-  // Usuarios agrupados por nombre
-  const routesByUser = useMemo(() => {
-    return routesUsuarios.reduce((acc, route) => {
-      const key = route.usuario_nombre || 'Sin usuario';
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(route);
-      return acc;
-    }, {});
-  }, [routesUsuarios]);
+      // 🚩 FIX 2: Priorizar local_nombre, hacer fallback a cadena
+      const nombreVisibleLocal = route.local_nombre || route.cadena || 'Local sin nombre';
+
+      if (route.origen === 'LOCAL') {
+        const localKey = route.codigo_local || route.local_nombre || 'SIN_CODIGO';
+        
+        if (!mapObj[supName].localesMap[localKey]) {
+          mapObj[supName].localesMap[localKey] = {
+            nombre_mostrar: nombreVisibleLocal,
+            comuna: route.comuna,
+            codigo: route.codigo_local,
+            routesByUser: {}
+          };
+        }
+        const userKey = route.usuario_nombre || 'Sin usuario';
+        if (!mapObj[supName].localesMap[localKey].routesByUser[userKey]) {
+          mapObj[supName].localesMap[localKey].routesByUser[userKey] = [];
+        }
+        mapObj[supName].localesMap[localKey].routesByUser[userKey].push(route);
+      } else {
+        const userKey = route.usuario_nombre || 'Sin usuario';
+        if (!mapObj[supName].usuariosMap[userKey]) {
+          mapObj[supName].usuariosMap[userKey] = [];
+        }
+        mapObj[supName].usuariosMap[userKey].push(route);
+      }
+    });
+
+    return mapObj;
+  }, [routes]);
 
   useEffect(() => {
     if (map.current) return;
@@ -139,32 +169,40 @@ const RoutePlanningMap = () => {
   useEffect(() => {
     if (!map.current) return;
     const paintMarkers = () => {
+      // Limpiar marcadores anteriores
       markers.current.forEach((m) => m.remove());
       markers.current = [];
       const bounds = new mapboxgl.LngLatBounds();
       let hasCoords = false;
 
       routes.forEach((route) => {
-        if (!route.lat || !route.lng) return;
+        // 🚩 FIX 3: Validar estrictamente las coordenadas numéricas
+        const lat = parseFloat(route.lat);
+        const lng = parseFloat(route.lng);
+        if (isNaN(lat) || isNaN(lng)) return;
+
         hasCoords = true;
         const el = document.createElement("div");
-        el.style.cssText = `width:22px;height:22px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.2);cursor:pointer;transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
-        el.onmouseenter = () => el.style.transform = 'scale(1.4)';
+        el.style.cssText = `width:24px;height:24px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.3);cursor:pointer;transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
+        el.onmouseenter = () => el.style.transform = 'scale(1.3)';
         el.onmouseleave = () => el.style.transform = 'scale(1)';
 
+        const nombreVisible = route.local_nombre || route.cadena || 'Local sin nombre';
+
         const marker = new mapboxgl.Marker(el)
-          .setLngLat([parseFloat(route.lng), parseFloat(route.lat)])
+          .setLngLat([lng, lat])
           .setPopup(new mapboxgl.Popup({ offset: 15, closeButton: false }).setHTML(`
             <div style="font-family:'Outfit';padding:8px 4px;text-transform:uppercase;">
-              <p style="font-weight:900;margin:0;font-size:11px;color:#111827;letter-spacing:-0.02em;">${route.cadena || 'Sin nombre'}</p>
-              <p style="font-size:9px;font-weight:700;color:#9ca3af;margin:3px 0 0 0;">${route.codigo_local || 'S/N'} | ${route.comuna || ''}</p>
-              ${route.origen === 'USUARIO' ? `<p style="font-size:9px;font-weight:700;color:#3b82f6;margin:3px 0 0 0;">${route.usuario_nombre}</p>` : ''}
+              <p style="font-weight:900;margin:0;font-size:12px;color:#111827;letter-spacing:-0.02em;">${nombreVisible}</p>
+              <p style="font-size:10px;font-weight:700;color:#9ca3af;margin:3px 0 0 0;">${route.codigo_local || 'S/N'} | ${route.comuna || ''}</p>
+              <p style="font-size:11px;font-weight:800;color:#3b82f6;margin:5px 0 0 0;">👤 ${route.usuario_nombre}</p>
+              <p style="font-size:9px;font-weight:700;color:#6b7280;margin:5px 0 0 0;padding-top:4px;border-top:1px solid #e5e7eb;">Sup: ${route.supervisor_nombre}</p>
             </div>
           `))
           .addTo(map.current);
 
         markers.current.push(marker);
-        bounds.extend([parseFloat(route.lng), parseFloat(route.lat)]);
+        bounds.extend([lng, lat]);
       });
 
       if (hasCoords) map.current.fitBounds(bounds, { padding: 80, duration: 1000 });
@@ -175,10 +213,13 @@ const RoutePlanningMap = () => {
   }, [routes]);
 
   const flyToRoute = (route) => {
-    if (!map.current || !route.lat || !route.lng) return;
+    const lat = parseFloat(route.lat);
+    const lng = parseFloat(route.lng);
+    if (!map.current || isNaN(lat) || isNaN(lng)) return;
+    
     setSelectedRoute(route);
     if (window.innerWidth < 1024) setPanelOpen(false);
-    map.current.flyTo({ center: [parseFloat(route.lng), parseFloat(route.lat)], zoom: 14, duration: 1200 });
+    map.current.flyTo({ center: [lng, lat], zoom: 15, duration: 1200 });
   };
 
   const formatLastUpdated = (date) => {
@@ -188,7 +229,6 @@ const RoutePlanningMap = () => {
 
   return (
     <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/50">
-
       {/* HEADER */}
       <div className="bg-white border-b border-gray-100 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
         <div>
@@ -196,18 +236,18 @@ const RoutePlanningMap = () => {
             <div className="p-2 bg-[#87be00]/10 rounded-lg text-[#87be00]"><FiNavigation size={20} /></div>
             <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Monitoreo GPS</h2>
           </div>
-          <p className="text-[9px] md:text-[10px] font-bold text-[#87be00] uppercase tracking-[0.2em] ml-12 mt-1">Planificación y seguimiento en tiempo real</p>
+          <p className="text-[10px] md:text-xs font-bold text-[#87be00] uppercase tracking-[0.2em] ml-12 mt-1">Planificación y seguimiento en tiempo real</p>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
           <div className="flex gap-4 bg-gray-50 px-5 py-3 rounded-[1rem] border border-gray-100 w-full sm:w-auto justify-center">
-            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] shadow-sm"></span>Pendiente</span>
-            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#87be00] shadow-sm"></span>Proceso</span>
-            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Lista</span>
+            <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] shadow-sm"></span>Pendiente</span>
+            <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#87be00] shadow-sm"></span>Proceso</span>
+            <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Lista</span>
           </div>
           {lastUpdated && (
             <div className="flex items-center justify-center gap-2 bg-gray-900 px-5 py-3 rounded-[1rem] shadow-xl w-full sm:w-auto">
               <span className={`w-2 h-2 rounded-full ${refreshing ? 'bg-yellow-400 animate-pulse' : 'bg-[#87be00]'}`}></span>
-              <span className="text-[9px] font-black uppercase text-white tracking-widest whitespace-nowrap">
+              <span className="text-[10px] font-black uppercase text-white tracking-widest whitespace-nowrap">
                 {refreshing ? 'Actualizando...' : `Act: ${formatLastUpdated(lastUpdated)}`}
               </span>
             </div>
@@ -216,23 +256,53 @@ const RoutePlanningMap = () => {
       </div>
 
       {/* CONTENIDO */}
-      <div className="flex-1 flex p-4 md:p-8 gap-6 overflow-hidden relative">
+      <div className="flex-1 flex flex-col p-4 md:p-8 gap-4 md:gap-6 overflow-hidden relative">
+
+        {/* BARRA DE STATS (horizontal, sobre el mapa) */}
+        <div className="bg-white rounded-[1.5rem] border border-gray-100 shadow-sm p-4 md:p-5 flex items-center gap-4 md:gap-8 overflow-x-auto shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">Resumen Rutas</p>
+            <div className="flex items-center gap-2">
+              {refreshing && <FiRefreshCw size={12} className="text-[#87be00] animate-spin" />}
+              <span className="text-2xl md:text-3xl font-black italic text-gray-900 leading-none">{stats.total}</span>
+            </div>
+          </div>
+          <div className="hidden sm:block w-px h-8 bg-gray-100 shrink-0" />
+          <div className="flex items-center gap-5 md:gap-8 flex-1 min-w-0">
+            {[
+              { label: 'Pendiente',  count: stats.pending,    color: 'bg-[#ef4444]' },
+              { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#87be00]' },
+              { label: 'Completada', count: stats.completed,  color: 'bg-[#2563eb]' },
+            ].map(({ label, count, color }) => (
+              <div key={label} className="min-w-[88px] shrink-0">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ${color}`}></span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 whitespace-nowrap">{label}</span>
+                  <span className="text-xs font-black text-gray-800 ml-auto">{count}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                  <div className={`${color} h-full rounded-full transition-all duration-1000 ease-out`} style={{ width: stats.total ? `${(count / stats.total) * 100}%` : '0%' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* MAPA */}
-        <div className="flex-1 bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden">
+        <div className="flex-[2] min-h-[280px] bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden">
           {!loading && routes.length === 0 && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
               <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300"><FiAlertCircle size={32} /></div>
-              <p className="font-black uppercase text-[10px] tracking-widest">No hay rutas encontradas</p>
+              <p className="font-black uppercase text-xs tracking-widest">No hay rutas encontradas</p>
             </div>
           )}
           <div ref={mapContainer} className="w-full h-full" />
           <button
             onClick={() => setPanelOpen(!panelOpen)}
-            className="absolute top-6 left-6 z-10 bg-gray-900 text-white shadow-xl shadow-gray-900/20 rounded-2xl p-3.5 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+            className="absolute top-6 left-6 z-10 bg-gray-900 text-white shadow-xl shadow-gray-900/20 rounded-2xl p-4 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
           >
-            <FiList size={18} />
-            <span className="text-[9px] font-black uppercase tracking-widest hidden sm:block">Locales</span>
+            <FiList size={20} />
+            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:block">Jerarquía</span>
           </button>
           {loading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
@@ -241,157 +311,124 @@ const RoutePlanningMap = () => {
           )}
         </div>
 
-        {/* PANEL LATERAL */}
+        {/* PANEL JERÁRQUICO (debajo del mapa) */}
         <div className={`
-          absolute lg:relative right-4 md:right-8 top-4 md:top-8 bottom-4 md:bottom-8 lg:right-0 lg:top-0 lg:bottom-0
-          transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-30 flex flex-col gap-4
-          ${panelOpen ? 'w-[calc(100%-2rem)] sm:w-80 translate-x-0 opacity-100' : 'w-0 translate-x-full lg:translate-x-10 opacity-0 pointer-events-none lg:w-0'}
+          transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] overflow-hidden shrink-0
+          ${panelOpen ? 'max-h-[45vh] sm:max-h-[40vh] lg:max-h-[360px] opacity-100' : 'max-h-0 opacity-0'}
         `}>
-
-          {/* STATS */}
-          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 p-6 flex flex-col shrink-0">
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Resumen Rutas</p>
-              <div className="flex items-center gap-2">
-                {refreshing && <FiRefreshCw size={12} className="text-[#87be00] animate-spin" />}
-                <span className="text-3xl font-black italic text-gray-900 leading-none">{stats.total}</span>
-              </div>
-            </div>
-            <div className="space-y-4">
-              {[
-                { label: 'Pendiente',  count: stats.pending,    color: 'bg-[#ef4444]' },
-                { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#87be00]' },
-                { label: 'Completada', count: stats.completed,  color: 'bg-[#2563eb]' },
-              ].map(({ label, count, color }) => (
-                <div key={label}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${color}`}></span>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">{label}</span>
-                    </div>
-                    <span className="text-[11px] font-black text-gray-800">{count}</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                    <div className={`${color} h-full rounded-full transition-all duration-1000 ease-out`} style={{ width: stats.total ? `${(count / stats.total) * 100}%` : '0%' }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* LISTA */}
-          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden flex-1 min-h-0">
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden h-[45vh] sm:h-[40vh] lg:h-[360px]">
             <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between bg-white shrink-0">
-              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                <FiList size={14} className="text-[#87be00]" /> Despliegue
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
+                <FiList size={16} className="text-[#87be00]" /> Despliegue Jerárquico
               </p>
             </div>
 
-            <div className="overflow-y-auto flex-1 custom-scrollbar">
-              {routes.length === 0 ? (
+            <div className="overflow-y-auto flex-1 custom-scrollbar p-3">
+              {Object.keys(groupedData).length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full py-10 gap-3 text-gray-300">
                   <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center"><FiMapPin size={20} /></div>
-                  <p className="text-[9px] font-black uppercase tracking-widest">Sin asignaciones</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest">Sin asignaciones</p>
                 </div>
               ) : (
-                <div className="p-2">
+                Object.entries(groupedData).map(([supName, supData]) => {
+                  const isSupExpanded = expandedSupervisors[supName];
+                  const hasLocales = Object.keys(supData.localesMap).length > 0;
+                  const hasUsuarios = Object.keys(supData.usuariosMap).length > 0;
 
-                  {/* ── LOCALES ASIGNADOS ── */}
-                  {routesLocales.length > 0 && (
-                    <div className="mb-1">
-                      <div className="flex items-center gap-2 px-4 py-2.5">
-                        <FiMapPin size={10} className="text-[#87be00] shrink-0" />
-                        <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#87be00]">Locales Asignados</p>
-                        <span className="ml-auto text-[9px] font-black text-gray-300">{Object.keys(routesByLocale).length}</span>
-                      </div>
+                  return (
+                    <div key={supName} className="mb-4 border border-gray-100 rounded-3xl bg-gray-50/30 overflow-hidden shadow-sm">
+                      
+                      {/* --- CABECERA DEL SUPERVISOR --- */}
+                      <button
+                        onClick={() => toggleExpandSupervisor(supName)}
+                        className="w-full flex items-center p-4 bg-white hover:bg-gray-50 transition-all border-b border-gray-100 group"
+                      >
+                        <div className="w-10 h-10 rounded-[12px] bg-gray-900 text-white flex items-center justify-center font-black text-sm shadow-md group-hover:scale-105 transition-transform shrink-0">
+                          {supName.charAt(0)}
+                        </div>
+                        <div className="flex-1 text-left px-4 min-w-0">
+                          <p className="text-[9px] font-black text-[#87be00] uppercase tracking-[0.2em] mb-0.5 flex items-center gap-1">
+                            <FiUserCheck size={12} /> Supervisor
+                          </p>
+                          <p className="text-sm font-black text-gray-900 uppercase italic truncate leading-tight">
+                            {supName}
+                          </p>
+                        </div>
+                        <FiChevronRight size={18} className={`text-gray-300 group-hover:text-gray-600 transition-all duration-300 ${isSupExpanded ? 'rotate-90' : ''}`} />
+                      </button>
 
-                      {Object.entries(routesByLocale).map(([localKey, localData]) => {
-                        const isExpanded  = expandedLocales[localKey];
-                        const allRoutes   = Object.values(localData.routes).flat();
-                        const pendiente   = allRoutes.filter(r => r.status === 'PENDING').length;
-                        const enProceso   = allRoutes.filter(r => r.status === 'IN_PROGRESS').length;
-                        const completada  = allRoutes.filter(r => r.status === 'COMPLETED').length;
+                      {/* --- CONTENIDO DEL SUPERVISOR --- */}
+                      <div className={`transition-all duration-500 ease-in-out ${isSupExpanded ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                        <div className="p-2 space-y-3">
 
-                        return (
-                          <div key={localKey} className="mx-2 mb-1">
-
-                            {/* Cabecera local */}
-                            <button
-                              onClick={() => toggleExpandLocale(localKey)}
-                              className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-[#87be00]/5 transition-all group"
-                            >
-                              <div className="w-8 h-8 rounded-xl bg-[#87be00]/10 text-[#87be00] flex items-center justify-center shrink-0">
-                                <FiMapPin size={14} />
+                          {/* SUB-NIVEL 1: LOCALES ASIGNADOS */}
+                          {hasLocales && (
+                            <div className="bg-white rounded-2xl border border-gray-100 pb-1 shadow-sm">
+                              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50">
+                                <FiMapPin size={14} className="text-[#87be00] shrink-0" />
+                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">Locales Asignados</p>
+                                <span className="ml-auto bg-[#87be00]/10 text-[#87be00] px-2 py-0.5 rounded-md text-[10px] font-black">{Object.keys(supData.localesMap).length}</span>
                               </div>
-                              <div className="flex-1 min-w-0 text-left">
-                                <p className="text-[10px] font-black uppercase italic text-gray-900 truncate leading-none mb-1 group-hover:text-[#87be00] transition-colors">
-                                  {localData.cadena || 'Sin nombre'}
-                                </p>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-[7px] font-bold text-gray-300 uppercase">{localData.codigo || 'S/N'} · {localData.comuna}</span>
-                                  {pendiente  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span>{pendiente}</span>}
-                                  {enProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#87be00]"><span className="w-1.5 h-1.5 rounded-full bg-[#87be00]"></span>{enProceso}</span>}
-                                  {completada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{completada}</span>}
-                                </div>
-                              </div>
-                              <FiChevronRight size={14} className={`text-gray-300 group-hover:text-[#87be00] transition-all duration-300 shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
-                            </button>
-
-                            {/* Acordeón local → usuarios */}
-                            <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                              <div className="ml-4 border-l-2 border-[#87be00]/20 pl-3 py-1 space-y-1">
-                                {Object.entries(localData.routes).map(([userName, userRoutes]) => {
-                                  const userKey      = `${localKey}-${userName}`;
-                                  const isUserExpanded = expandedLocaleUsers[userKey];
-                                  const uPendiente   = userRoutes.filter(r => r.status === 'PENDING').length;
-                                  const uEnProceso   = userRoutes.filter(r => r.status === 'IN_PROGRESS').length;
-                                  const uCompletada  = userRoutes.filter(r => r.status === 'COMPLETED').length;
+                              
+                              <div className="p-1">
+                                {Object.entries(supData.localesMap).map(([localKey, localData]) => {
+                                  const uniqueLocalKey = `${supName}-${localKey}`;
+                                  const isLocalExpanded = expandedLocales[uniqueLocalKey];
+                                  const allRoutes = Object.values(localData.routesByUser).flat();
+                                  const p = allRoutes.filter(r => r.status === 'PENDING').length;
+                                  const ep = allRoutes.filter(r => r.status === 'IN_PROGRESS').length;
+                                  const c = allRoutes.filter(r => r.status === 'COMPLETED').length;
 
                                   return (
-                                    <div key={userKey}>
-                                      {/* Cabecera usuario dentro del local */}
-                                      <button
-                                        onClick={() => toggleExpandLocaleUser(userKey)}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-all group"
-                                      >
-                                        <div className="w-7 h-7 rounded-lg bg-gray-900 text-[#87be00] flex items-center justify-center font-black text-[10px] shrink-0">
-                                          {userName?.charAt(0)}
+                                    <div key={localKey} className="mx-1 mb-1">
+                                      <button onClick={() => toggleExpandLocale(uniqueLocalKey)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-all group">
+                                        <div className="w-8 h-8 rounded-[10px] bg-[#87be00]/10 text-[#87be00] flex items-center justify-center shrink-0">
+                                          <FiMapPin size={16} />
                                         </div>
                                         <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-[9px] font-black uppercase italic text-gray-800 truncate leading-none mb-0.5 group-hover:text-[#87be00] transition-colors">
-                                            {userName}
+                                          <p className="text-xs font-black uppercase italic text-gray-800 truncate leading-none mb-1 group-hover:text-[#87be00]">
+                                            {localData.nombre_mostrar}
                                           </p>
-                                          <div className="flex items-center gap-2">
-                                            {uPendiente  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span>{uPendiente}</span>}
-                                            {uEnProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#87be00]"><span className="w-1.5 h-1.5 rounded-full bg-[#87be00]"></span>{uEnProceso}</span>}
-                                            {uCompletada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{uCompletada}</span>}
-                                            <span className="text-[7px] font-black text-gray-300 ml-auto">{userRoutes.length} rutas</span>
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-[9px] font-bold text-gray-400 uppercase">{localData.codigo} · {localData.comuna}</span>
+                                            {p>0 && <span className="flex items-center gap-1 text-[9px] font-black text-red-400 ml-1"><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span>{p}</span>}
+                                            {ep>0 && <span className="flex items-center gap-1 text-[9px] font-black text-[#87be00] ml-1"><span className="w-2 h-2 rounded-full bg-[#87be00]"></span>{ep}</span>}
+                                            {c>0 && <span className="flex items-center gap-1 text-[9px] font-black text-blue-500 ml-1"><span className="w-2 h-2 rounded-full bg-[#2563eb]"></span>{c}</span>}
                                           </div>
                                         </div>
-                                        <FiChevronRight size={12} className={`text-gray-300 group-hover:text-[#87be00] transition-all duration-300 shrink-0 ${isUserExpanded ? 'rotate-90' : ''}`} />
+                                        <FiChevronRight size={16} className={`text-gray-300 group-hover:text-[#87be00] transition-transform ${isLocalExpanded ? 'rotate-90' : ''}`} />
                                       </button>
 
-                                      {/* Rutas del usuario dentro del local */}
-                                      <div className={`overflow-hidden transition-all duration-300 ${isUserExpanded ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                                        <div className="ml-4 border-l-2 border-gray-100 pl-3 py-1 space-y-1">
-                                          {userRoutes.map((route, idx) => (
-                                            <button
-                                              key={idx}
-                                              onClick={() => flyToRoute(route)}
-                                              className={`w-full text-left px-3 py-2.5 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-[#87be00]/5 ring-1 ring-[#87be00]/20' : 'hover:bg-gray-50'}`}
-                                            >
-                                              <span className="w-2 h-2 rounded-full block mt-1 shrink-0 shadow-sm transition-transform group-hover:scale-125" style={{ backgroundColor: statusToColor(route.status) }} />
-                                              <div className="flex-1 min-w-0">
-                                                <p className="text-[9px] font-black uppercase italic truncate text-gray-700 group-hover:text-[#87be00] transition-colors leading-none mb-0.5">
-                                                  {route.cadena || 'Sin nombre'}
-                                                </p>
-                                                <span className={`mt-1 inline-flex items-center text-[7px] font-black uppercase px-2 py-0.5 rounded-lg border ${statusBg(route.status)}`}>
-                                                  {statusLabel(route.status)}
-                                                </span>
+                                      <div className={`overflow-hidden transition-all duration-300 ${isLocalExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                        <div className="ml-4 border-l-2 border-[#87be00]/20 pl-2 py-1 space-y-1">
+                                          {Object.entries(localData.routesByUser).map(([userName, userRoutes]) => {
+                                            const uniqueUserKey = `${supName}-${localKey}-${userName}`;
+                                            const isUserExpanded = expandedLocaleUsers[uniqueUserKey];
+                                            return (
+                                              <div key={userName}>
+                                                <button onClick={() => toggleExpandLocaleUser(uniqueUserKey)} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-50 group">
+                                                  <FiUsers size={12} className="text-gray-400 group-hover:text-[#87be00]" />
+                                                  <p className="text-[10px] font-black uppercase text-gray-600 truncate flex-1 text-left">{userName}</p>
+                                                  <span className="text-[9px] font-black text-gray-400">{userRoutes.length} req</span>
+                                                  <FiChevronRight size={12} className={`text-gray-300 ${isUserExpanded ? 'rotate-90' : ''}`} />
+                                                </button>
+                                                <div className={`overflow-hidden transition-all duration-300 ${isUserExpanded ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                                  <div className="ml-3 pl-2 border-l border-gray-100 space-y-1 mt-1 mb-2">
+                                                    {userRoutes.map((route, idx) => {
+                                                      const nombreVisible = route.local_nombre || route.cadena || 'Sin nombre';
+                                                      return (
+                                                        <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left p-2.5 rounded-lg flex items-center gap-2 ${selectedRoute === route ? 'bg-[#87be00]/10 ring-1 ring-[#87be00]/30' : 'hover:bg-gray-50'}`}>
+                                                          <span className="w-2 h-2 rounded-full block shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
+                                                          <span className="text-[10px] font-black uppercase text-gray-700 flex-1 truncate">{nombreVisible}</span>
+                                                          <span className={`text-[8px] font-black uppercase px-2 py-1 rounded border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
+                                                        </button>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                </div>
                                               </div>
-                                              <FiChevronRight size={11} className="text-gray-300 group-hover:text-[#87be00] group-hover:translate-x-1 mt-1 shrink-0 transition-all" />
-                                            </button>
-                                          ))}
+                                            );
+                                          })}
                                         </div>
                                       </div>
                                     </div>
@@ -399,96 +436,75 @@ const RoutePlanningMap = () => {
                                 })}
                               </div>
                             </div>
+                          )}
 
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* SEPARADOR */}
-                  {routesLocales.length > 0 && routesUsuarios.length > 0 && (
-                    <div className="mx-4 my-2 border-t border-gray-100" />
-                  )}
-
-                  {/* ── USUARIOS ASIGNADOS ── */}
-                  {routesUsuarios.length > 0 && (
-                    <div className="mt-1">
-                      <div className="flex items-center gap-2 px-4 py-2.5">
-                        <FiUsers size={10} className="text-blue-400 shrink-0" />
-                        <p className="text-[8px] font-black uppercase tracking-[0.2em] text-blue-400">Usuarios Asignados</p>
-                        <span className="ml-auto text-[9px] font-black text-gray-300">{Object.keys(routesByUser).length}</span>
-                      </div>
-
-                      {Object.entries(routesByUser).map(([nombre, userRoutes]) => {
-                        const isExpanded = expandedUsers[nombre];
-                        const pendiente  = userRoutes.filter(r => r.status === 'PENDING').length;
-                        const enProceso  = userRoutes.filter(r => r.status === 'IN_PROGRESS').length;
-                        const completada = userRoutes.filter(r => r.status === 'COMPLETED').length;
-
-                        return (
-                          <div key={nombre} className="mx-2 mb-1">
-
-                            {/* Cabecera usuario */}
-                            <button
-                              onClick={() => toggleExpandUser(nombre)}
-                              className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-blue-50 transition-all group"
-                            >
-                              <div className="w-8 h-8 rounded-xl bg-gray-900 text-[#87be00] flex items-center justify-center font-black text-xs shrink-0">
-                                {nombre?.charAt(0)}
+                          {/* SUB-NIVEL 2: USUARIOS ASIGNADOS (DIRECTOS) */}
+                          {hasUsuarios && (
+                            <div className="bg-white rounded-2xl border border-gray-100 pb-1 shadow-sm mt-3">
+                              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50">
+                                <FiUsers size={14} className="text-blue-500 shrink-0" />
+                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-500">Usuarios Asignados</p>
+                                <span className="ml-auto bg-blue-50 text-blue-500 px-2 py-0.5 rounded-md text-[10px] font-black">{Object.keys(supData.usuariosMap).length}</span>
                               </div>
-                              <div className="flex-1 min-w-0 text-left">
-                                <p className="text-[10px] font-black uppercase italic text-gray-900 truncate leading-none mb-1 group-hover:text-blue-500 transition-colors">
-                                  {nombre}
-                                </p>
-                                <div className="flex items-center gap-2">
-                                  {pendiente  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span>{pendiente}</span>}
-                                  {enProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#87be00]"><span className="w-1.5 h-1.5 rounded-full bg-[#87be00]"></span>{enProceso}</span>}
-                                  {completada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{completada}</span>}
-                                  <span className="text-[7px] font-black text-gray-300 ml-auto">{userRoutes.length} rutas</span>
-                                </div>
-                              </div>
-                              <FiChevronRight size={14} className={`text-gray-300 group-hover:text-blue-400 transition-all duration-300 shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
-                            </button>
 
-                            {/* Rutas del usuario */}
-                            <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                              <div className="ml-4 border-l-2 border-blue-100 pl-3 py-1 space-y-1">
-                                {userRoutes.map((route, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => flyToRoute(route)}
-                                    className={`w-full text-left px-3 py-3 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'}`}
-                                  >
-                                    <span className="w-2.5 h-2.5 rounded-full block mt-1 shrink-0 shadow-sm transition-transform group-hover:scale-125" style={{ backgroundColor: statusToColor(route.status) }} />
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-[10px] font-black uppercase italic truncate text-gray-800 group-hover:text-blue-500 transition-colors leading-none mb-0.5">
-                                        {route.cadena || 'Sin nombre'}
-                                      </p>
-                                      <p className="text-[8px] font-bold text-gray-300 uppercase truncate">
-                                        {route.codigo_local || 'S/N'} · {route.comuna}
-                                      </p>
-                                      <span className={`mt-1 inline-flex items-center text-[7px] font-black uppercase px-2 py-0.5 rounded-lg border ${statusBg(route.status)}`}>
-                                        {statusLabel(route.status)}
-                                      </span>
+                              <div className="p-1">
+                                {Object.entries(supData.usuariosMap).map(([userName, userRoutes]) => {
+                                  const uniqueUserKey = `${supName}-${userName}`;
+                                  const isUserExpanded = expandedUsers[uniqueUserKey];
+                                  const p = userRoutes.filter(r => r.status === 'PENDING').length;
+                                  const ep = userRoutes.filter(r => r.status === 'IN_PROGRESS').length;
+                                  const c = userRoutes.filter(r => r.status === 'COMPLETED').length;
+
+                                  return (
+                                    <div key={userName} className="mx-1 mb-1">
+                                      <button onClick={() => toggleExpandUser(uniqueUserKey)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-blue-50/50 transition-all group">
+                                        <div className="w-8 h-8 rounded-[10px] bg-blue-50 text-blue-500 flex items-center justify-center font-black text-sm shrink-0">
+                                          {userName.charAt(0)}
+                                        </div>
+                                        <div className="flex-1 min-w-0 text-left">
+                                          <p className="text-xs font-black uppercase italic text-gray-800 truncate leading-none mb-1 group-hover:text-blue-600">{userName}</p>
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            {p>0 && <span className="flex items-center gap-1 text-[9px] font-black text-red-400"><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span>{p}</span>}
+                                            {ep>0 && <span className="flex items-center gap-1 text-[9px] font-black text-[#87be00]"><span className="w-2 h-2 rounded-full bg-[#87be00]"></span>{ep}</span>}
+                                            {c>0 && <span className="flex items-center gap-1 text-[9px] font-black text-blue-500"><span className="w-2 h-2 rounded-full bg-[#2563eb]"></span>{c}</span>}
+                                            <span className="text-[9px] font-black text-gray-400 ml-auto">{userRoutes.length} rutas</span>
+                                          </div>
+                                        </div>
+                                        <FiChevronRight size={16} className={`text-gray-300 group-hover:text-blue-500 transition-transform ${isUserExpanded ? 'rotate-90' : ''}`} />
+                                      </button>
+
+                                      <div className={`overflow-hidden transition-all duration-300 ${isUserExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                        <div className="ml-4 border-l-2 border-blue-100 pl-2 py-1 space-y-1 mb-2">
+                                          {userRoutes.map((route, idx) => {
+                                            const nombreVisible = route.local_nombre || route.cadena || 'Sin nombre';
+                                            return (
+                                              <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 ${selectedRoute === route ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'}`}>
+                                                <span className="w-2.5 h-2.5 rounded-full block shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
+                                                <div className="flex-1 min-w-0">
+                                                  <p className="text-[10px] font-black uppercase text-gray-700 truncate leading-none mb-1.5">{nombreVisible}</p>
+                                                  <p className="text-[9px] font-bold text-gray-400 uppercase truncate">{route.codigo_local || 'S/N'} · {route.comuna}</p>
+                                                </div>
+                                                <span className={`text-[8px] font-black uppercase px-2 py-1 rounded border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
                                     </div>
-                                    <FiChevronRight size={12} className="text-gray-300 group-hover:text-blue-400 group-hover:translate-x-1 mt-1 shrink-0 transition-all" />
-                                  </button>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
+                          )}
 
-                          </div>
-                        );
-                      })}
+                        </div>
+                      </div>
                     </div>
-                  )}
-
-                </div>
+                  );
+                })
               )}
             </div>
           </div>
-
         </div>
       </div>
     </div>
