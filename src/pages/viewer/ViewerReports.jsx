@@ -13,7 +13,10 @@ const ViewerReports = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  const [filters, setFilters] = useState({ region_id: "", comuna_id: "", cadena: "", local_id: "" });
+  // 🚩 AGREGADO: startDate y endDate en el estado inicial de filtros
+  const [filters, setFilters] = useState({ 
+    region_id: "", comuna_id: "", cadena: "", local_id: "", startDate: "", endDate: "" 
+  });
   const [options, setOptions] = useState({ regiones: [], comunas: [], cadenas: [], locales: [] });
 
   // Función para normalizar valores numéricos de cadenas o numéricos puros
@@ -85,7 +88,6 @@ const ViewerReports = () => {
   const topProducts = useMemo(() => {
     if (!Array.isArray(data)) return [];
     const grouped = data.reduce((acc, item) => {
-      // Búsqueda tolerante a diferentes nombres de campos de productos
       const prod = item["(I) Descripción Producto Interno"] || 
                    item.descripcion_producto || 
                    item.descripcion_producto_interno || 
@@ -95,7 +97,6 @@ const ViewerReports = () => {
                    item.producto || 
                    "Producto Genérico";
                    
-      // Búsqueda tolerante a diferentes campos de cantidades / unidades
       const units = getNumericValue(
         item["Unidades vendidas"] || 
         item.unidades_vendidas || 
@@ -167,7 +168,10 @@ const ViewerReports = () => {
     setFilters(newFilters);
   };
 
-  const clearFilters = () => setFilters({ region_id: "", comuna_id: "", cadena: "", local_id: "" });
+  // 🚩 AGREGADO: Resetear fechas en la función limpiar
+  const clearFilters = () => setFilters({ 
+    region_id: "", comuna_id: "", cadena: "", local_id: "", startDate: "", endDate: "" 
+  });
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 font-[Outfit] pb-10">
@@ -181,21 +185,42 @@ const ViewerReports = () => {
             </button>
         </div>
         
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <select name="region_id" value={filters.region_id} onChange={handleFilterChange} className="bg-gray-50 p-4 rounded-xl text-[10px] font-black uppercase outline-none">
-                <option value="">Región: Todas</option>
-                {options.regiones?.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
+        {/* 🚩 AGREGADO: Se cambió el grid a 5 columnas (lg:grid-cols-5) para acomodar las fechas y se añadieron labels pequeños para mantener el orden visual */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             
-            <select name="comuna_id" value={filters.comuna_id} onChange={handleFilterChange} className="bg-gray-50 p-4 rounded-xl text-[10px] font-black uppercase outline-none">
-                <option value="">Comuna: Todas</option>
-                {options.comunas?.filter(c => !filters.region_id || c.region_id === filters.region_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <div className="flex flex-col">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 pl-1">Desde</label>
+                <input type="date" name="startDate" value={filters.startDate} onChange={handleFilterChange} className="bg-gray-50 p-4 rounded-xl text-[10px] font-black uppercase outline-none" />
+            </div>
+
+            <div className="flex flex-col">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 pl-1">Hasta</label>
+                <input type="date" name="endDate" value={filters.endDate} onChange={handleFilterChange} className="bg-gray-50 p-4 rounded-xl text-[10px] font-black uppercase outline-none" />
+            </div>
+
+            <div className="flex flex-col">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 pl-1">Región</label>
+                <select name="region_id" value={filters.region_id} onChange={handleFilterChange} className="bg-gray-50 p-4 rounded-xl text-[10px] font-black uppercase outline-none">
+                    <option value="">Todas</option>
+                    {options.regiones?.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+            </div>
             
-            <select name="cadena" value={filters.cadena} onChange={handleFilterChange} className="bg-gray-50 p-4 rounded-xl text-[10px] font-black uppercase outline-none">
-                <option value="">Cadena: Todas</option>
-                {options.cadenas?.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>           
+            <div className="flex flex-col">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 pl-1">Comuna</label>
+                <select name="comuna_id" value={filters.comuna_id} onChange={handleFilterChange} className="bg-gray-50 p-4 rounded-xl text-[10px] font-black uppercase outline-none">
+                    <option value="">Todas</option>
+                    {options.comunas?.filter(c => !filters.region_id || c.region_id === filters.region_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+            </div>
+            
+            <div className="flex flex-col">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 pl-1">Cadena</label>
+                <select name="cadena" value={filters.cadena} onChange={handleFilterChange} className="bg-gray-50 p-4 rounded-xl text-[10px] font-black uppercase outline-none">
+                    <option value="">Todas</option>
+                    {options.cadenas?.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>           
+            </div>
         </div>
       </div>
 
@@ -264,7 +289,7 @@ const ViewerReports = () => {
            </div>
            <div className="h-[220px] w-full">
              {loading ? <p className="text-center text-gray-400">Cargando...</p> : (
-               <ResponsiveContainer width="100%" height="100%">
+               <ResponsiveContainer width="110%" height="100%">
                  <PieChart>
                    <Pie 
                      data={stockBreakStockData} 
@@ -272,7 +297,7 @@ const ViewerReports = () => {
                      nameKey="name" 
                      cx="50%" 
                      cy="50%" 
-                     outerRadius={80} 
+                     outerRadius={70} 
                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} 
                      labelStyle={{ fontSize: '9px', fontWeight: 'bold' }}
                    >
@@ -289,7 +314,7 @@ const ViewerReports = () => {
       {/* ── CURVA DE SIERRA (CONTROL DE INVENTARIO Y REPOSICIÓN CADA 3 DÍAS) ── */}
       <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm">
          <div className="mb-6">
-            <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-1">Simulación Curva de Sierra (Inventario Físico)</h3>
+            <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-1">Simulación Curva de Cierre (Inventario Físico)</h3>
             <p className="text-[8px] font-black text-red-500 uppercase tracking-[0.2em] italic">Riesgo de quiebre de stock (línea roja de quiebre en cero)</p>
          </div>
          <div className="h-[300px]">

@@ -29,15 +29,16 @@ const formatPercent = (value) => {
 
 // ─── Componentes internos ────────────────────────────────────────────────────
 const StatCard = ({ title, value, subtitle, icon, iconBg, iconColor }) => (
-  <div className="bg-white p-6 lg:p-8 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-5 hover:shadow-md transition-all duration-300">
+  <div className="bg-white p-6 lg:p-8 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-5 hover:shadow-md transition-all duration-300 min-h-[120px]">
     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
       {React.cloneElement(icon, { size: 24 })}
     </div>
-    <div className="flex flex-col justify-center">
-      <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">{title}</p>
-      <div className="flex items-baseline gap-2">
+    <div className="flex flex-col justify-center w-full min-w-0">
+      <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1 truncate">{title}</p>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 w-full">
+        {/* 🚩 CORRECCIÓN: Se cambió leading-none a leading-tight y se agregó pb-1 para evitar el corte inferior */}
         <h3 className="text-3xl lg:text-4xl font-black text-gray-900 tracking-tighter italic leading-none">{value}</h3>
-        {subtitle && <span className="text-[10px] font-bold text-gray-400 uppercase">{subtitle}</span>}
+        {subtitle && <span className="text-[10px] font-bold text-gray-400 uppercase whitespace-nowrap">{subtitle}</span>}
       </div>
     </div>
   </div>
@@ -156,7 +157,6 @@ const ViewerDashboard = () => {
                 </div>
               </div>
               
-              {/* 🚩 SOLUCIÓN RECHARTS: Contenedor con dimensiones estrictas */}
               <div className="flex-1 w-full min-h-[250px] relative">
                 {stats.activityTrend && stats.activityTrend.length > 0 ? (
                   <>
