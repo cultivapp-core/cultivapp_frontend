@@ -91,9 +91,37 @@ const PhotoValidation = () => {
       }
       map.get(key).photos.push(item);
     }
-    return Array.from(map.values()).sort((a, b) => 
+
+    const groups = Array.from(map.values()).sort((a, b) => 
       (b.photos[0]?.created_at || "").localeCompare(a.photos[0]?.created_at || "")
     );
+
+    // 🚩 NUMERACIÓN DE PRODUCTOS POR VISITA:
+    // Dentro de cada visita, las fotos de góndola (inicio/fin) comparten el mismo
+    // product_id. Se asigna "Producto N° 1", "N° 2"... según el ORDEN DE APARICIÓN
+    // del producto dentro de esa visita (no por foto individual), para que las
+    // 2 fotos de un mismo producto (inicio y fin) queden bajo el mismo número.
+    // Fotos sin product_id (Inicio_Jornada, Salida_Jornada, etc.) no se numeran.
+    for (const group of groups) {
+      const productOrder = new Map(); // product_id -> número asignado
+      let nextNumber = 1;
+
+      for (const photo of group.photos) {
+        if (!photo.product_id) {
+          photo.product_label = null;
+          continue;
+        }
+        if (!productOrder.has(photo.product_id)) {
+          productOrder.set(photo.product_id, nextNumber);
+          nextNumber++;
+        }
+        const num = productOrder.get(photo.product_id);
+        const name = photo.product_name || "Producto sin nombre";
+        photo.product_label = `Producto N° ${num} - ${name}`;
+      }
+    }
+
+    return groups;
   }, [photos]);
 
   const handleApply = () => {
@@ -130,6 +158,21 @@ const PhotoValidation = () => {
       cleanPath = `${safeCompany}/${safeUser}/evidencias/${subFolder}/${fileName}`;
     }
     return `${baseUrl}/uploads/${cleanPath}`;
+  };
+
+  // Construye el nombre de archivo final para una foto dentro del ZIP.
+  // Si la foto tiene producto asociado: "01_Producto_N_1_Coca-Cola_Original_500ml_Inicio.webp"
+  // Si no (Inicio_Jornada, Salida_Jornada, etc.): "01_Inicio_Jornada.webp"
+  const buildPhotoFileName = (item, index, ext) => {
+    const isInicio = item.photo_type?.startsWith('gondola_inicio');
+    const isFin = item.photo_type?.startsWith('gondola_fin');
+    const stageSuffix = isInicio ? "_Inicio" : isFin ? "_Fin" : "";
+
+    const base = item.product_label
+      ? safeFileName(item.product_label, "producto")
+      : safeFileName(item.photo_type, "evidencia");
+
+    return `${String(index + 1).padStart(2, "0")}_${base}${stageSuffix}.${ext}`;
   };
 
   // Descarga Individual
@@ -183,8 +226,8 @@ const PhotoValidation = () => {
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const blob = await response.blob();
           const ext = getExtensionFromUrl(url);
-          const photoTypeStr = safeFileName(item.photo_type, "evidencia");
-          folder.file(`${i + 1}_${photoTypeStr}.${ext}`, blob);
+          const fileName = buildPhotoFileName(item, i, ext);
+          folder.file(fileName, blob);
         } catch (err) {
           console.error(`No se pudo agregar la foto ${item.id} al ZIP:`, err.message);
           // Continuamos con el resto de las fotos aunque una falle individualmente.
@@ -234,8 +277,8 @@ const PhotoValidation = () => {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const blob = await response.blob();
             const ext = getExtensionFromUrl(url);
-            const photoTypeStr = safeFileName(item.photo_type, "evidencia");
-            folder.file(`${i + 1}_${photoTypeStr}.${ext}`, blob);
+            const fileName = buildPhotoFileName(item, i, ext);
+            folder.file(fileName, blob);
           } catch (err) {
             console.error(`No se pudo agregar la foto ${item.id} al ZIP:`, err.message);
           }
@@ -367,12 +410,25 @@ const PhotoValidation = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-5">
                 {group.photos.map((item) => {
                   const currentUrl = getImageUrl(item);
+                  // Si la foto tiene producto asociado, mostramos "Producto N° X - Nombre".
+                  // Si además es una foto de inicio/fin de góndola, lo indicamos aparte.
+                  const isInicio = item.photo_type?.startsWith('gondola_inicio');
+                  const isFin = item.photo_type?.startsWith('gondola_fin');
+                  const stageLabel = isInicio ? 'Inicio' : isFin ? 'Fin' : null;
+                  const badgeText = item.product_label || item.photo_type || 'Evidencia';
                   return (
                     <div key={item.id} className="rounded-[1.5rem] overflow-hidden border border-gray-50 group hover:shadow-xl transition-all flex flex-col">
                       <div className="relative h-56 overflow-hidden bg-gray-50">
                         <img src={currentUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Evidencia" onError={(e) => { e.target.src = "https://via.placeholder.com/400x300?text=No+Encontrada"; }} />
-                        <div className="absolute top-4 left-4 bg-black/80 text-[#87be00] text-[8px] font-black px-3 py-1.5 rounded-full uppercase italic shadow-md">
-                          {item.photo_type || 'Evidencia'}
+                        <div className="absolute top-4 left-4 right-4 flex items-center gap-1.5">
+                          <div className="bg-black/80 text-[#87be00] text-[8px] font-black px-3 py-1.5 rounded-full uppercase italic shadow-md truncate max-w-full">
+                            {badgeText}
+                          </div>
+                          {stageLabel && (
+                            <div className="bg-white/90 text-gray-700 text-[8px] font-black px-2.5 py-1.5 rounded-full uppercase italic shadow-md shrink-0">
+                              {stageLabel}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="p-4">
