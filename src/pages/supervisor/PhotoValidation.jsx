@@ -1,81 +1,112 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import JSZip from "jszip";
 import { 
-  FiSearch, FiFilter, FiCalendar, FiImage, FiHash, FiExternalLink, 
-  FiCamera, FiX, FiDownload 
+  FiSearch, FiCalendar, FiImage, FiHash, FiExternalLink, 
+  FiCamera, FiDownload, FiUser, FiCheck, FiDownloadCloud, FiPackage, FiLoader 
 } from "react-icons/fi";
 import api from "../../api/apiClient"; 
 import { useAuth } from "../../context/AuthContext";
+
+// offsetDays permite generar fechas relativas a hoy (ej: -30 = hace 30 días)
+const getLocalISODate = (offsetDays = 0) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const tzOffset = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
+};
+
+// Limpia un string para usarlo como nombre de archivo/carpeta seguro
+const safeFileName = (text, fallback = "sin_dato") => {
+  if (!text) return fallback;
+  return text.toString().trim()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // quita tildes
+    .replace(/[^a-zA-Z0-9_\-]+/g, "_") // reemplaza espacios y símbolos raros
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+};
 
 const PhotoValidation = () => {
   const { user } = useAuth(); 
   const isRoot = user?.role === 'ROOT';
 
-  const [searchTerm, setSearchTerm] = useState(""); 
-  const [debouncedSearch, setDebouncedSearch] = useState(""); 
-  
-  // FIX: Inicializamos con el company_id del usuario si existe, independientemente del rol
-  const [filters, setFilters] = useState({
-    empresa_id: user?.company_id || "", 
-    cadena: "",
-    codigo: "",
-    fecha: new Date().toISOString().split('T')[0], 
+  // Default: últimos 30 días en lugar de "solo hoy".
+  // Evita que el panel cargue vacío cuando no hay evidencias subidas en el día actual.
+  const [inputs, setInputs] = useState({
+    startDate: getLocalISODate(-30),
+    endDate: getLocalISODate(),
+    localCode: "",
+    workerName: "",
+    searchTerm: ""
   });
 
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(searchTerm.trim());
-    }, 600);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
-
-  // --- 1. CARGA DE LOCALES ---
-  const { data: allLocales = [] } = useQuery({
-    queryKey: ["all-locales-list", filters.empresa_id],
-    queryFn: async () => {
-      const response = await api.get("/locales", { 
-        params: { company_id: filters.empresa_id || undefined } 
-      });
-      return response.data || response || [];
-    },
-    // FIX: Habilitado si hay empresa o si es ROOT
-    enabled: !!filters.empresa_id || isRoot
+  const [appliedFilters, setAppliedFilters] = useState({
+    startDate: getLocalISODate(-30),
+    endDate: getLocalISODate(),
+    localCode: "",
+    workerName: "",
+    search: ""
   });
 
-  const availableCadenas = useMemo(() => {
-    if (!Array.isArray(allLocales)) return [];
-    return [...new Set(allLocales.map(l => l.cadena).filter(Boolean))].sort();
-  }, [allLocales]);
+  // Controla qué visita está actualmente generando su ZIP, para mostrar loading
+  // individual sin bloquear el resto de los botones de la lista.
+  const [zippingVisitId, setZippingVisitId] = useState(null);
+  const [zippingAll, setZippingAll] = useState(false);
 
-  const availableCodigos = useMemo(() => {
-    if (!Array.isArray(allLocales)) return [];
-    const filteredByChain = filters.cadena ? allLocales.filter(l => l.cadena === filters.cadena) : allLocales;
-    return [...new Set(filteredByChain.map(l => l.codigo_local || l.codigo_pos).filter(Boolean))].sort();
-  }, [allLocales, filters.cadena]);
-
-  // --- 2. FETCH DE FOTOS ---
   const { data: photos = [], isLoading: isLoadingPhotos } = useQuery({
-    queryKey: ["audit-photos", filters.fecha, filters.empresa_id, debouncedSearch], 
+    queryKey: ["audit-photos", appliedFilters, user?.company_id], 
     queryFn: async () => {
       const params = {
-        empresa_id: filters.empresa_id || undefined,
-        ...(debouncedSearch ? { search: debouncedSearch } : { fecha: filters.fecha })
+        company_id: user?.company_id || undefined,
+        startDate: appliedFilters.startDate,
+        endDate: appliedFilters.endDate,
+        localCode: appliedFilters.localCode.trim(),
+        workerName: appliedFilters.workerName.trim(),
+        search: appliedFilters.search.trim()
       };
-      const response = await api.get("/reports/photos", { params });
-      return response.data || response || [];
+
+      const response = await api.get("/routes/evidence-report", { params });
+      // 🚩 IMPORTANTE: apiClient (fetch) retorna el JSON ya parseado directamente,
+      // NO un objeto { data: [...] } como axios. response YA ES el array.
+      return Array.isArray(response) ? response : (response?.data || []);
     },
-    // FIX: Habilitado si hay empresa o si es ROOT
-    enabled: !!filters.empresa_id || isRoot
+    enabled: !!user?.company_id || isRoot
   });
 
-  const filteredPhotos = useMemo(() => {
-    if (!Array.isArray(photos)) return [];
-    return photos.filter(p => {
-      const matchesCadena = filters.cadena === "" || p.cadena === filters.cadena;
-      const matchesCodigo = filters.codigo === "" || String(p.local_codigo) === String(filters.codigo);
-      return matchesCadena && matchesCodigo;
+  // Agrupa las fotos planas que devuelve el backend en un mapa por visit_id,
+  // conservando los metadatos de local/usuario/visit_number de cada grupo.
+  const visitGroups = useMemo(() => {
+    const map = new Map();
+    for (const item of photos) {
+      const key = item.visit_id || "sin_visita";
+      if (!map.has(key)) {
+        map.set(key, {
+          visit_id: item.visit_id,
+          visit_number: item.visit_number,
+          local_codigo: item.local_codigo,
+          local_nombre: item.local_nombre,
+          user_name: item.user_name,
+          photos: []
+        });
+      }
+      map.get(key).photos.push(item);
+    }
+    return Array.from(map.values()).sort((a, b) => 
+      (b.photos[0]?.created_at || "").localeCompare(a.photos[0]?.created_at || "")
+    );
+  }, [photos]);
+
+  const handleApply = () => {
+    // 🚩 IMPORTANTE: inputs.searchTerm (nombre del input en UI) debe mapearse
+    // a appliedFilters.search (nombre que espera el backend / query param).
+    setAppliedFilters({
+      startDate: inputs.startDate,
+      endDate: inputs.endDate,
+      localCode: inputs.localCode,
+      workerName: inputs.workerName,
+      search: inputs.searchTerm
     });
-  }, [photos, filters.cadena, filters.codigo]);
+  };
 
   const getImageUrl = (item) => {
     const path = item.image_url || item.photo_url || "";
@@ -93,21 +124,15 @@ const PhotoValidation = () => {
       const safeCompany = slugify(item.empresa_nombre);
       const safeUser = slugify(item.user_name);
       const fileName = cleanPath.split('/').pop();
-
-      const mapeo = { 
-        'Fachada': 'foto_local', 
-        'Góndola Inicio': 'foto_gondola', 
-        'Góndola Final': 'foto_term_producto', 
-        'Observaciones': 'foto_observaciones' 
-      };
+      const mapeo = { 'Fachada': 'foto_local', 'Góndola Inicio': 'foto_gondola', 'Góndola Final': 'foto_term_producto', 'Observaciones': 'foto_observaciones' };
       const subFolder = mapeo[item.photo_type] || "otros";
 
       cleanPath = `${safeCompany}/${safeUser}/evidencias/${subFolder}/${fileName}`;
     }
-
     return `${baseUrl}/uploads/${cleanPath}`;
   };
 
+  // Descarga Individual
   const handleDownload = async (imageUrl, fileName) => {
     try {
       const response = await fetch(imageUrl);
@@ -125,19 +150,126 @@ const PhotoValidation = () => {
     }
   };
 
+  // Determina la extensión real de una imagen a partir de su URL (jpg, png, webp, etc.)
+  // En vez de forzar siempre ".jpg", lo cual corrompía archivos webp/png al renombrarlos.
+  const getExtensionFromUrl = (url, fallback = "jpg") => {
+    try {
+      const clean = url.split("?")[0];
+      const match = clean.match(/\.([a-zA-Z0-9]+)$/);
+      return match ? match[1].toLowerCase() : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
+  // Descarga un ZIP con todas las fotos de UNA visita puntual.
+  // Nombre de archivo: {codigo_local}_{visit_number}.zip
+  const handleDownloadVisitZip = async (group) => {
+    if (!group.photos || group.photos.length === 0) return;
+
+    setZippingVisitId(group.visit_id);
+    try {
+      const zip = new JSZip();
+      const folderName = safeFileName(
+        `${group.local_codigo || "local"}_${group.visit_number || group.visit_id?.slice(0, 8) || "visita"}`
+      );
+      const folder = zip.folder(folderName);
+
+      for (let i = 0; i < group.photos.length; i++) {
+        const item = group.photos[i];
+        const url = getImageUrl(item);
+        try {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const blob = await response.blob();
+          const ext = getExtensionFromUrl(url);
+          const photoTypeStr = safeFileName(item.photo_type, "evidencia");
+          folder.file(`${i + 1}_${photoTypeStr}.${ext}`, blob);
+        } catch (err) {
+          console.error(`No se pudo agregar la foto ${item.id} al ZIP:`, err.message);
+          // Continuamos con el resto de las fotos aunque una falle individualmente.
+        }
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = window.URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${folderName}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error generando ZIP de visita:", error);
+      alert("Ocurrió un error generando el ZIP de esta visita. Revisa la consola.");
+    } finally {
+      setZippingVisitId(null);
+    }
+  };
+
+  // Descarga UN SOLO ZIP con todas las visitas actualmente filtradas,
+  // cada una en su propia subcarpeta dentro del mismo archivo.
+  const handleDownloadAllZip = async () => {
+    if (!visitGroups || visitGroups.length === 0) {
+      alert("No hay visitas para descargar con los filtros actuales.");
+      return;
+    }
+
+    setZippingAll(true);
+    try {
+      const zip = new JSZip();
+
+      for (const group of visitGroups) {
+        const folderName = safeFileName(
+          `${group.local_codigo || "local"}_${group.visit_number || group.visit_id?.slice(0, 8) || "visita"}`
+        );
+        const folder = zip.folder(folderName);
+
+        for (let i = 0; i < group.photos.length; i++) {
+          const item = group.photos[i];
+          const url = getImageUrl(item);
+          try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            const ext = getExtensionFromUrl(url);
+            const photoTypeStr = safeFileName(item.photo_type, "evidencia");
+            folder.file(`${i + 1}_${photoTypeStr}.${ext}`, blob);
+          } catch (err) {
+            console.error(`No se pudo agregar la foto ${item.id} al ZIP:`, err.message);
+          }
+        }
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = window.URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      const rangeLabel = `${appliedFilters.startDate}_a_${appliedFilters.endDate}`;
+      link.href = url;
+      link.download = `evidencias_${rangeLabel}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error generando ZIP general:", error);
+      alert("Ocurrió un error generando el ZIP general. Revisa la consola.");
+    } finally {
+      setZippingAll(false);
+    }
+  };
+
   return (
     <div className="space-y-6 md:space-y-8 font-[Outfit] pb-10">
-      
       <div className="flex flex-row justify-between items-start sm:items-center px-2 md:px-4 gap-4">
-        <div className="flex-1">
+        <div>
           <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
             Validación de Ejecución
           </h2>
-          <div className="flex items-center gap-2 mt-1.5 md:mt-2">
-            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight">
-              Sincronización de Evidencias en Tiempo Real
-            </p>
-          </div>
+          <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-2">
+            Panel de Supervisión • Evidencias y Auditoría
+          </p>
         </div>
         <div className="bg-black p-3 md:p-4 rounded-xl md:rounded-2xl shadow-xl shrink-0">
             <FiCamera className="text-[#87be00] text-xl md:text-2xl" />
@@ -145,110 +277,116 @@ const PhotoValidation = () => {
       </div>
 
       <section className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm border border-gray-50 mx-2 md:mx-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 md:gap-4 items-end">
+          
           <div className="relative">
-            <FiFilter className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" />
-            <select 
-              className="w-full pl-10 md:pl-12 pr-4 py-3 md:py-4 bg-gray-50 rounded-xl md:rounded-[1.5rem] text-[9px] md:text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition-all"
-              value={filters.cadena}
-              onChange={(e) => setFilters({...filters, cadena: e.target.value, codigo: ""})}
-            >
-              <option value="">TODAS LAS CADENAS</option>
-              {availableCadenas.map(cad => <option key={cad} value={cad}>{cad.toUpperCase()}</option>)}
-            </select>
+            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Desde</label>
+            <FiCalendar className="absolute left-4 top-[38px] text-[#87be00]" />
+            <input type="date" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.startDate} onChange={(e) => setInputs({...inputs, startDate: e.target.value})} />
           </div>
 
           <div className="relative">
-            <FiHash className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" />
-            <select 
-              className="w-full pl-10 md:pl-12 pr-4 py-3 md:py-4 bg-gray-50 rounded-xl md:rounded-[1.5rem] text-[9px] md:text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition-all"
-              value={filters.codigo}
-              onChange={(e) => setFilters({...filters, codigo: e.target.value})}
-            >
-              <option value="">TODOS LOS CÓDIGOS</option>
-              {availableCodigos.map(cod => <option key={cod} value={cod}>{cod}</option>)}
-            </select>
+            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Hasta</label>
+            <FiCalendar className="absolute left-4 top-[38px] text-[#87be00]" />
+            <input type="date" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.endDate} onChange={(e) => setInputs({...inputs, endDate: e.target.value})} />
           </div>
 
           <div className="relative">
-            <FiCalendar className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]" />
-            <input 
-              type="date"
-              className="w-full pl-10 md:pl-12 pr-4 py-3 md:py-4 bg-gray-50 rounded-xl md:rounded-[1.5rem] text-[9px] md:text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20 transition-all"
-              value={filters.fecha}
-              onChange={(e) => setFilters({...filters, fecha: e.target.value})}
-            />
+            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Cód. Local</label>
+            <FiHash className="absolute left-4 top-[38px] text-[#87be00]" />
+            <input type="text" placeholder="EJ: J04" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.localCode} onChange={(e) => setInputs({...inputs, localCode: e.target.value})} />
           </div>
 
           <div className="relative">
-            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text"
-              placeholder="BUSCAR..."
-              className="w-full pl-10 md:pl-12 pr-4 py-3 md:py-4 bg-gray-50 rounded-xl md:rounded-[1.5rem] text-[9px] md:text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition-all"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Mercaderista</label>
+            <FiUser className="absolute left-4 top-[38px] text-[#87be00]" />
+            <input type="text" placeholder="NOMBRE" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.workerName} onChange={(e) => setInputs({...inputs, workerName: e.target.value})} />
           </div>
+
+          <div className="relative">
+            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Búsqueda</label>
+            <FiSearch className="absolute left-4 top-[38px] text-gray-400" />
+            <input type="text" placeholder="RUT/EMAIL" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.searchTerm} onChange={(e) => setInputs({...inputs, searchTerm: e.target.value})} />
+          </div>
+
+          <button onClick={handleApply} className="w-full py-3 bg-[#87be00] hover:bg-[#76a600] text-white rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+            <FiCheck size={14} /> Aplicar
+          </button>
+
+          {/* BOTÓN DESCARGAR TODO COMO UN SOLO ZIP CON SUBCARPETAS POR VISITA */}
+          <button 
+            onClick={handleDownloadAllZip}
+            disabled={isLoadingPhotos || zippingAll || visitGroups.length === 0}
+            className="w-full py-3 bg-black hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+            {zippingAll ? (
+              <><FiLoader size={14} className="animate-spin" /> Empaquetando...</>
+            ) : (
+              <><FiDownloadCloud size={14} /> Todo (.zip)</>
+            )}
+          </button>
         </div>
       </section>
 
+      {/* LISTADO DE VISITAS CON DESCARGA ZIP INDIVIDUAL */}
       {isLoadingPhotos ? (
-        <div className="py-20 text-center text-[10px] font-black uppercase italic animate-pulse text-gray-400">
-            Cargando imágenes...
-        </div>
-      ) : filteredPhotos.length === 0 ? (
-        <div className="py-20 md:py-32 text-center bg-white rounded-[2rem] md:rounded-[3.5rem] border border-dashed border-gray-100 mx-2 md:mx-4">
-           <FiImage className="mx-auto text-gray-200 mb-3 md:mb-4" size={40} />
-           <p className="text-[10px] md:text-xs font-black text-gray-300 uppercase italic tracking-widest">Sin registros</p>
+        <div className="py-20 text-center text-[10px] font-black uppercase italic animate-pulse text-gray-400">Cargando imágenes...</div>
+      ) : visitGroups.length === 0 ? (
+        <div className="py-20 text-center bg-white rounded-[2rem] border border-dashed border-gray-100 mx-4">
+           <FiImage className="mx-auto text-gray-200 mb-4" size={40} />
+           <p className="text-xs font-black text-gray-300 uppercase italic tracking-widest">Sin registros encontrados</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 px-2 md:px-4">
-          {filteredPhotos.map((item) => {
-            const currentUrl = getImageUrl(item);
-            return (
-              <div key={item.id} className="bg-white rounded-[1.5rem] md:rounded-[2rem] overflow-hidden shadow-sm border border-gray-50 group hover:shadow-xl transition-all flex flex-col">
-                <div className="relative h-48 md:h-60 overflow-hidden bg-gray-50 shrink-0">
-                  <img 
-                    src={currentUrl} 
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
-                    alt="Evidencia" 
-                    onError={(e) => { e.target.src = "https://via.placeholder.com/400x300?text=No+Encontrada"; }}
-                  />
-                  <div className="absolute top-3 left-3 md:top-4 md:left-4 bg-black/80 text-[#87be00] text-[8px] font-black px-2.5 py-1 md:px-3 md:py-1.5 rounded-full uppercase italic shadow-md">
-                    {item.photo_type || item.evidence_type || 'Evidencia'}
-                  </div>
+        <div className="space-y-6 px-4">
+          {visitGroups.map((group) => (
+            <div key={group.visit_id || Math.random()} className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-gray-50">
+              {/* CABECERA DE LA VISITA */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b border-gray-50 bg-gray-50/50">
+                <div>
+                  <p className="text-xs font-black text-gray-900 uppercase italic">
+                    {group.local_codigo || 'Local s/c'} {group.visit_number ? `· ${group.visit_number}` : ''}
+                  </p>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">
+                    {group.user_name || 'Sin Nombre'} · {group.local_nombre || ''} · {group.photos.length} foto(s)
+                  </p>
                 </div>
-                
-                <div className="p-4 md:p-5 flex-1 flex flex-col justify-between">
-                  <div className="flex items-center gap-2.5 md:gap-3 mb-4">
-                    <div className="w-8 h-8 md:w-10 md:h-10 shrink-0 bg-black rounded-xl md:rounded-2xl flex items-center justify-center text-[#87be00] font-black text-[10px] md:text-xs italic">
-                      {(item.user_name || item.first_name || 'U').substring(0,2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] md:text-[11px] font-black text-gray-900 uppercase italic truncate leading-tight">
-                        {item.user_name || `${item.first_name} ${item.last_name}`}
-                      </p>
-                      <p className="text-[8px] md:text-[9px] font-bold text-gray-400 uppercase truncate mt-0.5">
-                        {item.cadena} • {item.local_nombre || item.local_name}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 mt-auto">
-                      <a href={currentUrl} target="_blank" rel="noreferrer" 
-                        className="py-2.5 md:py-3 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-black hover:text-[#87be00] transition-all shadow-sm">
-                        <FiExternalLink size={16} className="md:w-[18px] md:h-[18px]" />
-                      </a>
-                      <button onClick={() => handleDownload(currentUrl, `evidencia_${item.user_name || item.first_name}.jpg`)}
-                        className="py-2.5 md:py-3 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-[#87be00] hover:text-white transition-all shadow-sm">
-                        <FiDownload size={16} className="md:w-[18px] md:h-[18px]" />
-                      </button>
-                  </div>
-                </div>
+                <button
+                  onClick={() => handleDownloadVisitZip(group)}
+                  disabled={zippingVisitId === group.visit_id}
+                  className="py-2.5 px-4 bg-[#87be00] hover:bg-[#76a600] disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-[10px] font-black uppercase shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0"
+                >
+                  {zippingVisitId === group.visit_id ? (
+                    <><FiLoader size={14} className="animate-spin" /> Empaquetando...</>
+                  ) : (
+                    <><FiPackage size={14} /> Descargar visita (.zip)</>
+                  )}
+                </button>
               </div>
-            );
-          })}
+
+              {/* GRID DE FOTOS DE ESTA VISITA */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-5">
+                {group.photos.map((item) => {
+                  const currentUrl = getImageUrl(item);
+                  return (
+                    <div key={item.id} className="rounded-[1.5rem] overflow-hidden border border-gray-50 group hover:shadow-xl transition-all flex flex-col">
+                      <div className="relative h-56 overflow-hidden bg-gray-50">
+                        <img src={currentUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Evidencia" onError={(e) => { e.target.src = "https://via.placeholder.com/400x300?text=No+Encontrada"; }} />
+                        <div className="absolute top-4 left-4 bg-black/80 text-[#87be00] text-[8px] font-black px-3 py-1.5 rounded-full uppercase italic shadow-md">
+                          {item.photo_type || 'Evidencia'}
+                        </div>
+                      </div>
+                      <div className="p-4">
+                         <div className="flex gap-2">
+                            <a href={currentUrl} target="_blank" rel="noreferrer" className="flex-1 py-2.5 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-black hover:text-[#87be00] transition-all"><FiExternalLink size={16}/></a>
+                            <button onClick={() => handleDownload(currentUrl, `foto_${item.id}.jpg`)} className="flex-1 py-2.5 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-[#87be00] hover:text-white transition-all"><FiDownload size={16}/></button>
+                         </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
