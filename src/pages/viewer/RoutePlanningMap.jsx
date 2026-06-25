@@ -36,6 +36,49 @@ const statusBg = (status) => {
   }
 };
 
+// 🚩 FIX: Extractor dinámico de fechas a prueba de fallos
+const extractDate = (row) => {
+  if (!row) return 'N/A';
+  
+  // 1. Nombres más probables basados en tu BD (user_routes, visits)
+  const possibleKeys = ['visit_date', 'fecha', 'fecha_visita', 'route_date', 'planned_date', 'created_at', 'date'];
+  let foundDate = null;
+
+  for (const key of possibleKeys) {
+    if (row[key]) {
+      foundDate = row[key];
+      break;
+    }
+  }
+
+  // 2. Si no coincide con los anteriores, buscar cualquier llave que contenga "date" o "fecha"
+  if (!foundDate) {
+    const dynamicKey = Object.keys(row).find(key => 
+      (key.toLowerCase().includes('date') || key.toLowerCase().includes('fecha')) && row[key] !== null
+    );
+    if (dynamicKey) foundDate = row[dynamicKey];
+  }
+
+  if (!foundDate)
+    console.warn('No se encontró fecha en la fila:', row);
+    return 'N/A';
+
+  // 3. Formateo seguro (maneja ISO, timestamps con espacios o strings simples)
+  try {
+    const dateString = String(foundDate);
+    // Separa por "T" (formato ISO) o por espacio (formato SQL timestamp)
+    const datePart = dateString.split('T')[0].split(' ')[0]; 
+    const parts = datePart.split('-');
+    
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`; // Retorna DD/MM/YYYY
+    }
+    return datePart;
+  } catch (error) {
+    return 'Formato Inválido';
+  }
+};
+
 const RoutePlanningMap = () => {
   const mapContainer = useRef(null);
   const map = useRef(null);
@@ -48,6 +91,7 @@ const RoutePlanningMap = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedRoute, setSelectedRoute] = useState(null);
+  const [selectedSupervisor, setSelectedSupervisor] = useState(null);
 
   // Estados Acordeones Jerarquía
   const [expandedSupervisors, setExpandedSupervisors] = useState({});
@@ -60,28 +104,32 @@ const RoutePlanningMap = () => {
   const toggleExpandLocaleUser = (key) => setExpandedLocaleUsers(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandUser       = (key) => setExpandedUsers(prev => ({ ...prev, [key]: !prev[key] }));
 
+  const filteredTableRoutes = useMemo(() => {
+    if (!selectedSupervisor) return [];
+    return routes.filter(r => (r.supervisor_nombre || 'Sin Supervisor') === selectedSupervisor);
+  }, [routes, selectedSupervisor]);
+
   const fetchRoutes = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       else setRefreshing(true);
       
       const response = await api.get("/planning");
-      
-      // 🚩 FIX CRÍTICO 1: Asegurar la extracción correcta de los datos desde Axios
       const rawData = response.data || response;
       const data = Array.isArray(rawData) ? rawData : [];
       
+      // Bloque útil para depurar en la consola:
+      // if (data.length > 0) console.log("Estructura de la ruta:", data[0]);
+
       setRoutes(data);
       setLastUpdated(new Date());
 
-      // Expandir supervisores por defecto al cargar
       if (!silent && data.length > 0) {
         const uniqueSups = [...new Set(data.map(r => r.supervisor_nombre || 'Sin Supervisor'))];
         const initialExpand = {};
         uniqueSups.forEach(sup => initialExpand[sup] = true);
         setExpandedSupervisors(initialExpand);
       }
-
     } catch (error) {
       console.error("Error cargando planificación:", error);
     } finally {
@@ -103,7 +151,6 @@ const RoutePlanningMap = () => {
     completed: routes.filter(r => r.status === 'COMPLETED').length,
   }), [routes]);
 
-  // ─── ESTRUCTURA AGRUPADA POR SUPERVISOR ───
   const groupedData = useMemo(() => {
     const mapObj = {};
 
@@ -117,7 +164,6 @@ const RoutePlanningMap = () => {
         };
       }
 
-      // 🚩 FIX 2: Priorizar local_nombre, hacer fallback a cadena
       const nombreVisibleLocal = route.local_nombre || route.cadena || 'Local sin nombre';
 
       if (route.origen === 'LOCAL') {
@@ -169,14 +215,12 @@ const RoutePlanningMap = () => {
   useEffect(() => {
     if (!map.current) return;
     const paintMarkers = () => {
-      // Limpiar marcadores anteriores
       markers.current.forEach((m) => m.remove());
       markers.current = [];
       const bounds = new mapboxgl.LngLatBounds();
       let hasCoords = false;
 
       routes.forEach((route) => {
-        // 🚩 FIX 3: Validar estrictamente las coordenadas numéricas
         const lat = parseFloat(route.lat);
         const lng = parseFloat(route.lng);
         if (isNaN(lat) || isNaN(lng)) return;
@@ -258,7 +302,6 @@ const RoutePlanningMap = () => {
       {/* CONTENIDO */}
       <div className="flex-1 flex flex-col p-4 md:p-8 gap-4 md:gap-6 overflow-hidden relative">
 
-        {/* BARRA DE STATS (horizontal, sobre el mapa) */}
         <div className="bg-white rounded-[1.5rem] border border-gray-100 shadow-sm p-4 md:p-5 flex items-center gap-4 md:gap-8 overflow-x-auto shrink-0">
           <div className="flex items-center gap-3 shrink-0">
             <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">Resumen Rutas</p>
@@ -311,7 +354,7 @@ const RoutePlanningMap = () => {
           )}
         </div>
 
-        {/* PANEL JERÁRQUICO (debajo del mapa) */}
+        {/* PANEL JERÁRQUICO */}
         <div className={`
           transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] overflow-hidden shrink-0
           ${panelOpen ? 'max-h-[45vh] sm:max-h-[40vh] lg:max-h-[360px] opacity-100' : 'max-h-0 opacity-0'}
@@ -337,11 +380,12 @@ const RoutePlanningMap = () => {
 
                   return (
                     <div key={supName} className="mb-4 border border-gray-100 rounded-3xl bg-gray-50/30 overflow-hidden shadow-sm">
-                      
-                      {/* --- CABECERA DEL SUPERVISOR --- */}
                       <button
-                        onClick={() => toggleExpandSupervisor(supName)}
-                        className="w-full flex items-center p-4 bg-white hover:bg-gray-50 transition-all border-b border-gray-100 group"
+                        onClick={() => {
+                          toggleExpandSupervisor(supName);
+                          setSelectedSupervisor(prev => prev === supName ? null : supName);
+                        }}
+                        className={`w-full flex items-center p-4 transition-all border-b border-gray-100 group ${selectedSupervisor === supName ? 'bg-[#87be00]/10 ring-1 ring-[#87be00]/30' : 'bg-white hover:bg-gray-50'}`}
                       >
                         <div className="w-10 h-10 rounded-[12px] bg-gray-900 text-white flex items-center justify-center font-black text-sm shadow-md group-hover:scale-105 transition-transform shrink-0">
                           {supName.charAt(0)}
@@ -357,11 +401,8 @@ const RoutePlanningMap = () => {
                         <FiChevronRight size={18} className={`text-gray-300 group-hover:text-gray-600 transition-all duration-300 ${isSupExpanded ? 'rotate-90' : ''}`} />
                       </button>
 
-                      {/* --- CONTENIDO DEL SUPERVISOR --- */}
                       <div className={`transition-all duration-500 ease-in-out ${isSupExpanded ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
                         <div className="p-2 space-y-3">
-
-                          {/* SUB-NIVEL 1: LOCALES ASIGNADOS */}
                           {hasLocales && (
                             <div className="bg-white rounded-2xl border border-gray-100 pb-1 shadow-sm">
                               <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50">
@@ -369,7 +410,6 @@ const RoutePlanningMap = () => {
                                 <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">Locales Asignados</p>
                                 <span className="ml-auto bg-[#87be00]/10 text-[#87be00] px-2 py-0.5 rounded-md text-[10px] font-black">{Object.keys(supData.localesMap).length}</span>
                               </div>
-                              
                               <div className="p-1">
                                 {Object.entries(supData.localesMap).map(([localKey, localData]) => {
                                   const uniqueLocalKey = `${supName}-${localKey}`;
@@ -398,7 +438,6 @@ const RoutePlanningMap = () => {
                                         </div>
                                         <FiChevronRight size={16} className={`text-gray-300 group-hover:text-[#87be00] transition-transform ${isLocalExpanded ? 'rotate-90' : ''}`} />
                                       </button>
-
                                       <div className={`overflow-hidden transition-all duration-300 ${isLocalExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="ml-4 border-l-2 border-[#87be00]/20 pl-2 py-1 space-y-1">
                                           {Object.entries(localData.routesByUser).map(([userName, userRoutes]) => {
@@ -438,7 +477,6 @@ const RoutePlanningMap = () => {
                             </div>
                           )}
 
-                          {/* SUB-NIVEL 2: USUARIOS ASIGNADOS (DIRECTOS) */}
                           {hasUsuarios && (
                             <div className="bg-white rounded-2xl border border-gray-100 pb-1 shadow-sm mt-3">
                               <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50">
@@ -446,7 +484,6 @@ const RoutePlanningMap = () => {
                                 <p className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-500">Usuarios Asignados</p>
                                 <span className="ml-auto bg-blue-50 text-blue-500 px-2 py-0.5 rounded-md text-[10px] font-black">{Object.keys(supData.usuariosMap).length}</span>
                               </div>
-
                               <div className="p-1">
                                 {Object.entries(supData.usuariosMap).map(([userName, userRoutes]) => {
                                   const uniqueUserKey = `${supName}-${userName}`;
@@ -472,7 +509,6 @@ const RoutePlanningMap = () => {
                                         </div>
                                         <FiChevronRight size={16} className={`text-gray-300 group-hover:text-blue-500 transition-transform ${isUserExpanded ? 'rotate-90' : ''}`} />
                                       </button>
-
                                       <div className={`overflow-hidden transition-all duration-300 ${isUserExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="ml-4 border-l-2 border-blue-100 pl-2 py-1 space-y-1 mb-2">
                                           {userRoutes.map((route, idx) => {
@@ -496,7 +532,6 @@ const RoutePlanningMap = () => {
                               </div>
                             </div>
                           )}
-
                         </div>
                       </div>
                     </div>
@@ -506,6 +541,49 @@ const RoutePlanningMap = () => {
             </div>
           </div>
         </div>
+
+        {/* TABLA DETALLE */}
+        {selectedSupervisor && (
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 mt-4 animate-in fade-in zoom-in duration-300">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-[#87be00] mb-4">
+              Detalle de Rutas: {selectedSupervisor}
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="p-3 text-[10px] font-black uppercase text-gray-400">Supervisor</th>
+                    <th className="p-3 text-[10px] font-black uppercase text-gray-400">Mercaderista</th>
+                    <th className="p-3 text-[10px] font-black uppercase text-gray-400">Fecha</th>
+                    <th className="p-3 text-[10px] font-black uppercase text-gray-400">Cadena</th>
+                    <th className="p-3 text-[10px] font-black uppercase text-gray-400">Código</th>
+                    <th className="p-3 text-[10px] font-black uppercase text-gray-400">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTableRoutes.map((r, i) => (
+                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
+                      <td className="p-3 text-xs font-bold text-gray-700">{r.supervisor_nombre || 'N/A'}</td>
+                      <td className="p-3 text-xs font-bold text-gray-700">{r.usuario_nombre}</td>
+                      {/* 🚩 USO DEL EXTRACTOR DINÁMICO */}
+                      <td className="p-3 text-xs font-bold text-gray-700">
+                        {extractDate(r)}
+                      </td>
+                      <td className="p-3 text-xs font-bold text-gray-700">{r.cadena}</td>
+                      <td className="p-3 text-xs font-bold text-gray-700">{r.codigo_local}</td>
+                      <td className="p-3">
+                        <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${statusBg(r.status)}`}>
+                          {statusLabel(r.status)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
