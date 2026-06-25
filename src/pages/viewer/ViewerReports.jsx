@@ -109,6 +109,9 @@ const ViewerReports = () => {
     });
   }, []);
 
+  // Hay al menos un registro con stock > 0 (para no montar el PieChart con todo en cero)
+  const hasStockData = stockBreakStockData.some(d => d.value > 0);
+
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     let newFilters = { ...draftFilters, [name]: value };
@@ -157,9 +160,11 @@ const ViewerReports = () => {
       {/* ── GRÁFICOS CON MIN-WIDTH: 0 ── */}
       <div className="bg-white p-8 rounded-[2rem] border border-gray-100 min-h-[300px]">
         <h2 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-8">Venta Neta por Cadena</h2>
-        {loading ? <div className="h-[250px] flex items-center justify-center">Cargando...</div> : salesByChain.length > 0 ? (
+        {loading ? (
+          <div className="h-[250px] flex items-center justify-center">Cargando...</div>
+        ) : salesByChain.length > 0 ? (
           <div style={{ width: '100%', height: 250, minWidth: 0 }}>
-            <ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart data={salesByChain}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" fontSize={9} fontWeight={900} />
@@ -175,30 +180,38 @@ const ViewerReports = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col min-h-[300px]">
            <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-6">Top Productos</h3>
-           <div style={{ width: '100%', height: 260, minWidth: 0 }}>
-             <ResponsiveContainer>
-                <BarChart data={topProducts} layout="vertical" margin={{ left: 40 }}>
-                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                     <XAxis type="number" fontSize={8} />
-                     <YAxis dataKey="name" type="category" fontSize={7} width={100} />
-                     <Tooltip />
-                     <Bar dataKey="units" fill="#3b82f6" radius={[0, 8, 8, 0]} barSize={18} />
-                </BarChart>
-             </ResponsiveContainer>
-           </div>
+           {loading ? (
+             <div className="h-[260px] flex items-center justify-center">Cargando...</div>
+           ) : topProducts.length > 0 ? (
+             <div style={{ width: '100%', height: 260, minWidth: 0 }}>
+               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <BarChart data={topProducts} layout="vertical" margin={{ left: 40 }}>
+                       <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                       <XAxis type="number" fontSize={8} />
+                       <YAxis dataKey="name" type="category" fontSize={7} width={100} />
+                       <Tooltip />
+                       <Bar dataKey="units" fill="#3b82f6" radius={[0, 8, 8, 0]} barSize={18} />
+                  </BarChart>
+               </ResponsiveContainer>
+             </div>
+           ) : <p className="text-center text-gray-400">Sin datos disponibles</p>}
         </div>
-        <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between min-h-[300px]">
+        <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col min-h-[300px]">
            <div><h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-1">Estado de Inventario</h3></div>
-           <div style={{ width: '100%', height: 220, minWidth: 0 }}>
-             <ResponsiveContainer>
-               <PieChart>
-                 <Pie data={stockBreakStockData} dataKey="value" outerRadius={70} label={({name, percent}) => `${name} (${(percent*100).toFixed(0)}%)`}>
-                   {stockBreakStockData.map((e, i) => <Cell key={i} fill={i === 0 ? '#87be00' : '#ef4444'} />)}
-                 </Pie>
-                 <Tooltip />
-               </PieChart>
-             </ResponsiveContainer>
-           </div>
+           {loading ? (
+             <div className="h-[220px] flex items-center justify-center">Cargando...</div>
+           ) : hasStockData ? (
+             <div style={{ width: '100%', height: 220, minWidth: 0 }}>
+               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                 <PieChart>
+                   <Pie data={stockBreakStockData} dataKey="value" outerRadius={70} label={({name, percent}) => `${name} (${(percent*100).toFixed(0)}%)`}>
+                     {stockBreakStockData.map((e, i) => <Cell key={i} fill={i === 0 ? '#87be00' : '#ef4444'} />)}
+                   </Pie>
+                   <Tooltip />
+                 </PieChart>
+               </ResponsiveContainer>
+             </div>
+           ) : <p className="text-center text-gray-400">Sin datos disponibles</p>}
         </div>
       </div>
     </div>

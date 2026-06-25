@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import api from "../../api/apiClient";
 
@@ -7,21 +7,17 @@ const MercaderistaReport = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Estados para filtros
   const [filters, setFilters] = useState({ regiones: [], comunas: [], cadenas: [], mercaderistas: [] });
   const [selected, setSelected] = useState({ 
     start_date: '', end_date: '', region: '', comuna: '', cadena: '', mercaderista: '' 
   });
 
-  // Helper para formato de números
   const formatNumber = (num) => Number(num || 0).toLocaleString();
 
-  // 1. Cargar opciones de filtros al iniciar
   useEffect(() => {
     const loadFilters = async () => {
       try {
         const res = await api.get("/sales/report/filters");
-        // Aseguramos que los filtros tengan valores por defecto
         setFilters(res || { regiones: [], comunas: [], cadenas: [], mercaderistas: [] });
       } catch (e) {
         console.error("Error cargando filtros:", e);
@@ -30,13 +26,10 @@ const MercaderistaReport = () => {
     loadFilters();
   }, []);
 
-  // 2. Cargar datos del reporte cada vez que 'selected' cambia
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Al pasar el objeto 'selected' completo como params, 
-        // Axios enviará ?mercaderista=X&region=Y... automáticamente
         const result = await api.get("/sales/report/mercaderistas", { params: selected });
         setData(Array.isArray(result) ? result : []);
       } catch (err) {
@@ -78,7 +71,6 @@ const MercaderistaReport = () => {
           {filters.cadenas.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        {/* 🚩 NUEVO FILTRO MERCADERISTA */}
         <select className="p-2 border rounded-xl text-[10px] uppercase font-bold" 
           value={selected.mercaderista}
           onChange={(e) => setSelected({...selected, mercaderista: e.target.value})}>
@@ -112,32 +104,40 @@ const MercaderistaReport = () => {
       )}
 
       {/* TABLA */}
-      <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-4 text-[10px] font-black uppercase text-gray-500">Mercaderista</th>
-              <th className="p-4 text-[10px] font-black uppercase text-gray-500">Ventas</th>
-              <th className="p-4 text-[10px] font-black uppercase text-gray-500">Unidades</th>
-              <th className="p-4 text-[10px] font-black uppercase text-gray-500">Locales</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((item, idx) => (
-              <tr key={idx} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="p-4 text-xs font-bold text-gray-900">{item.mercaderista}</td>
-                <td className="p-4 text-xs font-bold text-[#87be00]">
-                  ${formatNumber(item.total_ventas)}
-                </td>
-                <td className="p-4 text-xs font-bold text-gray-700">{formatNumber(item.total_unidades)}</td>
-                <td className="p-4 text-xs font-bold text-gray-700">{formatNumber(item.locales_visitados)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden mt-6">
+  <table className="w-full text-left">
+    <thead className="bg-gray-50">
+      <tr>
+        <th className="p-4 text-[10px] font-black uppercase text-gray-500">Mercaderista</th>
+        <th className="p-4 text-[10px] font-black uppercase text-gray-500">Venta Neta</th>
+        <th className="p-4 text-[10px] font-black uppercase text-gray-500">Venta Bruta</th> {/* Nueva */}
+        <th className="p-4 text-[10px] font-black uppercase text-gray-500">Unidades</th>
+        <th className="p-4 text-[10px] font-black uppercase text-gray-500">Locales</th>
+        <th className="p-4 text-[10px] font-black uppercase text-gray-500">Código</th> {/* Nueva */}
+      </tr>
+    </thead>
+    <tbody>
+      {data.map((item, idx) => (
+        <tr key={idx} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
+          <td className="p-4 text-xs font-bold text-gray-900">{item.mercaderista}</td>
+          <td className="p-4 text-xs font-bold text-[#87be00]">
+            ${formatNumber(item.total_ventas)}
+          </td>
+          <td className="p-4 text-xs font-bold text-blue-600">
+            ${formatNumber(item.total_venta_bruta)}
+          </td>
+          <td className="p-4 text-xs font-bold text-gray-700">{formatNumber(item.total_unidades)}</td>
+          <td className="p-4 text-xs font-bold text-gray-700">{formatNumber(item.locales_visitados)}</td>
+          <td className="p-4 text-xs font-bold text-gray-500 max-w-[200px] truncate">
+            {item.codigos_locales || '-'}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
       </div>
     </div>
   );
 };
 
-export default MercaderistaReport; 
+export default MercaderistaReport;
