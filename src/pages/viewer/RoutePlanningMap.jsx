@@ -36,47 +36,39 @@ const statusBg = (status) => {
   }
 };
 
-// 🚩 FIX: Extractor dinámico de fechas a prueba de fallos
+// 🚩 FIX: Extrae la fecha, o asume "Hoy" si la planificación usa días de la semana (IS NULL)
 const extractDate = (row) => {
-  if (!row) return 'N/A';
+  const rawDate = row.visit_date || row.fecha || row.created_at;
   
-  // 1. Nombres más probables basados en tu BD (user_routes, visits)
-  const possibleKeys = ['visit_date', 'fecha', 'fecha_visita', 'route_date', 'planned_date', 'created_at', 'date'];
-  let foundDate = null;
-
-  for (const key of possibleKeys) {
-    if (row[key]) {
-      foundDate = row[key];
-      break;
-    }
+  if (!rawDate) {
+    const hoy = new Date();
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const yyyy = hoy.getFullYear();
+    return `${dd}/${mm}/${yyyy} (Hoy)`;
   }
 
-  // 2. Si no coincide con los anteriores, buscar cualquier llave que contenga "date" o "fecha"
-  if (!foundDate) {
-    const dynamicKey = Object.keys(row).find(key => 
-      (key.toLowerCase().includes('date') || key.toLowerCase().includes('fecha')) && row[key] !== null
-    );
-    if (dynamicKey) foundDate = row[dynamicKey];
-  }
-
-  if (!foundDate)
-    console.warn('No se encontró fecha en la fila:', row);
-    return 'N/A';
-
-  // 3. Formateo seguro (maneja ISO, timestamps con espacios o strings simples)
   try {
-    const dateString = String(foundDate);
-    // Separa por "T" (formato ISO) o por espacio (formato SQL timestamp)
-    const datePart = dateString.split('T')[0].split(' ')[0]; 
-    const parts = datePart.split('-');
+    const dateString = String(rawDate).split('T')[0].split(' ')[0]; 
+    const parts = dateString.split('-');
     
     if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`; // Retorna DD/MM/YYYY
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
-    return datePart;
+    return dateString;
   } catch (error) {
     return 'Formato Inválido';
   }
+};
+
+const getRouteDate = (route) => {
+  const rawDate = route.visit_date || route.fecha || route.created_at;
+  if (!rawDate) return null;
+
+  const date = new Date(rawDate);
+  if (isNaN(date.getTime())) return null;
+
+  return date;
 };
 
 const RoutePlanningMap = () => {
@@ -84,6 +76,9 @@ const RoutePlanningMap = () => {
   const map = useRef(null);
   const markers = useRef([]);
   const pollRef = useRef(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  
 
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +88,6 @@ const RoutePlanningMap = () => {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedSupervisor, setSelectedSupervisor] = useState(null);
 
-  // Estados Acordeones Jerarquía
   const [expandedSupervisors, setExpandedSupervisors] = useState({});
   const [expandedLocales, setExpandedLocales] = useState({});
   const [expandedLocaleUsers, setExpandedLocaleUsers] = useState({});
@@ -104,10 +98,7 @@ const RoutePlanningMap = () => {
   const toggleExpandLocaleUser = (key) => setExpandedLocaleUsers(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandUser       = (key) => setExpandedUsers(prev => ({ ...prev, [key]: !prev[key] }));
 
-  const filteredTableRoutes = useMemo(() => {
-    if (!selectedSupervisor) return [];
-    return routes.filter(r => (r.supervisor_nombre || 'Sin Supervisor') === selectedSupervisor);
-  }, [routes, selectedSupervisor]);
+  
 
   const fetchRoutes = useCallback(async (silent = false) => {
     try {
@@ -115,11 +106,9 @@ const RoutePlanningMap = () => {
       else setRefreshing(true);
       
       const response = await api.get("/planning");
+      console.log(response.data);
       const rawData = response.data || response;
       const data = Array.isArray(rawData) ? rawData : [];
-      
-      // Bloque útil para depurar en la consola:
-      // if (data.length > 0) console.log("Estructura de la ruta:", data[0]);
 
       setRoutes(data);
       setLastUpdated(new Date());
@@ -144,17 +133,42 @@ const RoutePlanningMap = () => {
     return () => clearInterval(pollRef.current);
   }, [fetchRoutes]);
 
+  const filteredRoutes = useMemo(() => {
+
+  if (!dateFrom && !dateTo) return routes;
+
+  const from = dateFrom ? new Date(dateFrom) : null;
+  const to = dateTo ? new Date(dateTo) : null;
+
+  if (to) to.setHours(23, 59, 59, 999);
+
+  return routes.filter((route) => {
+    const d = getRouteDate(route);
+    if (!d) return false;
+
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+
+    return true;
+  });
+}, [routes, dateFrom, dateTo]);
+
   const stats = useMemo(() => ({
-    total: routes.length,
-    pending: routes.filter(r => r.status === 'PENDING').length,
-    inProgress: routes.filter(r => r.status === 'IN_PROGRESS').length,
-    completed: routes.filter(r => r.status === 'COMPLETED').length,
-  }), [routes]);
+  total: filteredRoutes.length,
+  pending: filteredRoutes.filter(r => r.status === 'PENDING').length,
+  inProgress: filteredRoutes.filter(r => r.status === 'IN_PROGRESS').length,
+  completed: filteredRoutes.filter(r => r.status === 'COMPLETED').length,
+}), [filteredRoutes]);
+
+    const filteredTableRoutes = useMemo(() => {
+  if (!selectedSupervisor) return [];
+  return filteredRoutes.filter(r => (r.supervisor_nombre || 'Sin Supervisor') === selectedSupervisor);
+}, [filteredRoutes, selectedSupervisor]);
 
   const groupedData = useMemo(() => {
     const mapObj = {};
 
-    routes.forEach(route => {
+    filteredRoutes.forEach(route => {
       const supName = route.supervisor_nombre || 'Sin Supervisor';
       
       if (!mapObj[supName]) {
@@ -256,14 +270,23 @@ const RoutePlanningMap = () => {
     else map.current.once('style.load', paintMarkers);
   }, [routes]);
 
+  // 🚩 FIX: Configuración robusta para volar al punto seleccionado
   const flyToRoute = (route) => {
     const lat = parseFloat(route.lat);
     const lng = parseFloat(route.lng);
     if (!map.current || isNaN(lat) || isNaN(lng)) return;
     
     setSelectedRoute(route);
+    
+    map.current.flyTo({ 
+      center: [lng, lat], 
+      zoom: 16, // Zoom más cercano al seleccionar
+      duration: 1200,
+      essential: true 
+    });
+
+    // Ocultar panel en móviles para ver el mapa
     if (window.innerWidth < 1024) setPanelOpen(false);
-    map.current.flyTo({ center: [lng, lat], zoom: 15, duration: 1200 });
   };
 
   const formatLastUpdated = (date) => {
@@ -273,6 +296,7 @@ const RoutePlanningMap = () => {
 
   return (
     <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/50">
+    
       {/* HEADER */}
       <div className="bg-white border-b border-gray-100 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
         <div>
@@ -562,11 +586,19 @@ const RoutePlanningMap = () => {
                 </thead>
                 <tbody>
                   {filteredTableRoutes.map((r, i) => (
-                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <tr 
+                      key={i} 
+                      onClick={() => flyToRoute(r)} // 🚩 Vuela al marcador al hacer clic
+                      className={`border-b cursor-pointer transition-colors ${
+                        selectedRoute === r 
+                          ? 'bg-[#87be00]/20 border-[#87be00]/30' 
+                          : 'border-gray-50 hover:bg-gray-50/50'
+                      }`}
+                    >
                       <td className="p-3 text-xs font-bold text-gray-700">{r.supervisor_nombre || 'N/A'}</td>
                       <td className="p-3 text-xs font-bold text-gray-700">{r.usuario_nombre}</td>
-                      {/* 🚩 USO DEL EXTRACTOR DINÁMICO */}
                       <td className="p-3 text-xs font-bold text-gray-700">
+                        {/* 🚩 USO DEL EXTRACTOR CORREGIDO */}
                         {extractDate(r)}
                       </td>
                       <td className="p-3 text-xs font-bold text-gray-700">{r.cadena}</td>
