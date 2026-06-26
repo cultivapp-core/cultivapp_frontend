@@ -39,27 +39,37 @@ const statusBg = (status) => {
 // 🚩 FIX: Extrae la fecha, o asume "Hoy" si la planificación usa días de la semana (IS NULL)
 const extractDate = (row) => {
   const rawDate = row.visit_date || row.fecha || row.created_at;
-  
-  if (!rawDate) {
-    const hoy = new Date();
-    const dd = String(hoy.getDate()).padStart(2, '0');
-    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
-    const yyyy = hoy.getFullYear();
-    return `${dd}/${mm}/${yyyy} (Hoy)`;
-  }
+
+  if (!rawDate) return '';
 
   try {
-    const dateString = String(rawDate).split('T')[0].split(' ')[0]; 
-    const parts = dateString.split('-');
-    
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return dateString;
+    const date = new Date(rawDate);
+    if (isNaN(date.getTime())) return '';
+
+    return date.toLocaleDateString('es-CL', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
   } catch (error) {
-    return 'Formato Inválido';
+    return '';
   }
 };
+
+
+const extractPlanningTime = (row) => {
+  if (!row.start_time) return "";
+
+  // "16:30:00" -> "16:30"
+  return row.start_time.slice(0, 5);
+};
+
+const extractPlanningDate = (row) => ({
+  date: extractDate(row),
+  time: extractPlanningTime(row),
+});
+
+
 
 const getRouteDate = (route) => {
   const rawDate = route.visit_date || route.fecha || route.created_at;
@@ -71,6 +81,8 @@ const getRouteDate = (route) => {
   return date;
 };
 
+
+
 const RoutePlanningMap = () => {
   const mapContainer = useRef(null);
   const map = useRef(null);
@@ -78,6 +90,7 @@ const RoutePlanningMap = () => {
   const pollRef = useRef(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const didInitialFit = useRef(false);
   
 
   const [routes, setRoutes] = useState([]);
@@ -109,6 +122,8 @@ const RoutePlanningMap = () => {
       console.log(response.data);
       const rawData = response.data || response;
       const data = Array.isArray(rawData) ? rawData : [];
+      console.log("📦 DATA COMPLETA:", data);
+console.log("📦 PRIMER REGISTRO:", data[0]);
 
       setRoutes(data);
       setLastUpdated(new Date());
@@ -206,7 +221,7 @@ const RoutePlanningMap = () => {
     });
 
     return mapObj;
-  }, [routes]);
+  }, [filteredRoutes]);
 
   useEffect(() => {
     if (map.current) return;
@@ -214,7 +229,7 @@ const RoutePlanningMap = () => {
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: [-70.6483, -33.4569],
-      zoom: 13
+      zoom: 14
     });
     map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
   }, []);
@@ -234,7 +249,8 @@ const RoutePlanningMap = () => {
       const bounds = new mapboxgl.LngLatBounds();
       let hasCoords = false;
 
-      routes.forEach((route) => {
+      filteredRoutes.forEach((route) => {
+
         const lat = parseFloat(route.lat);
         const lng = parseFloat(route.lng);
         if (isNaN(lat) || isNaN(lng)) return;
@@ -242,33 +258,77 @@ const RoutePlanningMap = () => {
         hasCoords = true;
         const el = document.createElement("div");
         el.style.cssText = `width:24px;height:24px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.3);cursor:pointer;transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
-        el.onmouseenter = () => el.style.transform = 'scale(1.3)';
-        el.onmouseleave = () => el.style.transform = 'scale(1)';
+        el.style.transition = "transform 0.2s ease";
 
         const nombreVisible = route.local_nombre || route.cadena || 'Local sin nombre';
 
         const marker = new mapboxgl.Marker(el)
-          .setLngLat([lng, lat])
-          .setPopup(new mapboxgl.Popup({ offset: 15, closeButton: false }).setHTML(`
-            <div style="font-family:'Outfit';padding:8px 4px;text-transform:uppercase;">
-              <p style="font-weight:900;margin:0;font-size:12px;color:#111827;letter-spacing:-0.02em;">${nombreVisible}</p>
-              <p style="font-size:10px;font-weight:700;color:#9ca3af;margin:3px 0 0 0;">${route.codigo_local || 'S/N'} | ${route.comuna || ''}</p>
-              <p style="font-size:11px;font-weight:800;color:#3b82f6;margin:5px 0 0 0;">👤 ${route.usuario_nombre}</p>
-              <p style="font-size:9px;font-weight:700;color:#6b7280;margin:5px 0 0 0;padding-top:4px;border-top:1px solid #e5e7eb;">Sup: ${route.supervisor_nombre}</p>
-            </div>
-          `))
-          .addTo(map.current);
+        .setLngLat([lng, lat])
+        .addTo(map.current);
 
         markers.current.push(marker);
         bounds.extend([lng, lat]);
+
+       const popup = new mapboxgl.Popup({
+  closeButton: false,
+  closeOnClick: false,
+  offset: 25,
+  className: "custom-popup"
+}).setHTML(`
+  <div style="font-family: Outfit; font-size: 11px; min-width: 180px;">
+    
+    <div style="font-weight: 900; text-transform: uppercase; font-size: 12px;">
+      ${nombreVisible}
+    </div>
+
+    <div style="color:#6b7280; font-size:10px; margin-top:2px;">
+      ${route.cadena || ''} · ${route.codigo_local || ''}
+    </div>
+
+    <div style="margin-top:6px; font-weight:700; font-size:11px;">
+      👤 ${route.usuario_nombre}
+    </div>
+
+    <div style="margin-top:4px; font-size:10px; color:#6b7280;">
+      📅 ${extractDate(route)}
+    </div>
+
+    <div style="margin-top:8px;">
+      <span style="
+        font-size:10px;
+        font-weight:900;
+        color:white;
+        background:${statusToColor(route.status)};
+        padding:3px 8px;
+        border-radius:6px;
+        display:inline-block;
+      ">
+        ${statusLabel(route.status)}
+      </span>
+    </div>
+
+  </div>
+`);
+
+el.addEventListener("mouseenter", () => {
+  popup.setLngLat([lng, lat]).addTo(map.current);
+});
+
+el.addEventListener("mouseleave", () => {
+  popup.remove();
+});
+
       });
 
-      if (hasCoords) map.current.fitBounds(bounds, { padding: 80, duration: 1000 });
+      if (hasCoords && !didInitialFit.current) {
+  map.current.fitBounds(bounds, { padding: 80, duration: 1000 });
+  didInitialFit.current = true;
+}
     };
 
     if (map.current.isStyleLoaded()) paintMarkers();
     else map.current.once('style.load', paintMarkers);
-  }, [routes]);
+  }, [filteredRoutes]);
 
   // 🚩 FIX: Configuración robusta para volar al punto seleccionado
   const flyToRoute = (route) => {
@@ -279,11 +339,11 @@ const RoutePlanningMap = () => {
     setSelectedRoute(route);
     
     map.current.flyTo({ 
-      center: [lng, lat], 
-      zoom: 16, // Zoom más cercano al seleccionar
-      duration: 1200,
-      essential: true 
-    });
+  center: [lng, lat],
+  zoom: Math.min(map.current.getZoom(), 14),
+  duration: 1200,
+  essential: true
+});
 
     // Ocultar panel en móviles para ver el mapa
     if (window.innerWidth < 1024) setPanelOpen(false);
@@ -296,8 +356,7 @@ const RoutePlanningMap = () => {
 
   return (
     <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/50">
-    
-      {/* HEADER */}
+          {/* HEADER */}
       <div className="bg-white border-b border-gray-100 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
         <div>
           <div className="flex items-center gap-3">
@@ -597,10 +656,13 @@ const RoutePlanningMap = () => {
                     >
                       <td className="p-3 text-xs font-bold text-gray-700">{r.supervisor_nombre || 'N/A'}</td>
                       <td className="p-3 text-xs font-bold text-gray-700">{r.usuario_nombre}</td>
-                      <td className="p-3 text-xs font-bold text-gray-700">
-                        {/* 🚩 USO DEL EXTRACTOR CORREGIDO */}
-                        {extractDate(r)}
-                      </td>
+                     <td className="p-3 text-xs font-bold text-gray-700">
+  <div className="flex flex-col">
+    <span>{extractDate(r)}</span>
+    <span className="text-[10px] text-gray-400 font-bold"> Hora de inicio: {extractPlanningTime(r)}
+    </span>
+  </div>
+</td>
                       <td className="p-3 text-xs font-bold text-gray-700">{r.cadena}</td>
                       <td className="p-3 text-xs font-bold text-gray-700">{r.codigo_local}</td>
                       <td className="p-3">
