@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   FiClock, FiSearch, FiRefreshCw, FiCalendar, FiChevronDown,
-  FiPackage, FiBarChart2, FiUser, FiMapPin, FiHash,
+  FiPackage, FiUser, FiMapPin, FiHash,
   FiFilter, FiX, FiAlertCircle, FiArrowRight, FiMessageSquare, FiClipboard, FiCheckCircle, FiImage 
 } from "react-icons/fi";
 import { 
@@ -48,11 +48,8 @@ const inputStyle = "pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text
 ========================================================= */
 const extractRows = (response) => {
   if (!response) return [];
-  // { rows: [...] }  ← formato real de la API
   if (Array.isArray(response.rows)) return response.rows;
-  // { data: [...] }
   if (Array.isArray(response.data)) return response.data;
-  // array directo
   if (Array.isArray(response)) return response;
   return [];
 };
@@ -70,27 +67,60 @@ const ConsolidatedControl = () => {
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [expandedRow, setExpandedRow] = useState(null);
 
-  // Filtros globales
-  const [selectedDate, setSelectedDate] = useState(getLocalISODate());
+  // ✅ Filtros globales: startDate / endDate (rango) — ambos endpoints lo soportan
+  const [startDate, setStartDate] = useState(getLocalISODate());
+  const [endDate, setEndDate] = useState(getLocalISODate());
   const [searchTerm, setSearchTerm] = useState("");
   const [filterBrand, setFilterBrand] = useState("");
   const [filterWorker, setFilterWorker] = useState("");
+  const [filterRegion, setFilterRegion] = useState("");
+  const [filterLocal, setFilterLocal] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
   const [workers, setWorkers] = useState([]);
   const [brands, setBrands] = useState([]);
 
-  // --- 1. FETCH ASISTENCIA ---
+  // --- DERIVACIÓN DE OPCIONES PARA FILTROS ---
+  const regions = useMemo(() => [...new Set(attendance.map(a => a.region_name).filter(Boolean))].sort(), [attendance]);
+  const locals = useMemo(() => {
+    const fromAttendance = attendance.map(a => a.local_name);
+    const fromTasks = rawTasks.map(t => t.local_name);
+    return [...new Set([...fromAttendance, ...fromTasks].filter(Boolean))].sort();
+  }, [attendance, rawTasks]);
+
+  // ✅ FIX: colaboradores derivados de asistencia (puede venir como user_id o worker_id)
+  const attendanceWorkers = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    attendance.forEach(a => {
+      const id = a.user_id ?? a.worker_id;
+      if (id != null && !seen.has(id)) {
+        seen.add(id);
+        list.push({ id, name: `${a.first_name || ""} ${a.last_name || ""}`.trim() });
+      }
+    });
+    return list;
+  }, [attendance]);
+
+  // ✅ Combina colaboradores de asistencia + tareas, sin duplicados
+  const allWorkers = useMemo(() => {
+    const combined = [...attendanceWorkers, ...workers];
+    return Array.from(new Map(combined.map(w => [String(w.id), w])).values())
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [attendanceWorkers, workers]);
+
+  // --- 1. FETCH ASISTENCIA (ahora por rango startDate/endDate) ---
   const fetchAttendance = async () => {
     try {
       setLoadingAttendance(true);
       const params = searchTerm.length > 2 
         ? { search: searchTerm } 
-        : { date: selectedDate };
+        : { startDate, endDate };
 
       const response = await api.get("/routes/attendance-report", params);
-      // ✅ FIX: la API retorna { rows: [], totalCount, page, totalPages }
+      console.log("🌐 RESPONSE CRUDO (primera fila):", response?.rows?.[0]);
       const data = extractRows(response);
+      console.log("📦 DESPUÉS DE extractRows (primera fila):", data[0]);
       setAttendance(data);
     } catch (error) {
       console.error("❌ Error cargando asistencia:", error);
@@ -100,28 +130,27 @@ const ConsolidatedControl = () => {
     }
   };
 
-  // --- 2. FETCH TAREAS/VISITAS ---
+  // --- 2. FETCH TAREAS/VISITAS (ahora también soporta rango startDate/endDate) ---
   const fetchTasks = async () => {
     try {
       setLoadingTasks(true);
       const params = {
-        date: selectedDate,
-        ...(searchTerm.length > 1 && { search: searchTerm }),
-        ...(filterBrand && { brand_id: filterBrand }),
-        ...(filterWorker && { user_id: filterWorker }),
+        startDate,
+        endDate,
+        ...(searchTerm.length > 1 && { search: searchTerm })
       };
       const response = await api.get("/routes/tasks-report", params);
-      // ✅ FIX: misma normalización para tasks
       const list = extractRows(response);
       
       setRawTasks(list);
 
       const groups = {};
       list.forEach(task => {
-        const visitId = task.visit_id || `${task.user_id}-${task.local_code}-${selectedDate}`;
+        const visitId = task.visit_id || `${task.user_id}-${task.local_code}-${startDate}`;
         if (!groups[visitId]) {
           groups[visitId] = {
             id: visitId,
+            visit_date: task.visit_date,
             visit_number: task.visit_number || "S/N",
             user_id: task.user_id,
             first_name: task.first_name,
@@ -157,7 +186,12 @@ const ConsolidatedControl = () => {
         if (!seenW.has(t.user_id)) { seenW.add(t.user_id); uniqueWorkers.push({ id: t.user_id, name: `${t.first_name} ${t.last_name}` }); }
         if (t.brand_id && !seenB.has(t.brand_id)) { seenB.add(t.brand_id); uniqueBrands.push({ id: t.brand_id, name: t.brand_name }); }
       });
-      setWorkers(uniqueWorkers);
+      
+      // Combinar trabajadores de asistencia y tareas para el filtro general
+      setWorkers(prev => {
+         const combined = [...prev, ...uniqueWorkers];
+         return Array.from(new Map(combined.map(item => [item.id, item])).values());
+      });
       setBrands(uniqueBrands);
       setExpandedRow(null); 
     } catch (err) {
@@ -169,19 +203,60 @@ const ConsolidatedControl = () => {
     }
   };
 
+  // ✅ Ahora el effect depende del rango completo (startDate, endDate) + searchTerm
   useEffect(() => {
     const delayDebounce = setTimeout(() => { 
       fetchAttendance();
       fetchTasks();
     }, 400); 
     return () => clearTimeout(delayDebounce);
-  }, [selectedDate, searchTerm, filterBrand, filterWorker]);
+  }, [startDate, endDate, searchTerm]);
+
+  // --- FILTRADO LOCAL (CLIENT-SIDE) ---
+  const filteredAttendance = useMemo(() => {
+    return attendance.filter(item => {
+      const itemWorkerId = item.user_id ?? item.worker_id;
+      const matchWorker = !filterWorker || String(itemWorkerId) === String(filterWorker);
+      const matchRegion = !filterRegion || item.region_name === filterRegion;
+      const matchLocal = !filterLocal || item.local_name === filterLocal;
+      return matchWorker && matchRegion && matchLocal;
+    })
+    .sort((a, b) => {
+        // Obtenemos la fecha válida de cada fila
+        const dateA = new Date(a.visit_date || a.created_at || '1900-01-01');
+        const dateB = new Date(b.visit_date || b.created_at || '1900-01-01');
+        return dateB - dateA;
+      });
+  }, [attendance, filterWorker, filterRegion, filterLocal]);
+
+  const filteredGroupedVisits = useMemo(() => {
+    return groupedVisits.filter(visit => {
+      const matchWorker = !filterWorker || String(visit.user_id) === String(filterWorker);
+      const matchLocal = !filterLocal || visit.local_name === filterLocal;
+      const matchBrand = !filterBrand || visit.products.some(p => String(p.brand_id) === String(filterBrand));
+      return matchWorker && matchLocal && matchBrand;
+    });
+  }, [groupedVisits, filterWorker, filterLocal, filterBrand]);
 
   const clearFilters = () => {
-    setSearchTerm(""); setFilterBrand(""); setFilterWorker(""); setSelectedDate(getLocalISODate());
+    setSearchTerm("");
+    setFilterBrand("");
+    setFilterWorker("");
+    setFilterRegion("");
+    setFilterLocal("");
+    setStartDate(getLocalISODate());
+    setEndDate(getLocalISODate());
   };
 
   // --- ANALÍTICA GRÁFICA ---
+  const STATUS_COLORS = {
+    "FINALIZADO": "#3b82f6",         // azul
+    "EN CURSO": "#000000",           // negro
+    "PENDIENTE": "#ef4444",          // Rojo 
+    "SALIDA ANTICIPADA": "#87be00",  // Verde
+    "HORAS EXTRA": "#8b5cf6"         // Violeta
+  };
+
   const attendanceChartData = useMemo(() => {
     const counts = {
       "FINALIZADO":        0,
@@ -191,21 +266,18 @@ const ConsolidatedControl = () => {
       "HORAS EXTRA":       0,
     };
 
-    attendance.forEach(row => {
+    filteredAttendance.forEach(row => {
       const status = (row.status || "").toUpperCase().trim();
 
-      // ✅ FIX: manejo robusto de todos los valores posibles de status
       if (status === "IN_PROGRESS") {
         counts["EN CURSO"]++;
       } else if (status === "PENDING") {
         counts["PENDIENTE"]++;
       } else if (status === "COMPLETED") {
-        // exit_diff puede ser null, string con coma, o número
         const rawDiff = row.exit_diff;
         if (rawDiff === null || rawDiff === undefined || rawDiff === "") {
           counts["FINALIZADO"]++;
         } else {
-          // ✅ FIX: reemplazar coma por punto para locales que usan coma decimal
           const diff = parseFloat(String(rawDiff).replace(",", "."));
           if (isNaN(diff)) {
             counts["FINALIZADO"]++;
@@ -218,7 +290,6 @@ const ConsolidatedControl = () => {
           }
         }
       } else {
-        // Cualquier otro valor desconocido → PENDIENTE
         counts["PENDIENTE"]++;
       }
     });
@@ -226,28 +297,23 @@ const ConsolidatedControl = () => {
     return Object.keys(counts)
       .filter(name => counts[name] > 0)
       .map(name => ({ name, value: counts[name] }));
-  }, [attendance]);
-
-  const COLORS = ['#87be00', '#3b82f6', '#ef4444', '#ef4444', '#8b5cf6'];
-
-  const STATUS_COLORS = {
-  "FINALIZADO": "#3b82f6",         // Verde
-  "EN CURSO": "#3b82f6",           // Azul
-  "PENDIENTE": "#ef4444",          // Rojo (Cambio solicitado)
-  "SALIDA ANTICIPADA": "#87be00",  // Ámbar/Naranja
-  "HORAS EXTRA": "#8b5cf6"         // Violeta
-};
+  }, [filteredAttendance]);
 
   const tasksChartData = useMemo(() => {
-    const brandEans = rawTasks.reduce((acc, t) => {
-      const brand = t.brand_name || "Sin Marca";
-      acc[brand] = (acc[brand] || 0) + (t.codes_count || 0);
+    const brandEans = filteredGroupedVisits.reduce((acc, visit) => {
+      visit.products.forEach(t => {
+         const brand = t.brand_name || "Sin Marca";
+         acc[brand] = (acc[brand] || 0) + (t.codes_count || 0);
+      });
       return acc;
     }, {});
-    return Object.keys(brandEans).map(name => ({ name, eans: brandEans[name] })).filter(b => b.eans > 0).slice(0, 8);
-  }, [rawTasks]);
+    
+    return Object.keys(brandEans)
+        .map(name => ({ name, eans: brandEans[name] }))
+        .filter(b => b.eans > 0)
+        .slice(0, 8);
+  }, [filteredGroupedVisits]);
 
-  // ✅ FIX: entry_delay puede ser null → avatar neutro
   const getAvatarStyles = (delay) => {
     if (delay === null || delay === undefined) return 'bg-gray-900 text-white';
     const d = parseFloat(String(delay).replace(",", "."));
@@ -266,7 +332,6 @@ const ConsolidatedControl = () => {
       return { label: 'PENDIENTE', style: 'bg-amber-50 text-amber-600 border-amber-100' };
     }
 
-    // COMPLETED → analizar exit_diff
     if (exitDiff === null || exitDiff === undefined || exitDiff === "") {
       return { label: 'FINALIZADO', style: 'bg-green-50 text-green-600 border-green-100' };
     }
@@ -288,16 +353,45 @@ const ConsolidatedControl = () => {
           </h2>
           <div className="flex items-center gap-2">
              <span className="bg-[#87be00] w-2 h-2 rounded-full animate-pulse" />
-             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Asistencia y Auditoría de Ruta • {selectedDate}</p>
+             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+               Asistencia y Auditoría de Ruta • {formatDate(startDate)} {startDate !== endDate ? `→ ${formatDate(endDate)}` : ''}
+             </p>
           </div>
         </div>
 
         {/* CONTROLES DE FILTRADO Y BÚSQUEDA */}
         <div className="flex flex-wrap gap-3 w-full lg:w-auto items-center">
+
+          {/* ✅ FILTRO DE RANGO DE FECHAS: DESDE */}
           <div className="relative">
             <FiCalendar className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00] z-10" size={14} />
-            <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className={inputStyle} />
+            <input
+              type="date"
+              value={startDate}
+              max={endDate}
+              onChange={e => {
+                const newStart = e.target.value;
+                setStartDate(newStart);
+                if (newStart > endDate) setEndDate(newStart);
+              }}
+              className={inputStyle}
+              title="Desde"
+            />
           </div>
+
+          {/* ✅ FILTRO DE RANGO DE FECHAS: HASTA */}
+          <div className="relative">
+            <FiCalendar className="absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00] z-10" size={14} />
+            <input
+              type="date"
+              value={endDate}
+              min={startDate}
+              onChange={e => setEndDate(e.target.value)}
+              className={inputStyle}
+              title="Hasta"
+            />
+          </div>
+
           <div className="relative flex-1 min-w-[200px]">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={14} />
             <input type="text" placeholder="Buscar folio, local o mercaderista..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={`${inputStyle} w-full`} />
@@ -307,21 +401,36 @@ const ConsolidatedControl = () => {
         </div>
       </div>
 
-      {/* FILTROS DESPLEGABLES */}
+      {/* FILTROS DESPLEGABLES MULTIPLES */}
       <AnimatePresence>
         {showFilters && (
           <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
             <div className="bg-white rounded-[2rem] p-6 flex flex-wrap gap-4 items-center shadow-xl mx-4 md:mx-0 border border-gray-50">
-              <select value={filterWorker} onChange={e => setFilterWorker(e.target.value)} className="flex-1 min-w-[200px] px-6 py-4 bg-gray-50 rounded-[1.5rem] text-[10px] font-black uppercase outline-none border-none shadow-inner">
+              
+              <select value={filterWorker} onChange={e => setFilterWorker(e.target.value)} className="flex-1 min-w-[140px] px-4 py-3 bg-gray-50 rounded-[1.5rem] text-[10px] font-black uppercase outline-none shadow-inner text-gray-700">
                 <option value="">Colaborador...</option>
-                {workers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                {allWorkers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
-              <select value={filterBrand} onChange={e => setFilterBrand(e.target.value)} className="flex-1 min-w-[200px] px-6 py-4 bg-gray-50 rounded-[1.5rem] text-[10px] font-black uppercase outline-none border-none shadow-inner">
+
+              <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)} className="flex-1 min-w-[140px] px-4 py-3 bg-gray-50 rounded-[1.5rem] text-[10px] font-black uppercase outline-none shadow-inner text-gray-700">
+                <option value="">Región...</option>
+                {regions.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+
+              <select value={filterLocal} onChange={e => setFilterLocal(e.target.value)} className="flex-1 min-w-[140px] px-4 py-3 bg-gray-50 rounded-[1.5rem] text-[10px] font-black uppercase outline-none shadow-inner text-gray-700">
+                <option value="">Local...</option>
+                {locals.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+
+              <select value={filterBrand} onChange={e => setFilterBrand(e.target.value)} className="flex-1 min-w-[140px] px-4 py-3 bg-gray-50 rounded-[1.5rem] text-[10px] font-black uppercase outline-none shadow-inner text-gray-700">
                 <option value="">Marca...</option>
                 {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-              {(filterBrand || filterWorker || searchTerm) && (
-                <button onClick={clearFilters} className="px-6 py-4 bg-red-50 text-red-500 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-100 transition-all"><FiX size={14} /> Limpiar</button>
+
+              {(filterBrand || filterWorker || filterRegion || filterLocal || searchTerm) && (
+                <button onClick={clearFilters} className="px-6 py-3 bg-red-50 text-red-500 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center justify-center gap-2 hover:bg-red-100 transition-all min-w-[120px]">
+                  <FiX size={14} /> Limpiar
+                </button>
               )}
             </div>
           </motion.div>
@@ -338,12 +447,11 @@ const ConsolidatedControl = () => {
             <p className="text-[8px] font-black text-[#87be00] uppercase tracking-[0.2em] italic mb-6">Desglose de cumplimiento de marcajes diarios</p>
           </div>
 
-          {/* ✅ Resumen numérico sobre el gráfico */}
-          {attendance.length > 0 && (
+          {filteredAttendance.length > 0 && (
             <div className="flex justify-center gap-6 mb-4 flex-wrap">
-              {attendanceChartData.map((item, i) => (
+              {attendanceChartData.map((item) => (
                 <div key={item.name} className="flex flex-col items-center">
-                  <span className="text-xl font-black" style={{ color: COLORS[i % COLORS.length] }}>{item.value}</span>
+                  <span className="text-xl font-black" style={{ color: STATUS_COLORS[item.name] || "#999999" }}>{item.value}</span>
                   <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{item.name}</span>
                 </div>
               ))}
@@ -382,7 +490,7 @@ const ConsolidatedControl = () => {
             ) : (
               <div className="text-center">
                 <FiAlertCircle className="mx-auto text-gray-300 mb-2" size={24} />
-                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Sin registros de asistencia para esta fecha</p>
+                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Sin registros de asistencia para este rango</p>
               </div>
             )}
           </div>
@@ -447,17 +555,18 @@ const ConsolidatedControl = () => {
                  <tbody className="divide-y divide-gray-50">
                    {loadingAttendance ? (
                      <tr><td colSpan={10} className="text-center py-10 text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Cargando registros...</td></tr>
-                   ) : attendance.length === 0 ? (
+                   ) : filteredAttendance.length === 0 ? (
                      <tr>
                        <td colSpan={10} className="text-center py-16">
                          <FiAlertCircle className="mx-auto text-gray-200 mb-3" size={28} />
-                         <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Sin asistencias registradas para esta fecha</p>
+                         <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Sin asistencias registradas para esta búsqueda</p>
                        </td>
                      </tr>
                    ) : (
-                     attendance.map((row, idx) => {
+                     filteredAttendance.map((row, idx) => {
                        const statusInfo = getStatusBadge(row.exit_diff, row.status);
-                       const displayDate = row.visit_date || selectedDate;
+                       const displayDate = row.visit_date || row.created_at;
+                       console.log("📅 Fila:", row.visit_number, "| effective_date:", row.effective_date, "| visit_date:", row.visit_date, "| displayDate final:", displayDate);
                        return (
                          <motion.tr
                            initial={{ opacity: 0, y: 5 }}
@@ -517,15 +626,15 @@ const ConsolidatedControl = () => {
              </div>
 
              {/* Pie de tabla con total */}
-             {!loadingAttendance && attendance.length > 0 && (
+             {!loadingAttendance && filteredAttendance.length > 0 && (
                <div className="px-8 py-4 border-t border-gray-50 flex items-center justify-between">
                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
-                   Total: <span className="text-gray-900">{attendance.length}</span> registro{attendance.length !== 1 ? 's' : ''}
+                   Total: <span className="text-gray-900">{filteredAttendance.length}</span> registro{filteredAttendance.length !== 1 ? 's' : ''}
                  </p>
                  <div className="flex gap-3">
-                   {attendanceChartData.map((item, i) => (
-                     <span key={item.name} className="text-[8px] font-black uppercase tracking-widest flex items-center gap-1" style={{ color: COLORS[i % COLORS.length] }}>
-                       <span className="w-2 h-2 rounded-full inline-block" style={{ background: COLORS[i % COLORS.length] }} />
+                   {attendanceChartData.map((item) => (
+                     <span key={item.name} className="text-[8px] font-black uppercase tracking-widest flex items-center gap-1" style={{ color: STATUS_COLORS[item.name] || "#999999" }}>
+                       <span className="w-2 h-2 rounded-full inline-block" style={{ background: STATUS_COLORS[item.name] || "#999999" }} />
                        {item.value} {item.name}
                      </span>
                    ))}
@@ -546,6 +655,7 @@ const ConsolidatedControl = () => {
                   <tr className="bg-gray-900 text-white text-center">
                     <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-left">Mercaderista</th>
                     <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic w-[160px]">N° Visita</th>
+                    <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Fecha</th>
                     <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Punto de Venta</th>
                     <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Tiempo Total</th>
                     <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Productos Revisados</th>
@@ -555,14 +665,15 @@ const ConsolidatedControl = () => {
                 <tbody className="divide-y divide-gray-50">
                   {loadingTasks ? (
                     <tr><td colSpan={6} className="text-center py-10 text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Cargando rutas...</td></tr>
-                  ) : groupedVisits.length === 0 ? (
+                  ) : filteredGroupedVisits.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="text-center py-16">
                         <FiAlertCircle className="mx-auto text-gray-200 mb-3" size={28} />
-                        <p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Sin visitas para este filtro</p>
+                        <p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Sin visitas para esta búsqueda</p>
                       </td>
                     </tr>
-                  ) : groupedVisits.map((visit, idx) => (
+                  ) : filteredGroupedVisits.map((visit, idx) => (
+                    
                     <React.Fragment key={visit.id || idx}>
                       <motion.tr 
                         onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
@@ -581,6 +692,9 @@ const ConsolidatedControl = () => {
                         </td>
                         <td className="px-4 py-5">
                           <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 italic tracking-tighter">{visit.visit_number}</span>
+                        </td>
+                        <td className="px-4 py-5">
+                          <p className="text-[10px] font-black text-gray-800 uppercase italic leading-none truncate max-w-[200px] mx-auto">{visit.visit_date ? formatDate(visit.visit_date) : "Sin fecha"}</p>
                         </td>
                         <td className="px-4 py-5">
                           <p className="text-[10px] font-black text-gray-800 uppercase italic leading-none truncate max-w-[200px] mx-auto">{visit.local_name}</p>
