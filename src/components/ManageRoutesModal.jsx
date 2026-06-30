@@ -273,40 +273,62 @@ const ManageRoutesModal = ({
     }
   };
 
-  const handleCellClick = (w, d) => {
-    const key = `${w}-${d}`;
+  const handleIndividualTimeChange = (field, value) => {
+  const newBrush = { ...brush, [field]: value };
+  setBrush(newBrush);
 
-    if (eraserMode) {
-      setMatrix(prev => {
-        const newState = { ...prev };
-        delete newState[key];
-        return newState;
-      });
-      return;
-    }
-
-    if (!brush.user_id || !brush.turno_id) {
-      toast.error("Configura tu pincel (Reponedor y Turno) antes de pintar", { icon: "🖌️" });
-      return;
-    }
-
+  // 🚩 Auto-sincroniza: si ya hay celdas pintadas de este usuario en modo
+  // Individual, actualiza su horario en vivo (sin requerir re-clic)
+  if (newBrush.user_id && newBrush.turno_id === "INDIVIDUAL") {
     setMatrix(prev => {
-      const currentCellArray = prev[key] || [];
-      const userIndex = currentCellArray.findIndex(a => String(a.user_id) === String(brush.user_id));
-      let newCellArray;
-      if (userIndex >= 0) {
-        newCellArray = currentCellArray.filter((_, idx) => idx !== userIndex);
-      } else {
-        newCellArray = [...currentCellArray, { ...brush }];
-      }
-      if (newCellArray.length === 0) {
-        const newState = { ...prev };
-        delete newState[key];
-        return newState;
-      }
-      return { ...prev, [key]: newCellArray };
+      const newState = { ...prev };
+      Object.keys(newState).forEach(key => {
+        newState[key] = newState[key].map(a =>
+          String(a.user_id) === String(newBrush.user_id) && a.turno_id === "INDIVIDUAL"
+            ? { ...a, start_time: newBrush.start_time, end_time: newBrush.end_time }
+            : a
+        );
+      });
+      return newState;
     });
-  };
+  }
+};
+
+  const handleCellClick = (w, d) => {
+  const key = `${w}-${d}`;
+
+  if (eraserMode) {
+    setMatrix(prev => {
+      const newState = { ...prev };
+      delete newState[key];
+      return newState;
+    });
+    return;
+  }
+
+  if (!brush.user_id || !brush.turno_id) {
+    toast.error("Configura tu pincel (Reponedor y Turno) antes de pintar", { icon: "🖌️" });
+    return;
+  }
+
+  setMatrix(prev => {
+    const currentCellArray = prev[key] || [];
+    const userIndex = currentCellArray.findIndex(a => String(a.user_id) === String(brush.user_id));
+    let newCellArray;
+
+    if (userIndex >= 0) {
+      // 🚩 Ya existe una asignación de este usuario en este día: la ACTUALIZAMOS
+      // con los datos actuales del pincel (hora, turno, rol), en vez de borrarla.
+      newCellArray = currentCellArray.map((a, idx) =>
+        idx === userIndex ? { ...brush } : a
+      );
+    } else {
+      newCellArray = [...currentCellArray, { ...brush }];
+    }
+
+    return { ...prev, [key]: newCellArray };
+  });
+};
 
   const fillTargetWeek = (fillAllMonth = false) => {
     if (!brush.user_id || !brush.turno_id) return toast.error("Configura tu pincel primero.");
@@ -616,25 +638,25 @@ const handleManualSubmit = async (e) => {
                  </select>
 
                  {/* ── SELECTORES DE HORA EN FORMATO 24H ── */}
-                 {brush.turno_id && (
-                   <div className="space-y-1.5">
-                     <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                       <FiClock size={10} /> Horario (formato 24h)
-                     </label>
-                     <div className="flex gap-2">
-                       <TimePicker24h
-                         value={brush.start_time}
-                         onChange={(e) => setBrush({ ...brush, start_time: e.target.value })}
-                         disabled={brush.rol !== "INDIVIDUAL"}
-                       />
-                       <TimePicker24h
-                         value={brush.end_time}
-                         onChange={(e) => setBrush({ ...brush, end_time: e.target.value })}
-                         disabled={brush.rol !== "INDIVIDUAL"}
-                       />
-                     </div>
-                   </div>
-                 )}
+                {brush.turno_id && (
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <FiClock size={10} /> Horario (formato 24h)
+                    </label>
+                    <div className="flex gap-2">
+                      <TimePicker24h
+                        value={brush.start_time}
+                        onChange={(e) => handleIndividualTimeChange("start_time", e.target.value)}
+                        disabled={brush.rol !== "INDIVIDUAL"}
+                      />
+                      <TimePicker24h
+                        value={brush.end_time}
+                        onChange={(e) => handleIndividualTimeChange("end_time", e.target.value)}
+                        disabled={brush.rol !== "INDIVIDUAL"}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
