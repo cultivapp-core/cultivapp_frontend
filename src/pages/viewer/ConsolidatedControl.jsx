@@ -150,7 +150,7 @@ const ConsolidatedControl = () => {
         if (!groups[visitId]) {
           groups[visitId] = {
             id: visitId,
-            visit_date: task.visit_date,
+            visit_date: task.visit_date || task.start_time,
             visit_number: task.visit_number || "S/N",
             user_id: task.user_id,
             first_name: task.first_name,
