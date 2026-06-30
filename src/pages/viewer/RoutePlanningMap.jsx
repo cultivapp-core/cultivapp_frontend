@@ -532,31 +532,38 @@ const RoutePlanningMap = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTableRoutes.map((r, i) => (
-                    <tr 
-                      key={i} 
-                      onClick={() => flyToRoute(r)}
-                      className={`border-b cursor-pointer transition-colors ${
-                        selectedRoute === r ? 'bg-[#87be00]/10 border-[#87be00]/20' : 'border-gray-50 hover:bg-gray-50/50'
-                      }`}
-                    >
-                      <td className="p-3 text-[11px] font-bold text-gray-700">{r.supervisor_nombre || 'N/A'}</td>
-                      <td className="p-3 text-[11px] font-bold text-gray-700">{r.usuario_nombre}</td>
-                      <td className="p-3 text-[11px] font-bold text-gray-700">
-                        <div className="flex flex-col">
-                          <span>{extractDate(r)}</span>
-                          <span className="text-[9px] text-gray-400 mt-0.5">Inicio: {extractPlanningTime(r)}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-[11px] font-bold text-gray-700">{r.cadena}</td>
-                      <td className="p-3 text-[11px] font-bold text-gray-700">{r.codigo_local}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${statusBg(r.status)}`}>
-                          {statusLabel(r.status)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredTableRoutes.map((r, i) => {
+
+  return (
+    <tr 
+      key={i} 
+      onClick={() => flyToRoute(r)}
+      className={`border-b cursor-pointer transition-colors ${
+        selectedRoute === r ? 'bg-[#87be00]/10 border-[#87be00]/20' : 'border-gray-50 hover:bg-gray-50/50'
+      }`}
+    >
+      <td className="p-3 text-[11px] font-bold text-gray-700">{r.supervisor_nombre || 'N/A'}</td>
+      <td className="p-3 text-[11px] font-bold text-gray-700">{r.usuario_nombre}</td>
+      <td className="p-3 text-[11px] font-bold text-gray-700">
+        <div className="flex flex-col">
+          <span>{extractDate(r)}</span>
+          <span className="text-[9px] text-gray-400 mt-0.5">
+            Inicio: {extractPlanningTime(r)}
+          </span><span className="text-[9px] text-gray-400 mt-0.5">
+            Termino: {r.end_time ? r.end_time.slice(0, 5) : 'N/A'}
+          </span>
+        </div>
+      </td>
+      <td className="p-3 text-[11px] font-bold text-gray-700">{r.cadena}</td>
+      <td className="p-3 text-[11px] font-bold text-gray-700">{r.codigo_local}</td>
+      <td className="p-3">
+        <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${statusBg(r.status)}`}>
+          {statusLabel(r.status)}
+        </span>
+      </td>
+    </tr>
+  );
+})}
                 </tbody>
               </table>
             </div>
