@@ -273,7 +273,7 @@ const Planificacion = () => {
 
       // 🚩 FIX CRÍTICO: Obligamos a que la llave sea únicamente el local_id.
       // Así se compactan todas las filas del mismo local en un solo componente visual.
-      const key = `local-${r.local_id}`;
+      const key = `group-${r.schedule_group_id || r.id}`;
       const weekNum = r.week_number || 1;
 
       const schedItem = r.day_of_week !== null ? {
@@ -285,7 +285,9 @@ const Planificacion = () => {
         turno_id: r.nombre_turno || "INDIVIDUAL", 
         status:  r.status || "PENDING", 
         user_id: String(r.user_id),
-        rol: r.categoria_rol || (r.nombre_turno?.includes("PT") ? "MERCADERISTA PT" : "MERCADERISTA FULL") 
+        rol: r.categoria_rol || (r.nombre_turno?.includes("PT") ? "MERCADERISTA PT" : "MERCADERISTA FULL"),
+        route_id: r.id,
+        schedule_group_id: r.schedule_group_id 
       } : null;
 
       if (!groups[key]) {

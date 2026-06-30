@@ -43,8 +43,22 @@ const formatDate = (dateString) => {
 const cardStyle = "bg-white rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-gray-50 overflow-hidden";
 const inputStyle = "pl-11 pr-4 py-4 bg-gray-50 rounded-[1.5rem] border-none text-[11px] font-bold uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20 transition-all shadow-inner";
 
+/* =========================================================
+   HELPER: extrae array desde cualquier forma de respuesta
+========================================================= */
+const extractRows = (response) => {
+  if (!response) return [];
+  // { rows: [...] }  ← formato real de la API
+  if (Array.isArray(response.rows)) return response.rows;
+  // { data: [...] }
+  if (Array.isArray(response.data)) return response.data;
+  // array directo
+  if (Array.isArray(response)) return response;
+  return [];
+};
+
 const ConsolidatedControl = () => {
-  const [activeTab, setActiveTab] = useState("attendance"); // "attendance" | "tasks"
+  const [activeTab, setActiveTab] = useState("attendance");
 
   // Estado Asistencia
   const [attendance, setAttendance] = useState([]);
@@ -75,10 +89,12 @@ const ConsolidatedControl = () => {
         : { date: selectedDate };
 
       const response = await api.get("/routes/attendance-report", params);
-      const data = Array.isArray(response) ? response : (response?.data || []);
+      // ✅ FIX: la API retorna { rows: [], totalCount, page, totalPages }
+      const data = extractRows(response);
       setAttendance(data);
     } catch (error) {
       console.error("❌ Error cargando asistencia:", error);
+      setAttendance([]);
     } finally {
       setLoadingAttendance(false);
     }
@@ -94,8 +110,9 @@ const ConsolidatedControl = () => {
         ...(filterBrand && { brand_id: filterBrand }),
         ...(filterWorker && { user_id: filterWorker }),
       };
-      const data = await api.get("/routes/tasks-report", params);
-      const list = Array.isArray(data) ? data : (data?.data || []);
+      const response = await api.get("/routes/tasks-report", params);
+      // ✅ FIX: misma normalización para tasks
+      const list = extractRows(response);
       
       setRawTasks(list);
 
@@ -143,7 +160,13 @@ const ConsolidatedControl = () => {
       setWorkers(uniqueWorkers);
       setBrands(uniqueBrands);
       setExpandedRow(null); 
-    } catch (err) { console.error(err); } finally { setLoadingTasks(false); }
+    } catch (err) {
+      console.error("❌ Error cargando tareas:", err);
+      setRawTasks([]);
+      setGroupedVisits([]);
+    } finally {
+      setLoadingTasks(false);
+    }
   };
 
   useEffect(() => {
@@ -158,35 +181,62 @@ const ConsolidatedControl = () => {
     setSearchTerm(""); setFilterBrand(""); setFilterWorker(""); setSelectedDate(getLocalISODate());
   };
 
-  // --- ANÁLITICA GRÁFICA / GRÁFICOS (RECHARTS) ---
+  // --- ANALÍTICA GRÁFICA ---
   const attendanceChartData = useMemo(() => {
-    const counts = { "FINALIZADO": 0, "EN CURSO": 0, "PENDIENTE": 0, "SALIDA ANTICIPADA": 0, "HORAS EXTRA": 0 };
+    const counts = {
+      "FINALIZADO":        0,
+      "EN CURSO":          0,
+      "PENDIENTE":         0,
+      "SALIDA ANTICIPADA": 0,
+      "HORAS EXTRA":       0,
+    };
 
     attendance.forEach(row => {
-      if (row.status !== 'COMPLETED') {
-        if (row.status === 'IN_PROGRESS') counts["EN CURSO"]++;
-        else counts["PENDIENTE"]++;
-      } else {
-        const diff = parseFloat(row.exit_diff);
-        if (isNaN(diff)) {
-           counts["FINALIZADO"]++;
-        } else if (diff < -5) {
-           counts["SALIDA ANTICIPADA"]++;
-        } else if (diff > 5) {
-           counts["HORAS EXTRA"]++;
+      const status = (row.status || "").toUpperCase().trim();
+
+      // ✅ FIX: manejo robusto de todos los valores posibles de status
+      if (status === "IN_PROGRESS") {
+        counts["EN CURSO"]++;
+      } else if (status === "PENDING") {
+        counts["PENDIENTE"]++;
+      } else if (status === "COMPLETED") {
+        // exit_diff puede ser null, string con coma, o número
+        const rawDiff = row.exit_diff;
+        if (rawDiff === null || rawDiff === undefined || rawDiff === "") {
+          counts["FINALIZADO"]++;
         } else {
-           counts["FINALIZADO"]++;
+          // ✅ FIX: reemplazar coma por punto para locales que usan coma decimal
+          const diff = parseFloat(String(rawDiff).replace(",", "."));
+          if (isNaN(diff)) {
+            counts["FINALIZADO"]++;
+          } else if (diff < -5) {
+            counts["SALIDA ANTICIPADA"]++;
+          } else if (diff > 5) {
+            counts["HORAS EXTRA"]++;
+          } else {
+            counts["FINALIZADO"]++;
+          }
         }
+      } else {
+        // Cualquier otro valor desconocido → PENDIENTE
+        counts["PENDIENTE"]++;
       }
     });
 
-    // Filtramos para que solo se muestren en el gráfico los estados que tengan registros &gt; 0
     return Object.keys(counts)
       .filter(name => counts[name] > 0)
       .map(name => ({ name, value: counts[name] }));
   }, [attendance]);
 
-  const COLORS = ['#87be00', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
+  const COLORS = ['#87be00', '#3b82f6', '#ef4444', '#ef4444', '#8b5cf6'];
+
+  const STATUS_COLORS = {
+  "FINALIZADO": "#3b82f6",         // Verde
+  "EN CURSO": "#3b82f6",           // Azul
+  "PENDIENTE": "#ef4444",          // Rojo (Cambio solicitado)
+  "SALIDA ANTICIPADA": "#87be00",  // Ámbar/Naranja
+  "HORAS EXTRA": "#8b5cf6"         // Violeta
+};
 
   const tasksChartData = useMemo(() => {
     const brandEans = rawTasks.reduce((acc, t) => {
@@ -197,23 +247,34 @@ const ConsolidatedControl = () => {
     return Object.keys(brandEans).map(name => ({ name, eans: brandEans[name] })).filter(b => b.eans > 0).slice(0, 8);
   }, [rawTasks]);
 
+  // ✅ FIX: entry_delay puede ser null → avatar neutro
   const getAvatarStyles = (delay) => {
     if (delay === null || delay === undefined) return 'bg-gray-900 text-white';
-    if (delay <= 0) return 'bg-[#87be00] text-white'; 
-    if (delay <= 10) return 'bg-amber-400 text-gray-900'; 
-    return 'bg-red-500 text-white'; 
+    const d = parseFloat(String(delay).replace(",", "."));
+    if (isNaN(d) || d <= 0) return 'bg-[#87be00] text-white';
+    if (d <= 10) return 'bg-amber-400 text-gray-900';
+    return 'bg-red-500 text-white';
   };
 
-  const getStatusBadge = (diff, status) => {
-    if (status !== 'COMPLETED') {
-        return { 
-          label: status === 'IN_PROGRESS' ? 'EN CURSO' : 'PENDIENTE', 
-          style: status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-        };
+  const getStatusBadge = (exitDiff, status) => {
+    const s = (status || "").toUpperCase().trim();
+
+    if (s === "IN_PROGRESS") {
+      return { label: 'EN CURSO',  style: 'bg-blue-50 text-blue-600 border-blue-100' };
     }
-    if (diff < -5) return { label: 'SALIDA ANTICIPADA', style: 'bg-red-50 text-red-600 border-red-100' };
-    if (diff > 5) return { label: 'HORAS EXTRA', style: 'bg-indigo-50 text-indigo-600 border-indigo-100' };
-    return { label: 'FINALIZADO', style: 'bg-green-50 text-green-600 border-green-100' };
+    if (s !== "COMPLETED") {
+      return { label: 'PENDIENTE', style: 'bg-amber-50 text-amber-600 border-amber-100' };
+    }
+
+    // COMPLETED → analizar exit_diff
+    if (exitDiff === null || exitDiff === undefined || exitDiff === "") {
+      return { label: 'FINALIZADO', style: 'bg-green-50 text-green-600 border-green-100' };
+    }
+    const diff = parseFloat(String(exitDiff).replace(",", "."));
+    if (isNaN(diff))  return { label: 'FINALIZADO',        style: 'bg-green-50 text-green-600 border-green-100' };
+    if (diff < -5)    return { label: 'SALIDA ANTICIPADA', style: 'bg-red-50 text-red-600 border-red-100' };
+    if (diff > 5)     return { label: 'HORAS EXTRA',       style: 'bg-indigo-50 text-indigo-600 border-indigo-100' };
+    return              { label: 'FINALIZADO',              style: 'bg-green-50 text-green-600 border-green-100' };
   };
 
   return (
@@ -276,20 +337,52 @@ const ConsolidatedControl = () => {
             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Estado de Asistencia / Jornadas</h3>
             <p className="text-[8px] font-black text-[#87be00] uppercase tracking-[0.2em] italic mb-6">Desglose de cumplimiento de marcajes diarios</p>
           </div>
-          <div className="w-full h-56 flex items-center justify-center">
-            {attendanceChartData.length > 0 ? (
+
+          {/* ✅ Resumen numérico sobre el gráfico */}
+          {attendance.length > 0 && (
+            <div className="flex justify-center gap-6 mb-4 flex-wrap">
+              {attendanceChartData.map((item, i) => (
+                <div key={item.name} className="flex flex-col items-center">
+                  <span className="text-xl font-black" style={{ color: COLORS[i % COLORS.length] }}>{item.value}</span>
+                  <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{item.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="w-full h-48 flex items-center justify-center">
+            {loadingAttendance ? (
+              <p className="text-[9px] font-black text-gray-300 uppercase tracking-widest animate-pulse">Cargando...</p>
+            ) : attendanceChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={attendanceChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={5} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} labelStyle={{ fontSize: '9px', fontWeight: 900, fontFamily: 'Outfit' }}>
-                    {attendanceChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                  <Pie
+                    data={attendanceChartData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={4}
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    labelLine={false}
+                    labelStyle={{ fontSize: '8px', fontWeight: 900, fontFamily: 'Outfit' }}
+                  >
+                    {attendanceChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || "#cccccc"} />
+                    ))}
                   </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '25px', border: 'none', fontFamily: 'Outfit', fontSize: '11px' }} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: '25px', border: 'none', fontFamily: 'Outfit', fontSize: '11px' }}
+                    formatter={(value, name) => [`${value} trabajador${value !== 1 ? 'es' : ''}`, name]}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
               <div className="text-center">
                 <FiAlertCircle className="mx-auto text-gray-300 mb-2" size={24} />
-                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Sin registros de asistencia hoy</p>
+                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Sin registros de asistencia para esta fecha</p>
               </div>
             )}
           </div>
@@ -302,7 +395,9 @@ const ConsolidatedControl = () => {
             <p className="text-[8px] font-black text-[#87be00] uppercase tracking-[0.2em] italic mb-6">Eficiencia de auditoría en sala</p>
           </div>
           <div className="w-full h-56 flex items-center justify-center">
-             {tasksChartData.length > 0 ? (
+             {loadingTasks ? (
+               <p className="text-[9px] font-black text-gray-300 uppercase tracking-widest animate-pulse">Cargando...</p>
+             ) : tasksChartData.length > 0 ? (
                <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={tasksChartData}>
                      <XAxis dataKey="name" fontSize={8} fontWeight={900} tickLine={false} axisLine={false} tick={{ fill: '#6b7280' }} />
@@ -314,7 +409,7 @@ const ConsolidatedControl = () => {
              ) : (
                <div className="text-center">
                  <FiImage className="mx-auto text-gray-300 mb-2" size={24} />
-                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Sin tareas o EANs escaneados hoy</p>
+                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Sin tareas o EANs escaneados para esta fecha</p>
                </div>
              )}
           </div>
@@ -353,13 +448,24 @@ const ConsolidatedControl = () => {
                    {loadingAttendance ? (
                      <tr><td colSpan={10} className="text-center py-10 text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Cargando registros...</td></tr>
                    ) : attendance.length === 0 ? (
-                     <tr><td colSpan={10} className="text-center py-10 text-[10px] font-black text-gray-400 uppercase tracking-widest">Sin asistencias registradas</td></tr>
+                     <tr>
+                       <td colSpan={10} className="text-center py-16">
+                         <FiAlertCircle className="mx-auto text-gray-200 mb-3" size={28} />
+                         <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Sin asistencias registradas para esta fecha</p>
+                       </td>
+                     </tr>
                    ) : (
                      attendance.map((row, idx) => {
                        const statusInfo = getStatusBadge(row.exit_diff, row.status);
                        const displayDate = row.visit_date || selectedDate;
                        return (
-                         <motion.tr initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} key={row.id || idx} className="hover:bg-gray-50/50 transition-colors text-center">
+                         <motion.tr
+                           initial={{ opacity: 0, y: 5 }}
+                           animate={{ opacity: 1, y: 0 }}
+                           transition={{ delay: idx * 0.04 }}
+                           key={row.id || idx}
+                           className="hover:bg-gray-50/50 transition-colors text-center"
+                         >
                            <td className="px-6 py-5 text-left">
                              <div className="flex items-center gap-3">
                                <div className={`h-10 w-10 rounded-xl ${getAvatarStyles(row.entry_delay)} flex items-center justify-center text-[10px] font-black shadow-md shrink-0`}>
@@ -381,8 +487,16 @@ const ConsolidatedControl = () => {
                            <td className="px-4 py-5"><span className="text-[10px] font-black text-gray-900 uppercase">{formatDate(displayDate)}</span></td>
                            <td className="px-4 py-5 text-xs font-black text-gray-400">{row.plan_in || '--:--'}</td>
                            <td className="px-4 py-5 text-xs font-black text-gray-400">{row.plan_out || '--:--'}</td>
-                           <td className="px-4 py-5"><span className={`text-xs font-black ${row.entry_delay > 10 ? 'text-red-500' : 'text-gray-900'}`}>{row.check_in || '--:--'}</span></td>
-                           <td className="px-4 py-5"><span className={`text-xs font-black ${row.check_out ? 'text-green-600' : 'text-gray-300'}`}>{row.check_out || '--:--'}</span></td>
+                           <td className="px-4 py-5">
+                             <span className={`text-xs font-black ${row.entry_delay > 10 ? 'text-red-500' : 'text-gray-900'}`}>
+                               {row.check_in || '--:--'}
+                             </span>
+                           </td>
+                           <td className="px-4 py-5">
+                             <span className={`text-xs font-black ${row.check_out ? 'text-green-600' : 'text-gray-300'}`}>
+                               {row.check_out || '--:--'}
+                             </span>
+                           </td>
                            <td className="px-4 py-5">
                              {row.total_work_time ? (
                                <div className="flex flex-col items-center">
@@ -391,7 +505,9 @@ const ConsolidatedControl = () => {
                                </div>
                              ) : <span className="text-xs font-black text-gray-300 italic">--</span>}
                            </td>
-                           <td className="px-6 py-5"><span className={`text-[9px] font-black px-3 py-1.5 rounded-md italic border ${statusInfo.style}`}>{statusInfo.label}</span></td>
+                           <td className="px-6 py-5">
+                             <span className={`text-[9px] font-black px-3 py-1.5 rounded-md italic border ${statusInfo.style}`}>{statusInfo.label}</span>
+                           </td>
                          </motion.tr>
                        );
                      })
@@ -399,6 +515,23 @@ const ConsolidatedControl = () => {
                  </tbody>
                </table>
              </div>
+
+             {/* Pie de tabla con total */}
+             {!loadingAttendance && attendance.length > 0 && (
+               <div className="px-8 py-4 border-t border-gray-50 flex items-center justify-between">
+                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                   Total: <span className="text-gray-900">{attendance.length}</span> registro{attendance.length !== 1 ? 's' : ''}
+                 </p>
+                 <div className="flex gap-3">
+                   {attendanceChartData.map((item, i) => (
+                     <span key={item.name} className="text-[8px] font-black uppercase tracking-widest flex items-center gap-1" style={{ color: COLORS[i % COLORS.length] }}>
+                       <span className="w-2 h-2 rounded-full inline-block" style={{ background: COLORS[i % COLORS.length] }} />
+                       {item.value} {item.name}
+                     </span>
+                   ))}
+                 </div>
+               </div>
+             )}
            </div>
          </motion.div>
       )}
@@ -407,123 +540,129 @@ const ConsolidatedControl = () => {
       {activeTab === "tasks" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="px-4 md:px-0">
           <div className={cardStyle}>
-            <table className="w-full text-left border-collapse min-w-[1000px]">
-              <thead>
-                <tr className="bg-gray-900 text-white text-center">
-                  <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-left">Mercaderista</th>
-                  <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic w-[160px]">N° Visita</th>
-                  <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Punto de Venta</th>
-                  <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Tiempo Total</th>
-                  <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Productos Revisados</th>
-                  <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Detalle</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {loadingTasks ? (
-                  <tr><td colSpan={6} className="text-center py-10 text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Cargando rutas...</td></tr>
-                ) : groupedVisits.map((visit, idx) => (
-                  <React.Fragment key={visit.id || idx}>
-                    <motion.tr 
-                      onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
-                      className={`cursor-pointer transition-all text-center ${expandedRow === idx ? 'bg-gray-50' : 'hover:bg-gray-50/50'}`}
-                    >
-                      <td className="px-8 py-5 text-left">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-[#87be00] text-white rounded-2xl flex items-center justify-center text-xs font-black shadow-lg shadow-[#87be00]/20 shrink-0">
-                            {visit.first_name?.[0]}{visit.last_name?.[0]}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[1000px]">
+                <thead>
+                  <tr className="bg-gray-900 text-white text-center">
+                    <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic text-left">Mercaderista</th>
+                    <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic w-[160px]">N° Visita</th>
+                    <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Punto de Venta</th>
+                    <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Tiempo Total</th>
+                    <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Productos Revisados</th>
+                    <th className="px-4 py-6 text-[10px] font-black uppercase tracking-[0.2em] italic">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {loadingTasks ? (
+                    <tr><td colSpan={6} className="text-center py-10 text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Cargando rutas...</td></tr>
+                  ) : groupedVisits.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-16">
+                        <FiAlertCircle className="mx-auto text-gray-200 mb-3" size={28} />
+                        <p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Sin visitas para este filtro</p>
+                      </td>
+                    </tr>
+                  ) : groupedVisits.map((visit, idx) => (
+                    <React.Fragment key={visit.id || idx}>
+                      <motion.tr 
+                        onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
+                        className={`cursor-pointer transition-all text-center ${expandedRow === idx ? 'bg-gray-50' : 'hover:bg-gray-50/50'}`}
+                      >
+                        <td className="px-8 py-5 text-left">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-[#87be00] text-white rounded-2xl flex items-center justify-center text-xs font-black shadow-lg shadow-[#87be00]/20 shrink-0">
+                              {visit.first_name?.[0]}{visit.last_name?.[0]}
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-black text-gray-900 uppercase leading-none mt-1">{visit.first_name} {visit.last_name}</p>
+                              <p className="text-[9px] font-bold text-gray-400 mt-1 uppercase tracking-tighter">RUT: {visit.worker_rut}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-[11px] font-black text-gray-900 uppercase leading-none mt-1">{visit.first_name} {visit.last_name}</p>
-                            <p className="text-[9px] font-bold text-gray-400 mt-1 uppercase tracking-tighter">RUT: {visit.worker_rut}</p>
+                        </td>
+                        <td className="px-4 py-5">
+                          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 italic tracking-tighter">{visit.visit_number}</span>
+                        </td>
+                        <td className="px-4 py-5">
+                          <p className="text-[10px] font-black text-gray-800 uppercase italic leading-none truncate max-w-[200px] mx-auto">{visit.local_name}</p>
+                          <p className="text-[9px] font-black text-[#87be00] mt-1">{visit.local_code}</p>
+                        </td>
+                        <td className="px-4 py-5">
+                          <div className="flex flex-col items-center">
+                            <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter flex items-center gap-2 justify-center ${visit.total_duration <= 15 ? "bg-[#87be00]/10 text-[#87be00]" : "bg-amber-50 text-amber-600"}`}>
+                              <FiClock size={12} /> {formatMinutes(visit.total_duration)}
+                            </span>
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className="text-[9px] font-bold text-gray-400">{formatTime(visit.start_time)}</span>
+                                <FiArrowRight size={8} className="text-gray-300" />
+                                <span className="text-[9px] font-bold text-gray-400">{formatTime(visit.end_time)}</span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-5">
-                        <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100 italic tracking-tighter">{visit.visit_number}</span>
-                      </td>
-                      <td className="px-4 py-5">
-                        <p className="text-[10px] font-black text-gray-800 uppercase italic leading-none truncate max-w-[200px] mx-auto">{visit.local_name}</p>
-                        <p className="text-[9px] font-black text-[#87be00] mt-1">{visit.local_code}</p>
-                      </td>
-                      <td className="px-4 py-5">
-                        <div className="flex flex-col items-center">
-                          <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter flex items-center gap-2 justify-center ${visit.total_duration <= 15 ? "bg-[#87be00]/10 text-[#87be00]" : "bg-amber-50 text-amber-600"}`}>
-                            <FiClock size={12} /> {formatMinutes(visit.total_duration)}
+                        </td>
+                        <td className="px-4 py-5">
+                          <span className="inline-flex items-center gap-2 bg-amber-50 text-amber-600 text-[11px] font-black px-4 py-2 rounded-xl">
+                            <FiPackage size={14} /> {visit.products.length} Prod.
                           </span>
-                          <div className="flex items-center gap-2 mt-2">
-                              <span className="text-[9px] font-bold text-gray-400">{formatTime(visit.start_time)}</span>
-                              <FiArrowRight size={8} className="text-gray-300" />
-                              <span className="text-[9px] font-bold text-gray-400">{formatTime(visit.end_time)}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-5">
-                        <span className="inline-flex items-center gap-2 bg-amber-50 text-amber-600 text-[11px] font-black px-4 py-2 rounded-xl">
-                          <FiPackage size={14} /> {visit.products.length} Prod.
-                        </span>
-                      </td>
-                      <td className="px-4 py-5">
-                         <motion.div animate={{ rotate: expandedRow === idx ? 180 : 0 }} className="inline-block">
-                           <button className={`p-3 rounded-2xl shadow-sm transition-all ${expandedRow === idx ? 'bg-black text-white' : 'bg-white border border-gray-200 text-gray-400 hover:text-black hover:border-black'}`}>
-                             <FiChevronDown size={18} />
-                           </button>
-                         </motion.div>
-                      </td>
-                    </motion.tr>
+                        </td>
+                        <td className="px-4 py-5">
+                           <motion.div animate={{ rotate: expandedRow === idx ? 180 : 0 }} className="inline-block">
+                             <button className={`p-3 rounded-2xl shadow-sm transition-all ${expandedRow === idx ? 'bg-black text-white' : 'bg-white border border-gray-200 text-gray-400 hover:text-black hover:border-black'}`}>
+                               <FiChevronDown size={18} />
+                             </button>
+                           </motion.div>
+                        </td>
+                      </motion.tr>
 
-                    <AnimatePresence>
-                      {expandedRow === idx && (
-                        <motion.tr initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                          <td colSpan={6} className="bg-gray-900/5 px-10 py-6 overflow-hidden">
-                             <div className="flex items-center gap-3 mb-6">
-                               <div className="h-px bg-gray-300 flex-1" />
-                               <span className="text-[9px] font-black uppercase tracking-[0.3em] text-gray-400">Productos gestionados en esta visita</span>
-                               <div className="h-px bg-gray-300 flex-1" />
-                             </div>
-                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {visit.products.map((productTask, pIdx) => (
-                                   <div key={pIdx} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-all">
-                                      <div className="flex justify-between items-start mb-3">
-                                          <div>
-                                              <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{productTask.brand_name || "--"}</p>
-                                              <p className="text-[11px] font-black text-gray-900 uppercase italic leading-tight mt-1 truncate max-w-[150px]">{productTask.product_name || "--"}</p>
-                                          </div>
-                                          <div className="bg-[#87be00]/10 text-[#87be00] text-[9px] font-black px-2 py-1 rounded-lg flex items-center gap-1"><FiClock size={10} /> {formatMinutes(productTask.duration_minutes)}</div>
-                                      </div>
-                                      
-                                      <div className="mt-4 pt-3 border-t border-dashed border-gray-100">
-                                          <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">Códigos EAN ({productTask.product_codes?.length || 0})</p>
-                                          <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto pr-1">
-                                              {productTask.product_codes && productTask.product_codes.length > 0 ? (
-                                                  productTask.product_codes.map((code, cIdx) => (
-                                                      <span key={cIdx} className="text-[9px] font-mono bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100 italic">{code}</span>
-                                                  ))
-                                              ) : (
-                                                  <span className="text-[9px] text-gray-300 italic">Sin códigos</span>
-                                              )}
-                                          </div>
-                                      </div>
+                      <AnimatePresence>
+                        {expandedRow === idx && (
+                          <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                            <td colSpan={6} className="bg-gray-900/5 px-10 py-6 overflow-hidden">
+                               <div className="flex items-center gap-3 mb-6">
+                                 <div className="h-px bg-gray-300 flex-1" />
+                                 <span className="text-[9px] font-black uppercase tracking-[0.3em] text-gray-400">Productos gestionados en esta visita</span>
+                                 <div className="h-px bg-gray-300 flex-1" />
+                               </div>
+                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                  {visit.products.map((productTask, pIdx) => (
+                                     <div key={pIdx} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div>
+                                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{productTask.brand_name || "--"}</p>
+                                                <p className="text-[11px] font-black text-gray-900 uppercase italic leading-tight mt-1 truncate max-w-[150px]">{productTask.product_name || "--"}</p>
+                                            </div>
+                                            <div className="bg-[#87be00]/10 text-[#87be00] text-[9px] font-black px-2 py-1 rounded-lg flex items-center gap-1"><FiClock size={10} /> {formatMinutes(productTask.duration_minutes)}</div>
+                                        </div>
+                                        
+                                        <div className="mt-4 pt-3 border-t border-dashed border-gray-100">
+                                            <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">Códigos EAN ({productTask.product_codes?.length || 0})</p>
+                                            <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto pr-1">
+                                                {productTask.product_codes && productTask.product_codes.length > 0 ? (
+                                                    productTask.product_codes.map((code, cIdx) => (
+                                                        <span key={cIdx} className="text-[9px] font-mono bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100 italic">{code}</span>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-[9px] text-gray-300 italic">Sin códigos</span>
+                                                )}
+                                            </div>
+                                        </div>
 
-                                      {productTask.comment && (
-                                          <div className="bg-gray-50 p-3 rounded-xl mt-3">
-                                              <FiMessageSquare className="text-blue-400 mb-1" size={12}/>
-                                              <p className="text-[9px] font-bold text-gray-600 italic">"{productTask.comment}"</p>
-                                          </div>
-                                      )}
-                                   </div>
-                                ))}
-                             </div>
-                          </td>
-                        </motion.tr>
-                      )}
-                    </AnimatePresence>
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-            {!loadingTasks && groupedVisits.length === 0 && (
-              <div className="py-16 text-center"><FiAlertCircle className="mx-auto text-gray-200 mb-3" size={32} /><p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Sin visitas para este filtro</p></div>
-            )}
+                                        {productTask.comment && (
+                                            <div className="bg-gray-50 p-3 rounded-xl mt-3">
+                                                <FiMessageSquare className="text-blue-400 mb-1" size={12}/>
+                                                <p className="text-[9px] font-bold text-gray-600 italic">"{productTask.comment}"</p>
+                                            </div>
+                                        )}
+                                     </div>
+                                  ))}
+                               </div>
+                            </td>
+                          </motion.tr>
+                        )}
+                      </AnimatePresence>
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </motion.div>
       )}

@@ -354,69 +354,77 @@ const ManageRoutesModal = ({
     }
   };
 
-  const handleManualSubmit = async (e) => {
-    e.preventDefault();
-    if (!localId) return toast.error("Selecciona un Local.");
-    if (Object.keys(matrix).length === 0) return toast.error("Debes pintar al menos un día en el calendario.");
+const handleManualSubmit = async (e) => {
+  e.preventDefault();
+  if (!localId) return toast.error("Selecciona un Local.");
+  if (Object.keys(matrix).length === 0) return toast.error("Debes pintar al menos un día.");
 
-    setLoading(true);
-    try {
-      const assignmentsByUser = {};
-      Object.entries(matrix).forEach(([key, userArray]) => {
-        const [w, d] = key.split('-');
-        userArray.forEach(data => {
-          const uId = String(data.user_id);
-          if (!assignmentsByUser[uId]) assignmentsByUser[uId] = [];
-          assignmentsByUser[uId].push({ week: parseInt(w), day: parseInt(d), ...data });
-        });
+  setLoading(true);
+  try {
+    const assignmentsByUser = {};
+    Object.entries(matrix).forEach(([key, userArray]) => {
+      const [w, d] = key.split('-');
+      userArray.forEach(data => {
+        const uId = String(data.user_id);
+        if (!assignmentsByUser[uId]) assignmentsByUser[uId] = [];
+        assignmentsByUser[uId].push({ week: parseInt(w), day: parseInt(d), ...data });
       });
+    });
 
-      const promises = [];
-      const usersToSave = Object.keys(assignmentsByUser);
+    const promises = [];
+    const usersToSave = Object.keys(assignmentsByUser);
 
-      for (const userId of usersToSave) {
-        const userAssignments = assignmentsByUser[userId];
-        const dataToSubmit = {
-          local_id: localId,
-          company_id: companyId,
-          is_recurring: true,
-          origin: "TURNO",
-          assignments_data: userAssignments, 
-          user_id: userId,
-          categoria_rol: userAssignments[0].rol,
-          start_time: userAssignments[0].start_time,
-          end_time: userAssignments[0].end_time,
-          selectedDays: [...new Set(userAssignments.map(a => a.day))],
-        };
-
-        const existingRouteId = initialData?.route_ids_by_user?.[userId];
-        
-        if (existingRouteId && isEditing) {
-          promises.push(api.put(`/routes/${existingRouteId}`, dataToSubmit));
-        } else {
-          promises.push(api.post("/routes", dataToSubmit));
-        }
-      }
-
-      if (isEditing && initialData?.route_ids_by_user) {
-        const existingUsers = Object.keys(initialData.route_ids_by_user);
-        const usersToDelete = existingUsers.filter(u => !usersToSave.includes(u));
-        
-        usersToDelete.forEach(uId => {
-          const idToDelete = initialData.route_ids_by_user[uId];
-          promises.push(api.delete(`/routes/${idToDelete}`));
-        });
-      }
-
-      await Promise.all(promises);
+    for (const userId of usersToSave) {
+      const userAssignments = assignmentsByUser[userId];
       
-      onCreated();
-      onClose();
-      toast.success(isEditing ? "Planificación Actualizada" : "Planificación Creada");
-    } catch (error) {
-      toast.error(error.response?.data?.message || "Error al guardar");
-    } finally { setLoading(false); }
-  };
+      // Construcción segura del objeto
+      const dataToSubmit = {
+        local_id: localId,
+        company_id: companyId,
+        is_recurring: true,
+        origin: "TURNO",
+        assignments_data: userAssignments, 
+        user_id: userId, // <-- Esto es lo que el backend busca
+        categoria_rol: userAssignments[0].rol,
+        start_time: userAssignments[0].start_time,
+        end_time: userAssignments[0].end_time,
+        selectedDays: [...new Set(userAssignments.map(a => a.day))],
+      };
+
+      const existingRouteId = initialData?.route_ids_by_user?.[userId];
+      
+      // Log de depuración final antes de la petición
+      console.log(`Enviando ${existingRouteId ? 'PUT' : 'POST'} para usuario ${userId}:`, dataToSubmit);
+
+      if (existingRouteId) {
+        promises.push(api.put(`/routes/${existingRouteId}`, dataToSubmit));
+      } else {
+        promises.push(api.post("/routes", dataToSubmit));
+      }
+    }
+
+    // Eliminación de usuarios que ya no están en la matriz
+    if (isEditing && initialData?.route_ids_by_user) {
+      const existingUsers = Object.keys(initialData.route_ids_by_user);
+      const usersToDelete = existingUsers.filter(u => !usersToSave.includes(u));
+      
+      usersToDelete.forEach(uId => {
+        const idToDelete = initialData.route_ids_by_user[uId];
+        promises.push(api.delete(`/routes/${idToDelete}`));
+      });
+    }
+
+    await Promise.all(promises);
+    onCreated();
+    onClose();
+    toast.success("Planificación guardada correctamente");
+  } catch (error) {
+    console.error("Error completo:", error.response?.data);
+    toast.error(error.response?.data?.message || "Error al guardar");
+  } finally { 
+    setLoading(false); 
+  }
+};
 
   const handleDelete = async () => {
     if (!window.confirm("¿Eliminar completamente esta planificación agrupada para TODOS los mercaderistas?")) return;

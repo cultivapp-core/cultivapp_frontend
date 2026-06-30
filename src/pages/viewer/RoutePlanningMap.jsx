@@ -657,12 +657,12 @@ el.addEventListener("mouseleave", () => {
                       <td className="p-3 text-xs font-bold text-gray-700">{r.supervisor_nombre || 'N/A'}</td>
                       <td className="p-3 text-xs font-bold text-gray-700">{r.usuario_nombre}</td>
                      <td className="p-3 text-xs font-bold text-gray-700">
-  <div className="flex flex-col">
-    <span>{extractDate(r)}</span>
-    <span className="text-[10px] text-gray-400 font-bold"> Hora de inicio: {extractPlanningTime(r)}
-    </span>
-  </div>
-</td>
+                     <div className="flex flex-col">
+                       <span>{extractDate(r)}</span>
+                       <span className="text-[10px] text-gray-400 font-bold"> Hora de inicio: {extractPlanningTime(r)}
+                       </span>
+                     </div>
+                   </td>
                       <td className="p-3 text-xs font-bold text-gray-700">{r.cadena}</td>
                       <td className="p-3 text-xs font-bold text-gray-700">{r.codigo_local}</td>
                       <td className="p-3">

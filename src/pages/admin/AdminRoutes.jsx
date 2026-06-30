@@ -303,13 +303,14 @@ const AdminRoutes = () => {
           ...r, 
           id: r.id, 
           route_ids: [r.id], // 🚩 Guardamos el pool de rutas inicial
+          route_ids_by_user: { [r.user_id]: r.id },
           users: new Set([fullName]), 
           scheduled_items: r.day_of_week !== null ? [{ 
             day: r.day_of_week, 
             week: weekNum, 
             time: r.start_time || r.entrada,      
             endTime: r.end_time || r.salida,    
-            turno: r.nombre_turno,
+            turno: `${r.start_time?.slice(0,5)} - ${r.end_time?.slice(0,5)}`,
             userName: fullName,
             user_id: r.user_id,
             turno_id: r.nombre_turno
@@ -319,6 +320,7 @@ const AdminRoutes = () => {
       } else {
         groups[key].users.add(fullName);
         groups[key].route_ids.push(r.id); // 🚩 Añadimos los siguientes IDs recopilados
+        groups[key].route_ids_by_user[r.user_id] = r.id;
         
         if (r.day_of_week !== null) {
           const exists = groups[key].scheduled_items.some(
@@ -330,7 +332,7 @@ const AdminRoutes = () => {
               week: weekNum, 
               time: r.start_time || r.entrada,
               endTime: r.end_time || r.salida,
-              turno: r.nombre_turno,
+              turno: r.origin === 'INDIVIDUAL' ? 'Individual' : r.nombre_turno || 'Turno',
               userName: fullName,
               user_id: r.user_id,
               turno_id: r.nombre_turno
