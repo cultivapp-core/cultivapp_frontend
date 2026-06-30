@@ -36,7 +36,6 @@ const statusBg = (status) => {
   }
 };
 
-// 🚩 FIX: Extrae la fecha, o asume "Hoy" si la planificación usa días de la semana (IS NULL)
 const extractDate = (row) => {
   const rawDate = row.visit_date || row.fecha || row.created_at;
 
@@ -56,11 +55,8 @@ const extractDate = (row) => {
   }
 };
 
-
 const extractPlanningTime = (row) => {
   if (!row.start_time) return "";
-
-  // "16:30:00" -> "16:30"
   return row.start_time.slice(0, 5);
 };
 
@@ -68,8 +64,6 @@ const extractPlanningDate = (row) => ({
   date: extractDate(row),
   time: extractPlanningTime(row),
 });
-
-
 
 const getRouteDate = (route) => {
   const rawDate = route.visit_date || route.fecha || route.created_at;
@@ -81,8 +75,6 @@ const getRouteDate = (route) => {
   return date;
 };
 
-
-
 const RoutePlanningMap = () => {
   const mapContainer = useRef(null);
   const map = useRef(null);
@@ -92,7 +84,6 @@ const RoutePlanningMap = () => {
   const [dateTo, setDateTo] = useState("");
   const didInitialFit = useRef(false);
   
-
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -111,19 +102,14 @@ const RoutePlanningMap = () => {
   const toggleExpandLocaleUser = (key) => setExpandedLocaleUsers(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandUser       = (key) => setExpandedUsers(prev => ({ ...prev, [key]: !prev[key] }));
 
-  
-
   const fetchRoutes = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       else setRefreshing(true);
       
-      const response = await api.get("/planning");
-      console.log(response.data);
+      const response = await api.get("/planning/data");
       const rawData = response.data || response;
       const data = Array.isArray(rawData) ? rawData : [];
-      console.log("📦 DATA COMPLETA:", data);
-console.log("📦 PRIMER REGISTRO:", data[0]);
 
       setRoutes(data);
       setLastUpdated(new Date());
@@ -149,36 +135,35 @@ console.log("📦 PRIMER REGISTRO:", data[0]);
   }, [fetchRoutes]);
 
   const filteredRoutes = useMemo(() => {
+    if (!dateFrom && !dateTo) return routes;
 
-  if (!dateFrom && !dateTo) return routes;
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to = dateTo ? new Date(dateTo) : null;
 
-  const from = dateFrom ? new Date(dateFrom) : null;
-  const to = dateTo ? new Date(dateTo) : null;
+    if (to) to.setHours(23, 59, 59, 999);
 
-  if (to) to.setHours(23, 59, 59, 999);
+    return routes.filter((route) => {
+      const d = getRouteDate(route);
+      if (!d) return false;
 
-  return routes.filter((route) => {
-    const d = getRouteDate(route);
-    if (!d) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
 
-    if (from && d < from) return false;
-    if (to && d > to) return false;
-
-    return true;
-  });
-}, [routes, dateFrom, dateTo]);
+      return true;
+    });
+  }, [routes, dateFrom, dateTo]);
 
   const stats = useMemo(() => ({
-  total: filteredRoutes.length,
-  pending: filteredRoutes.filter(r => r.status === 'PENDING').length,
-  inProgress: filteredRoutes.filter(r => r.status === 'IN_PROGRESS').length,
-  completed: filteredRoutes.filter(r => r.status === 'COMPLETED').length,
-}), [filteredRoutes]);
+    total: filteredRoutes.length,
+    pending: filteredRoutes.filter(r => r.status === 'PENDING').length,
+    inProgress: filteredRoutes.filter(r => r.status === 'IN_PROGRESS').length,
+    completed: filteredRoutes.filter(r => r.status === 'COMPLETED').length,
+  }), [filteredRoutes]);
 
-    const filteredTableRoutes = useMemo(() => {
-  if (!selectedSupervisor) return [];
-  return filteredRoutes.filter(r => (r.supervisor_nombre || 'Sin Supervisor') === selectedSupervisor);
-}, [filteredRoutes, selectedSupervisor]);
+  const filteredTableRoutes = useMemo(() => {
+    if (!selectedSupervisor) return [];
+    return filteredRoutes.filter(r => (r.supervisor_nombre || 'Sin Supervisor') === selectedSupervisor);
+  }, [filteredRoutes, selectedSupervisor]);
 
   const groupedData = useMemo(() => {
     const mapObj = {};
@@ -250,9 +235,9 @@ console.log("📦 PRIMER REGISTRO:", data[0]);
       let hasCoords = false;
 
       filteredRoutes.forEach((route) => {
-
         const lat = parseFloat(route.lat);
         const lng = parseFloat(route.lng);
+        
         if (isNaN(lat) || isNaN(lng)) return;
 
         hasCoords = true;
@@ -269,68 +254,55 @@ console.log("📦 PRIMER REGISTRO:", data[0]);
         markers.current.push(marker);
         bounds.extend([lng, lat]);
 
-       const popup = new mapboxgl.Popup({
-  closeButton: false,
-  closeOnClick: false,
-  offset: 25,
-  className: "custom-popup"
-}).setHTML(`
-  <div style="font-family: Outfit; font-size: 11px; min-width: 180px;">
-    
-    <div style="font-weight: 900; text-transform: uppercase; font-size: 12px;">
-      ${nombreVisible}
-    </div>
+        const popup = new mapboxgl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 25,
+          className: "custom-popup"
+        }).setHTML(`
+          <div style="font-family: Outfit; font-size: 11px; min-width: 180px;">
+            <div style="font-weight: 900; text-transform: uppercase; font-size: 12px;">
+              ${nombreVisible}
+            </div>
+            <div style="color:#6b7280; font-size:10px; margin-top:2px;">
+              ${route.cadena || ''} · ${route.codigo_local || ''}
+            </div>
+            <div style="margin-top:6px; font-weight:700; font-size:11px;">
+              👤 ${route.usuario_nombre}
+            </div>
+            <div style="margin-top:4px; font-size:10px; color:#6b7280;">
+              📅 ${extractDate(route)}
+            </div>
+            <div style="margin-top:8px;">
+              <span style="
+                font-size:10px;
+                font-weight:900;
+                color:white;
+                background:${statusToColor(route.status)};
+                padding:3px 8px;
+                border-radius:6px;
+                display:inline-block;
+              ">
+                ${statusLabel(route.status)}
+              </span>
+            </div>
+          </div>
+        `);
 
-    <div style="color:#6b7280; font-size:10px; margin-top:2px;">
-      ${route.cadena || ''} · ${route.codigo_local || ''}
-    </div>
-
-    <div style="margin-top:6px; font-weight:700; font-size:11px;">
-      👤 ${route.usuario_nombre}
-    </div>
-
-    <div style="margin-top:4px; font-size:10px; color:#6b7280;">
-      📅 ${extractDate(route)}
-    </div>
-
-    <div style="margin-top:8px;">
-      <span style="
-        font-size:10px;
-        font-weight:900;
-        color:white;
-        background:${statusToColor(route.status)};
-        padding:3px 8px;
-        border-radius:6px;
-        display:inline-block;
-      ">
-        ${statusLabel(route.status)}
-      </span>
-    </div>
-
-  </div>
-`);
-
-el.addEventListener("mouseenter", () => {
-  popup.setLngLat([lng, lat]).addTo(map.current);
-});
-
-el.addEventListener("mouseleave", () => {
-  popup.remove();
-});
-
+        el.addEventListener("mouseenter", () => popup.setLngLat([lng, lat]).addTo(map.current));
+        el.addEventListener("mouseleave", () => popup.remove());
       });
 
       if (hasCoords && !didInitialFit.current) {
-  map.current.fitBounds(bounds, { padding: 80, duration: 1000 });
-  didInitialFit.current = true;
-}
+        map.current.fitBounds(bounds, { padding: 80, duration: 1000 });
+        didInitialFit.current = true;
+      }
     };
 
     if (map.current.isStyleLoaded()) paintMarkers();
     else map.current.once('style.load', paintMarkers);
   }, [filteredRoutes]);
 
-  // 🚩 FIX: Configuración robusta para volar al punto seleccionado
   const flyToRoute = (route) => {
     const lat = parseFloat(route.lat);
     const lng = parseFloat(route.lng);
@@ -339,13 +311,12 @@ el.addEventListener("mouseleave", () => {
     setSelectedRoute(route);
     
     map.current.flyTo({ 
-  center: [lng, lat],
-  zoom: Math.min(map.current.getZoom(), 14),
-  duration: 1200,
-  essential: true
-});
+      center: [lng, lat],
+      zoom: Math.min(map.current.getZoom(), 14),
+      duration: 1200,
+      essential: true
+    });
 
-    // Ocultar panel en móviles para ver el mapa
     if (window.innerWidth < 1024) setPanelOpen(false);
   };
 
@@ -356,7 +327,7 @@ el.addEventListener("mouseleave", () => {
 
   return (
     <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/50">
-          {/* HEADER */}
+      {/* HEADER */}
       <div className="bg-white border-b border-gray-100 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
         <div>
           <div className="flex items-center gap-3">
@@ -382,9 +353,10 @@ el.addEventListener("mouseleave", () => {
         </div>
       </div>
 
-      {/* CONTENIDO */}
-      <div className="flex-1 flex flex-col p-4 md:p-8 gap-4 md:gap-6 overflow-hidden relative">
+      {/* CONTENIDO PRINCIPAL */}
+      <div className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 gap-4 md:gap-6 overflow-hidden relative">
 
+        {/* RESUMEN RUTAS */}
         <div className="bg-white rounded-[1.5rem] border border-gray-100 shadow-sm p-4 md:p-5 flex items-center gap-4 md:gap-8 overflow-x-auto shrink-0">
           <div className="flex items-center gap-3 shrink-0">
             <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">Resumen Rutas</p>
@@ -414,227 +386,143 @@ el.addEventListener("mouseleave", () => {
           </div>
         </div>
 
-        {/* MAPA */}
-        <div className="flex-[2] min-h-[280px] bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden">
-          {!loading && routes.length === 0 && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
-              <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300"><FiAlertCircle size={32} /></div>
-              <p className="font-black uppercase text-xs tracking-widest">No hay rutas encontradas</p>
-            </div>
-          )}
-          <div ref={mapContainer} className="w-full h-full" />
-          <button
-            onClick={() => setPanelOpen(!panelOpen)}
-            className="absolute top-6 left-6 z-10 bg-gray-900 text-white shadow-xl shadow-gray-900/20 rounded-2xl p-4 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <FiList size={20} />
-            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:block">Jerarquía</span>
-          </button>
-          {loading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
-              <div className="w-16 h-16 border-4 border-gray-100 border-t-[#87be00] rounded-full animate-spin"></div>
-            </div>
-          )}
-        </div>
+        {/* ZONA DIVIDIDA: MAPA Y PANEL LADO A LADO EN DESKTOP */}
+        <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 min-h-0 relative">
+          
+          {/* MAPA */}
+          <div className="flex-1 lg:flex-[2] xl:flex-[3] min-h-[350px] lg:min-h-0 bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden flex flex-col">
+            {!loading && routes.length === 0 && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
+                <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300"><FiAlertCircle size={32} /></div>
+                <p className="font-black uppercase text-xs tracking-widest">No hay rutas encontradas</p>
+              </div>
+            )}
+            <div ref={mapContainer} className="flex-1 w-full h-full" />
+            
+            <button
+              onClick={() => setPanelOpen(!panelOpen)}
+              className="absolute top-6 left-6 z-10 bg-gray-900 text-white shadow-xl shadow-gray-900/20 rounded-2xl p-4 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <FiList size={20} />
+              <span className="text-[10px] font-black uppercase tracking-widest hidden sm:block">{panelOpen ? 'Ocultar' : 'Jerarquía'}</span>
+            </button>
+            
+            {loading && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                <div className="w-16 h-16 border-4 border-gray-100 border-t-[#87be00] rounded-full animate-spin"></div>
+              </div>
+            )}
+          </div>
 
-        {/* PANEL JERÁRQUICO */}
-        <div className={`
-          transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] overflow-hidden shrink-0
-          ${panelOpen ? 'max-h-[45vh] sm:max-h-[40vh] lg:max-h-[360px] opacity-100' : 'max-h-0 opacity-0'}
-        `}>
-          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden h-[45vh] sm:h-[40vh] lg:h-[360px]">
-            <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between bg-white shrink-0">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                <FiList size={16} className="text-[#87be00]" /> Despliegue Jerárquico
-              </p>
-            </div>
+          {/* PANEL JERÁRQUICO - REDISEÑO MINIMALISTA */}
+          <div className={`
+            transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] overflow-hidden shrink-0 flex flex-col
+            ${panelOpen ? 'max-h-[50vh] lg:max-h-none lg:h-full lg:w-[350px] xl:w-[400px] opacity-100' : 'max-h-0 lg:max-h-none lg:w-0 opacity-0'}
+          `}>
+            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full overflow-hidden">
+              <div className="px-5 py-5 border-b border-gray-50 flex items-center justify-between bg-white shrink-0">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
+                  <FiList size={16} className="text-[#87be00]" /> Despliegue Jerárquico
+                </p>
+              </div>
 
-            <div className="overflow-y-auto flex-1 custom-scrollbar p-3">
-              {Object.keys(groupedData).length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full py-10 gap-3 text-gray-300">
-                  <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center"><FiMapPin size={20} /></div>
-                  <p className="text-[10px] font-black uppercase tracking-widest">Sin asignaciones</p>
-                </div>
-              ) : (
-                Object.entries(groupedData).map(([supName, supData]) => {
-                  const isSupExpanded = expandedSupervisors[supName];
-                  const hasLocales = Object.keys(supData.localesMap).length > 0;
-                  const hasUsuarios = Object.keys(supData.usuariosMap).length > 0;
+              <div className="overflow-y-auto flex-1 custom-scrollbar p-4 space-y-4">
+                {Object.keys(groupedData).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-gray-300">
+                    <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center"><FiMapPin size={20} /></div>
+                    <p className="text-[10px] font-black uppercase tracking-widest">Sin asignaciones</p>
+                  </div>
+                ) : (
+                  Object.entries(groupedData).map(([supName, supData]) => {
+                    const isSupExpanded = expandedSupervisors[supName];
+                    const hasLocales = Object.keys(supData.localesMap).length > 0;
+                    
+                    return (
+                      <div key={supName} className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm">
+                        
+                        <button
+                          onClick={() => {
+                            toggleExpandSupervisor(supName);
+                            setSelectedSupervisor(prev => prev === supName ? null : supName);
+                          }}
+                          className={`w-full flex items-center p-4 transition-all ${selectedSupervisor === supName ? 'bg-[#87be00]/10 border-b border-[#87be00]/20' : 'bg-white hover:bg-gray-50 border-b border-transparent'}`}
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-gray-900 text-white flex items-center justify-center font-black text-sm shadow-md shrink-0">
+                            {supName.charAt(0)}
+                          </div>
+                          <div className="flex-1 text-left px-3 min-w-0">
+                            <p className="text-[9px] font-black text-[#87be00] uppercase tracking-[0.2em] mb-0.5 flex items-center gap-1">
+                              <FiUserCheck size={12} /> Supervisor
+                            </p>
+                            <p className="text-sm font-black text-gray-900 uppercase italic truncate leading-tight">
+                              {supName}
+                            </p>
+                          </div>
+                          <FiChevronRight size={18} className={`text-gray-300 transition-transform ${isSupExpanded ? 'rotate-90 text-[#87be00]' : ''}`} />
+                        </button>
 
-                  return (
-                    <div key={supName} className="mb-4 border border-gray-100 rounded-3xl bg-gray-50/30 overflow-hidden shadow-sm">
-                      <button
-                        onClick={() => {
-                          toggleExpandSupervisor(supName);
-                          setSelectedSupervisor(prev => prev === supName ? null : supName);
-                        }}
-                        className={`w-full flex items-center p-4 transition-all border-b border-gray-100 group ${selectedSupervisor === supName ? 'bg-[#87be00]/10 ring-1 ring-[#87be00]/30' : 'bg-white hover:bg-gray-50'}`}
-                      >
-                        <div className="w-10 h-10 rounded-[12px] bg-gray-900 text-white flex items-center justify-center font-black text-sm shadow-md group-hover:scale-105 transition-transform shrink-0">
-                          {supName.charAt(0)}
-                        </div>
-                        <div className="flex-1 text-left px-4 min-w-0">
-                          <p className="text-[9px] font-black text-[#87be00] uppercase tracking-[0.2em] mb-0.5 flex items-center gap-1">
-                            <FiUserCheck size={12} /> Supervisor
-                          </p>
-                          <p className="text-sm font-black text-gray-900 uppercase italic truncate leading-tight">
-                            {supName}
-                          </p>
-                        </div>
-                        <FiChevronRight size={18} className={`text-gray-300 group-hover:text-gray-600 transition-all duration-300 ${isSupExpanded ? 'rotate-90' : ''}`} />
-                      </button>
-
-                      <div className={`transition-all duration-500 ease-in-out ${isSupExpanded ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                        <div className="p-2 space-y-3">
-                          {hasLocales && (
-                            <div className="bg-white rounded-2xl border border-gray-100 pb-1 shadow-sm">
-                              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50">
-                                <FiMapPin size={14} className="text-[#87be00] shrink-0" />
-                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">Locales Asignados</p>
-                                <span className="ml-auto bg-[#87be00]/10 text-[#87be00] px-2 py-0.5 rounded-md text-[10px] font-black">{Object.keys(supData.localesMap).length}</span>
-                              </div>
-                              <div className="p-1">
-                                {Object.entries(supData.localesMap).map(([localKey, localData]) => {
-                                  const uniqueLocalKey = `${supName}-${localKey}`;
-                                  const isLocalExpanded = expandedLocales[uniqueLocalKey];
-                                  const allRoutes = Object.values(localData.routesByUser).flat();
-                                  const p = allRoutes.filter(r => r.status === 'PENDING').length;
-                                  const ep = allRoutes.filter(r => r.status === 'IN_PROGRESS').length;
-                                  const c = allRoutes.filter(r => r.status === 'COMPLETED').length;
-
-                                  return (
-                                    <div key={localKey} className="mx-1 mb-1">
-                                      <button onClick={() => toggleExpandLocale(uniqueLocalKey)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-all group">
-                                        <div className="w-8 h-8 rounded-[10px] bg-[#87be00]/10 text-[#87be00] flex items-center justify-center shrink-0">
-                                          <FiMapPin size={16} />
-                                        </div>
-                                        <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-xs font-black uppercase italic text-gray-800 truncate leading-none mb-1 group-hover:text-[#87be00]">
-                                            {localData.nombre_mostrar}
-                                          </p>
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-[9px] font-bold text-gray-400 uppercase">{localData.codigo} · {localData.comuna}</span>
-                                            {p>0 && <span className="flex items-center gap-1 text-[9px] font-black text-red-400 ml-1"><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span>{p}</span>}
-                                            {ep>0 && <span className="flex items-center gap-1 text-[9px] font-black text-[#87be00] ml-1"><span className="w-2 h-2 rounded-full bg-[#87be00]"></span>{ep}</span>}
-                                            {c>0 && <span className="flex items-center gap-1 text-[9px] font-black text-blue-500 ml-1"><span className="w-2 h-2 rounded-full bg-[#2563eb]"></span>{c}</span>}
-                                          </div>
-                                        </div>
-                                        <FiChevronRight size={16} className={`text-gray-300 group-hover:text-[#87be00] transition-transform ${isLocalExpanded ? 'rotate-90' : ''}`} />
-                                      </button>
-                                      <div className={`overflow-hidden transition-all duration-300 ${isLocalExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                                        <div className="ml-4 border-l-2 border-[#87be00]/20 pl-2 py-1 space-y-1">
-                                          {Object.entries(localData.routesByUser).map(([userName, userRoutes]) => {
-                                            const uniqueUserKey = `${supName}-${localKey}-${userName}`;
-                                            const isUserExpanded = expandedLocaleUsers[uniqueUserKey];
-                                            return (
-                                              <div key={userName}>
-                                                <button onClick={() => toggleExpandLocaleUser(uniqueUserKey)} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-50 group">
-                                                  <FiUsers size={12} className="text-gray-400 group-hover:text-[#87be00]" />
-                                                  <p className="text-[10px] font-black uppercase text-gray-600 truncate flex-1 text-left">{userName}</p>
-                                                  <span className="text-[9px] font-black text-gray-400">{userRoutes.length} req</span>
-                                                  <FiChevronRight size={12} className={`text-gray-300 ${isUserExpanded ? 'rotate-90' : ''}`} />
-                                                </button>
-                                                <div className={`overflow-hidden transition-all duration-300 ${isUserExpanded ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                                                  <div className="ml-3 pl-2 border-l border-gray-100 space-y-1 mt-1 mb-2">
-                                                    {userRoutes.map((route, idx) => {
-                                                      const nombreVisible = route.local_nombre || route.cadena || 'Sin nombre';
-                                                      return (
-                                                        <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left p-2.5 rounded-lg flex items-center gap-2 ${selectedRoute === route ? 'bg-[#87be00]/10 ring-1 ring-[#87be00]/30' : 'hover:bg-gray-50'}`}>
-                                                          <span className="w-2 h-2 rounded-full block shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
-                                                          <span className="text-[10px] font-black uppercase text-gray-700 flex-1 truncate">{nombreVisible}</span>
-                                                          <span className={`text-[8px] font-black uppercase px-2 py-1 rounded border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
-                                                        </button>
-                                                      );
-                                                    })}
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
+                        <div className={`transition-all duration-400 ease-in-out ${isSupExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                          <div className="p-2 space-y-1 bg-gray-50/50">
+                            {hasLocales && Object.entries(supData.localesMap).map(([localKey, localData]) => {
+                              const uniqueLocalKey = `${supName}-${localKey}`;
+                              const isLocalExpanded = expandedLocales[uniqueLocalKey];
+                              const allRoutes = Object.values(localData.routesByUser).flat();
+                              const ep = allRoutes.filter(r => r.status === 'IN_PROGRESS').length;
+                              
+                              return (
+                                <div key={localKey} className="pl-2">
+                                  <button onClick={() => toggleExpandLocale(uniqueLocalKey)} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors group">
+                                    <FiMapPin size={14} className="text-[#87be00] shrink-0" />
+                                    <div className="flex-1 min-w-0 text-left">
+                                      <p className="text-[10px] font-black uppercase text-gray-700 truncate group-hover:text-[#87be00] transition-colors">{localData.nombre_mostrar}</p>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
+                                    {ep > 0 && <span className="w-2 h-2 rounded-full bg-[#87be00] animate-pulse"></span>}
+                                    <FiChevronRight size={14} className={`text-gray-300 transition-transform ${isLocalExpanded ? 'rotate-90' : ''}`} />
+                                  </button>
 
-                          {hasUsuarios && (
-                            <div className="bg-white rounded-2xl border border-gray-100 pb-1 shadow-sm mt-3">
-                              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-50">
-                                <FiUsers size={14} className="text-blue-500 shrink-0" />
-                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-500">Usuarios Asignados</p>
-                                <span className="ml-auto bg-blue-50 text-blue-500 px-2 py-0.5 rounded-md text-[10px] font-black">{Object.keys(supData.usuariosMap).length}</span>
-                              </div>
-                              <div className="p-1">
-                                {Object.entries(supData.usuariosMap).map(([userName, userRoutes]) => {
-                                  const uniqueUserKey = `${supName}-${userName}`;
-                                  const isUserExpanded = expandedUsers[uniqueUserKey];
-                                  const p = userRoutes.filter(r => r.status === 'PENDING').length;
-                                  const ep = userRoutes.filter(r => r.status === 'IN_PROGRESS').length;
-                                  const c = userRoutes.filter(r => r.status === 'COMPLETED').length;
-
-                                  return (
-                                    <div key={userName} className="mx-1 mb-1">
-                                      <button onClick={() => toggleExpandUser(uniqueUserKey)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-blue-50/50 transition-all group">
-                                        <div className="w-8 h-8 rounded-[10px] bg-blue-50 text-blue-500 flex items-center justify-center font-black text-sm shrink-0">
-                                          {userName.charAt(0)}
-                                        </div>
-                                        <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-xs font-black uppercase italic text-gray-800 truncate leading-none mb-1 group-hover:text-blue-600">{userName}</p>
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            {p>0 && <span className="flex items-center gap-1 text-[9px] font-black text-red-400"><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span>{p}</span>}
-                                            {ep>0 && <span className="flex items-center gap-1 text-[9px] font-black text-[#87be00]"><span className="w-2 h-2 rounded-full bg-[#87be00]"></span>{ep}</span>}
-                                            {c>0 && <span className="flex items-center gap-1 text-[9px] font-black text-blue-500"><span className="w-2 h-2 rounded-full bg-[#2563eb]"></span>{c}</span>}
-                                            <span className="text-[9px] font-black text-gray-400 ml-auto">{userRoutes.length} rutas</span>
-                                          </div>
-                                        </div>
-                                        <FiChevronRight size={16} className={`text-gray-300 group-hover:text-blue-500 transition-transform ${isUserExpanded ? 'rotate-90' : ''}`} />
-                                      </button>
-                                      <div className={`overflow-hidden transition-all duration-300 ${isUserExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                                        <div className="ml-4 border-l-2 border-blue-100 pl-2 py-1 space-y-1 mb-2">
-                                          {userRoutes.map((route, idx) => {
-                                            const nombreVisible = route.local_nombre || route.cadena || 'Sin nombre';
-                                            return (
-                                              <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left p-3 rounded-lg flex items-center gap-3 ${selectedRoute === route ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'}`}>
-                                                <span className="w-2.5 h-2.5 rounded-full block shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
-                                                <div className="flex-1 min-w-0">
-                                                  <p className="text-[10px] font-black uppercase text-gray-700 truncate leading-none mb-1.5">{nombreVisible}</p>
-                                                  <p className="text-[9px] font-bold text-gray-400 uppercase truncate">{route.codigo_local || 'S/N'} · {route.comuna}</p>
-                                                </div>
-                                                <span className={`text-[8px] font-black uppercase px-2 py-1 rounded border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
+                                  <div className={`overflow-hidden transition-all duration-300 ${isLocalExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                    <div className="ml-3 pl-3 border-l-2 border-gray-200 py-1 my-1 space-y-1">
+                                      {Object.entries(localData.routesByUser).map(([userName, userRoutes]) => (
+                                        userRoutes.map((route, idx) => (
+                                          <button 
+                                            key={`${userName}-${idx}`} 
+                                            onClick={() => flyToRoute(route)} 
+                                            className={`w-full text-left p-2 rounded-md flex items-center gap-2 transition-all ${selectedRoute === route ? 'bg-white shadow-sm ring-1 ring-[#87be00]/30' : 'hover:bg-white/60'}`}
+                                          >
+                                            <span className="w-1.5 h-1.5 rounded-full block shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-[9px] font-black uppercase text-gray-600 truncate">{userName}</p>
+                                            </div>
+                                            <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
+                                          </button>
+                                        ))
+                                      ))}
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* TABLA DETALLE */}
         {selectedSupervisor && (
-          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 mt-4 animate-in fade-in zoom-in duration-300">
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 shrink-0 animate-in fade-in zoom-in duration-300">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-[#87be00] mb-4">
               Detalle de Rutas: {selectedSupervisor}
             </h3>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[300px] custom-scrollbar">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-gray-100">
+                  <tr className="border-b border-gray-100 bg-white sticky top-0">
                     <th className="p-3 text-[10px] font-black uppercase text-gray-400">Supervisor</th>
                     <th className="p-3 text-[10px] font-black uppercase text-gray-400">Mercaderista</th>
                     <th className="p-3 text-[10px] font-black uppercase text-gray-400">Fecha</th>
@@ -647,24 +535,21 @@ el.addEventListener("mouseleave", () => {
                   {filteredTableRoutes.map((r, i) => (
                     <tr 
                       key={i} 
-                      onClick={() => flyToRoute(r)} // 🚩 Vuela al marcador al hacer clic
+                      onClick={() => flyToRoute(r)}
                       className={`border-b cursor-pointer transition-colors ${
-                        selectedRoute === r 
-                          ? 'bg-[#87be00]/20 border-[#87be00]/30' 
-                          : 'border-gray-50 hover:bg-gray-50/50'
+                        selectedRoute === r ? 'bg-[#87be00]/10 border-[#87be00]/20' : 'border-gray-50 hover:bg-gray-50/50'
                       }`}
                     >
-                      <td className="p-3 text-xs font-bold text-gray-700">{r.supervisor_nombre || 'N/A'}</td>
-                      <td className="p-3 text-xs font-bold text-gray-700">{r.usuario_nombre}</td>
-                     <td className="p-3 text-xs font-bold text-gray-700">
-                     <div className="flex flex-col">
-                       <span>{extractDate(r)}</span>
-                       <span className="text-[10px] text-gray-400 font-bold"> Hora de inicio: {extractPlanningTime(r)}
-                       </span>
-                     </div>
-                   </td>
-                      <td className="p-3 text-xs font-bold text-gray-700">{r.cadena}</td>
-                      <td className="p-3 text-xs font-bold text-gray-700">{r.codigo_local}</td>
+                      <td className="p-3 text-[11px] font-bold text-gray-700">{r.supervisor_nombre || 'N/A'}</td>
+                      <td className="p-3 text-[11px] font-bold text-gray-700">{r.usuario_nombre}</td>
+                      <td className="p-3 text-[11px] font-bold text-gray-700">
+                        <div className="flex flex-col">
+                          <span>{extractDate(r)}</span>
+                          <span className="text-[9px] text-gray-400 mt-0.5">Inicio: {extractPlanningTime(r)}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-[11px] font-bold text-gray-700">{r.cadena}</td>
+                      <td className="p-3 text-[11px] font-bold text-gray-700">{r.codigo_local}</td>
                       <td className="p-3">
                         <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${statusBg(r.status)}`}>
                           {statusLabel(r.status)}
@@ -677,7 +562,6 @@ el.addEventListener("mouseleave", () => {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

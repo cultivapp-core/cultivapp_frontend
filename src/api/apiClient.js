@@ -32,22 +32,22 @@ const request = async (endpoint, options = {}) => {
   };
 
   // 🚩 LOG DE DIAGNÓSTICO TEMPORAL — quitar después de resolver el bug
-  console.log("🌐 [apiClient] DISPARANDO FETCH:", {
+ {/* console.log("🌐 [apiClient] DISPARANDO FETCH:", {
     method: config.method,
     url: finalUrl,
     hasToken: !!token,
     bodyPreview: typeof config.body === "string" ? config.body.slice(0, 300) : config.body,
-  });
+  }); */}
 
   try {
     const response = await fetch(finalUrl, config);
 
     // 🚩 LOG DE DIAGNÓSTICO TEMPORAL
-    console.log("🌐 [apiClient] RESPUESTA RECIBIDA:", {
+   {/* console.log("🌐 [apiClient] RESPUESTA RECIBIDA:", {
       url: finalUrl,
       status: response.status,
       ok: response.ok,
-    });
+    });*/}
 
     // 🚩 MANEJO DE SESIÓN EXPIRADA (SUAVIZADO)
     if (response.status === 401) {
@@ -75,14 +75,14 @@ const request = async (endpoint, options = {}) => {
 
   } catch (error) {
     // 🚩 LOG DE DIAGNÓSTICO TEMPORAL
-    console.error("🌐 [apiClient] ERROR EN FETCH/REQUEST:", {
+   {/* console.error("🌐 [apiClient] ERROR EN FETCH/REQUEST:", {
       url: finalUrl,
       method: config.method,
       errorName: error?.name,
       errorMessage: error?.message,
       errorStatus: error?.status,
       fullError: error,
-    });
+    });*/}
 
     const isNetworkError = error.name === "TypeError" || error.message?.includes("Failed to fetch");
     const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(options.method);

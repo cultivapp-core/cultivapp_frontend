@@ -114,7 +114,7 @@ const GpsMonitor = () => {
       else setRefreshing(true);
 
       const [planningRes, liveRes] = await Promise.all([
-        api.get("/planning"),
+        api.get("/planning/data"),
         api.get("/routes/monitoring/live")
       ]);
 

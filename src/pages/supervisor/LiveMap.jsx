@@ -110,8 +110,10 @@ const LiveMap = () => {
 
       const [planningRes, liveRes] = await Promise.all([
         api.get("/routes/planning/supervisor"), // Llama al endpoint correcto del supervisor
-        api.get("/routes/monitoring/supervisor-live") // Llama al endpoint correcto del supervisor
+        api.get("/routes/monitoring/supervisor-live") // Llama al endpoint correcto del supervisor     
       ]);
+      console.log("Planificación recibida:", planningRes.data);
+    console.log("Rutas en vivo recibidas:", liveRes.data);
 
       setRoutes(Array.isArray(planningRes.data) ? planningRes.data : (Array.isArray(planningRes) ? planningRes : []));
       
