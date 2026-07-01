@@ -226,8 +226,10 @@ const RoutePlanningMap = () => {
     }
   }, [panelOpen]);
 
+  // 📍 RENDERIZADO DE MARCADORES EN EL MAPA CON HOVER CORREGIDO
   useEffect(() => {
     if (!map.current) return;
+    
     const paintMarkers = () => {
       markers.current.forEach((m) => m.remove());
       markers.current = [];
@@ -241,11 +243,16 @@ const RoutePlanningMap = () => {
         if (isNaN(lat) || isNaN(lng)) return;
 
         hasCoords = true;
-        const el = document.createElement("div");
-        el.style.cssText = `width:24px;height:24px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.3);cursor:pointer;transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
-        el.style.transition = "transform 0.2s ease";
 
-        const nombreVisible = route.local_nombre || route.cadena || 'Local sin nombre';
+        // ⚠️ Envoltorio (Hitbox) invisible que detecta el mouse. No lo animamos.
+        const el = document.createElement("div");
+        el.style.cssText = `width:24px;height:24px;cursor:pointer;`;
+
+        // 🎯 Círculo visual (Dot) que se anima sin afectar la detección del mouse.
+        const dot = document.createElement("div");
+        dot.style.cssText = `width:24px;height:24px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.3);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
+        
+        el.appendChild(dot);
 
         const marker = new mapboxgl.Marker(el)
         .setLngLat([lng, lat])
@@ -255,42 +262,35 @@ const RoutePlanningMap = () => {
         bounds.extend([lng, lat]);
 
         const popup = new mapboxgl.Popup({
+          offset: 15,
           closeButton: false,
           closeOnClick: false,
-          offset: 25,
-          className: "custom-popup"
         }).setHTML(`
-          <div style="font-family: Outfit; font-size: 11px; min-width: 180px;">
-            <div style="font-weight: 900; text-transform: uppercase; font-size: 12px;">
-              ${nombreVisible}
-            </div>
-            <div style="color:#6b7280; font-size:10px; margin-top:2px;">
-              ${route.cadena || ''} · ${route.codigo_local || ''}
-            </div>
-            <div style="margin-top:6px; font-weight:700; font-size:11px;">
-              👤 ${route.usuario_nombre}
-            </div>
-            <div style="margin-top:4px; font-size:10px; color:#6b7280;">
-              📅 ${extractDate(route)}
+          <div style="font-family:'Outfit';padding:10px 6px;min-width:200px;pointer-events:none;">
+            <p style="font-weight:900;margin:0 0 8px 0;font-size:12px;color:#111827;text-transform:uppercase;letter-spacing:-0.02em;">${route.cadena || 'Sin nombre'}</p>
+            <div style="font-size:10px;font-weight:700;color:#374151;line-height:1.9;">
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Código del local:</span><br/>${route.codigo_local || 'S/N'}</div>
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Dirección:</span><br/>${route.direccion || route.comuna || 'Sin dirección'}</div>
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Mercaderista:</span><br/>${route.usuario_nombre || 'Sin asignar'}</div>
             </div>
             <div style="margin-top:8px;">
-              <span style="
-                font-size:10px;
-                font-weight:900;
-                color:white;
-                background:${statusToColor(route.status)};
-                padding:3px 8px;
-                border-radius:6px;
-                display:inline-block;
-              ">
+              <span style="font-size:8px;font-weight:900;color:white;background:${statusToColor(route.status)};padding:3px 8px;border-radius:6px;display:inline-block;text-transform:uppercase;letter-spacing:0.05em;">
                 ${statusLabel(route.status)}
               </span>
             </div>
           </div>
         `);
 
-        el.addEventListener("mouseenter", () => popup.setLngLat([lng, lat]).addTo(map.current));
-        el.addEventListener("mouseleave", () => popup.remove());
+        // Eventos acoplados para animar solo el interior y controlar el Popup
+        el.addEventListener("mouseenter", () => {
+          dot.style.transform = 'scale(1.4)';
+          popup.setLngLat([lng, lat]).addTo(map.current);
+        });
+        
+        el.addEventListener("mouseleave", () => {
+          dot.style.transform = 'scale(1)';
+          popup.remove();
+        });
       });
 
       if (hasCoords && !didInitialFit.current) {
