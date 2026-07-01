@@ -78,6 +78,7 @@ const LiveMap = () => {
   const map = useRef(null);
   
   const routeMarkers = useRef([]);
+  const routePopups = useRef([]);
   const liveMarkers = useRef([]);
   const circleLayersRef = useRef([]);
   const pollRef = useRef(null);
@@ -112,8 +113,9 @@ const LiveMap = () => {
         api.get("/routes/planning/supervisor"), // Llama al endpoint correcto del supervisor
         api.get("/routes/monitoring/supervisor-live") // Llama al endpoint correcto del supervisor     
       ]);
-      console.log("Planificación recibida:", planningRes.data);
-    console.log("Rutas en vivo recibidas:", liveRes.data);
+      console.log("Registro completo:", JSON.stringify(planningRes?.[0], null, 2));
+      console.log("¿Tiene dirección el primer registro?", planningRes?.[0]?.direccion);
+      console.log("Rutas en vivo recibidas:", liveRes.data);
 
       setRoutes(Array.isArray(planningRes.data) ? planningRes.data : (Array.isArray(planningRes) ? planningRes : []));
       
@@ -210,12 +212,24 @@ const LiveMap = () => {
     }
   }, [panelOpen]);
 
+  // 📐 Mantiene el mapa correctamente dimensionado ante cualquier cambio de tamaño del contenedor
+  useEffect(() => {
+    if (!mapContainer.current) return;
+    const resizeObserver = new ResizeObserver(() => {
+      if (map.current) map.current.resize();
+    });
+    resizeObserver.observe(mapContainer.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
   useEffect(() => {
     if (!map.current) return;
 
     const paintMap = () => {
       routeMarkers.current.forEach((m) => m.remove());
       routeMarkers.current = [];
+      routePopups.current.forEach((p) => p.remove());
+      routePopups.current = [];
       liveMarkers.current.forEach((m) => m.remove());
       liveMarkers.current = [];
       circleLayersRef.current.forEach((id) => {
@@ -231,24 +245,59 @@ const LiveMap = () => {
       filteredRoutes.forEach((route) => {
         if (!route.lat || !route.lng) return;
         hasCoords = true;
-        const el = document.createElement("div");
-        el.style.cssText = `width:22px;height:22px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.2);cursor:pointer;transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
-        el.onmouseenter = () => el.style.transform = 'scale(1.4)';
-        el.onmouseleave = () => el.style.transform = 'scale(1)';
+        const lng = parseFloat(route.lng);
+        const lat = parseFloat(route.lat);
 
+        // ⚠️ Este wrapper es el que Mapbox mueve con su propio transform (translate) para
+        // ubicarlo en el mapa. Nunca se le debe tocar el transform manualmente o el punto
+        // "salta"/corre de su posición real.
+        const el = document.createElement("div");
+        el.style.cssText = `width:22px;height:22px;cursor:pointer;`;
+
+        // 🎯 El círculo visual va en un elemento hijo aparte: aquí sí podemos animar el
+        // transform (scale) libremente al hacer hover, sin afectar el posicionamiento del punto.
+        const dot = document.createElement("div");
+        dot.style.cssText = `width:22px;height:22px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.2);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
+        el.appendChild(dot);
+
+        // 📍 El punto queda siempre visible en el mapa (no se remueve al hacer click ni al perder el hover)
         const marker = new mapboxgl.Marker(el)
-          .setLngLat([parseFloat(route.lng), parseFloat(route.lat)])
-          .setPopup(new mapboxgl.Popup({ offset: 15, closeButton: false }).setHTML(`
-            <div style="font-family:'Outfit';padding:8px 4px;text-transform:uppercase;">
-              <p style="font-weight:900;margin:0;font-size:11px;color:#111827;letter-spacing:-0.02em;">${route.cadena || 'Sin nombre'}</p>
-              <p style="font-size:9px;font-weight:700;color:#9ca3af;margin:3px 0 0 0;">${route.codigo_local || 'S/N'} | ${route.comuna || ''}</p>
-              ${route.usuario_nombre ? `<p style="font-size:9px;font-weight:700;color:#3b82f6;margin:3px 0 0 0;">${route.usuario_nombre}</p>` : ''}
-            </div>
-          `))
+          .setLngLat([lng, lat])
           .addTo(map.current);
 
+        // 🪧 Card informativo que aparece solo al pasar el mouse sobre el punto
+        const popup = new mapboxgl.Popup({
+          offset: 15,
+          closeButton: false,
+          closeOnClick: false,
+        }).setHTML(`
+          <div style="font-family:'Outfit';padding:10px 6px;min-width:200px;">
+            <p style="font-weight:900;margin:0 0 8px 0;font-size:12px;color:#111827;text-transform:uppercase;letter-spacing:-0.02em;">${route.cadena || 'Sin nombre'}</p>
+            <div style="font-size:10px;font-weight:700;color:#374151;line-height:1.9;">
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Código del local:</span><br/>${route.codigo_local || 'S/N'}</div>
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Dirección:</span><br/>${route.direccion || route.comuna || 'Sin dirección'}</div>
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Mercaderista:</span><br/>${route.usuario_nombre || 'Sin asignar'}</div>
+            </div>
+            <div style="margin-top:8px;">
+              <span style="font-size:8px;font-weight:900;color:white;background:${statusToColor(route.status)};padding:3px 8px;border-radius:6px;display:inline-block;text-transform:uppercase;letter-spacing:0.05em;">
+                ${statusLabel(route.status)}
+              </span>
+            </div>
+          </div>
+        `);
+
+        el.addEventListener("mouseenter", () => {
+          dot.style.transform = 'scale(1.4)';
+          popup.setLngLat([lng, lat]).addTo(map.current);
+        });
+        el.addEventListener("mouseleave", () => {
+          dot.style.transform = 'scale(1)';
+          popup.remove();
+        });
+
         routeMarkers.current.push(marker);
-        bounds.extend([parseFloat(route.lng), parseFloat(route.lat)]);
+        routePopups.current.push(popup);
+        bounds.extend([lng, lat]);
       });
 
       activeRoutes.forEach((route, index) => {
@@ -359,38 +408,39 @@ const LiveMap = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex p-4 md:p-8 gap-6 overflow-hidden relative">
-        <div className="flex-1 bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden">
-          {!loading && filteredRoutes.length === 0 && activeRoutes.length === 0 && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
-              <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300"><FiAlertCircle size={32} /></div>
-              <p className="font-black uppercase text-[10px] tracking-widest">
-                {searchTerm ? 'No hay resultados para tu búsqueda' : 'No hay datos encontrados'}
-              </p>
-            </div>
-          )}
-          <div ref={mapContainer} className="w-full h-full" />
-          <button
-            onClick={() => setPanelOpen(!panelOpen)}
-            className="absolute top-6 left-6 z-10 bg-gray-900 text-white shadow-xl shadow-gray-900/20 rounded-2xl p-3.5 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <FiList size={18} />
-            <span className="text-[9px] font-black uppercase tracking-widest hidden sm:block">Locales</span>
-          </button>
-          {loading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
-              <div className="w-16 h-16 border-4 border-gray-100 border-t-[#87be00] rounded-full animate-spin"></div>
-            </div>
-          )}
-        </div>
+      {/* CONTENIDO PRINCIPAL: mapa + resumen arriba, despliegue siempre abajo a todo el ancho */}
+      <div className="flex-1 flex flex-col p-4 md:p-8 gap-4 md:gap-6 overflow-y-auto relative min-h-0">
 
-        <div className={`
-          absolute lg:relative right-4 md:right-8 top-4 md:top-8 bottom-4 md:bottom-8 lg:right-0 lg:top-0 lg:bottom-0
-          transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-30 flex flex-col gap-4
-          ${panelOpen ? 'w-[calc(100%-2rem)] sm:w-80 translate-x-0 opacity-100' : 'w-0 translate-x-full lg:translate-x-10 opacity-0 pointer-events-none lg:w-0'}
-        `}>
+        {/* FILA SUPERIOR: MAPA + RESUMEN RUTAS */}
+        <div className="flex flex-col md:flex-row gap-4 md:gap-6 shrink-0 md:h-[480px]">
 
-          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 p-6 flex flex-col shrink-0">
+          {/* MAPA */}
+          <div className="h-[400px] md:h-full flex-1 min-w-0 bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden flex flex-col">
+            {!loading && filteredRoutes.length === 0 && activeRoutes.length === 0 && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
+                <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300"><FiAlertCircle size={32} /></div>
+                <p className="font-black uppercase text-[10px] tracking-widest">
+                  {searchTerm ? 'No hay resultados para tu búsqueda' : 'No hay datos encontrados'}
+                </p>
+              </div>
+            )}
+            <div ref={mapContainer} className="flex-1 w-full h-full" />
+            <button
+              onClick={() => setPanelOpen(!panelOpen)}
+              className="absolute top-6 left-6 z-10 bg-gray-900 text-white shadow-xl shadow-gray-900/20 rounded-2xl p-3.5 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <FiList size={18} />
+              <span className="text-[9px] font-black uppercase tracking-widest hidden sm:block">{panelOpen ? 'Ocultar' : 'Locales'}</span>
+            </button>
+            {loading && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                <div className="w-16 h-16 border-4 border-gray-100 border-t-[#87be00] rounded-full animate-spin"></div>
+              </div>
+            )}
+          </div>
+
+          {/* RESUMEN RUTAS: al lado derecho del mapa */}
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 p-6 flex flex-col shrink-0 w-full md:w-64 lg:w-72">
             <div className="flex items-center justify-between mb-5">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Resumen Rutas</p>
               <div className="flex items-center gap-2">
@@ -419,6 +469,13 @@ const LiveMap = () => {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* PANEL DE DESPLIEGUE: siempre debajo del mapa, a todo el ancho */}
+        <div className={`
+          transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] shrink-0 flex flex-col md:h-[380px]
+          ${panelOpen ? 'opacity-100' : 'max-h-0 overflow-hidden opacity-0 md:h-0'}
+        `}>
 
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden flex-1 min-h-0">
             <div className="px-6 py-5 border-b border-gray-50 flex flex-col gap-4 bg-white shrink-0">
