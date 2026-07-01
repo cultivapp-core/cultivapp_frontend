@@ -5,6 +5,18 @@ import {
 } from "react-icons/fi";
 import api from "../api/apiClient";
 import toast from "react-hot-toast";
+import { getWeeksOfMonthCalendar } from "../utils/helper";
+
+// FUNCIÓN AUXILIAR AGREGADA PARA EVITAR EL ERROR DE REFERENCIA
+const formatWeekLabel = (week) => {
+  if (!week?.start || !week?.end) return "";
+  const start = week.start.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" });
+  const end = week.end.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" });
+  return `${start} - ${end}`;
+};
+
+const getCellKey = (week, day) =>
+  `${week.start.toISOString().slice(0, 10)}-${day}`;
 
 const DAYS_OF_WEEK = [
   { id: 1, label: "Lunes", short: "L" }, { id: 2, label: "Martes", short: "M" }, 
@@ -13,26 +25,11 @@ const DAYS_OF_WEEK = [
   { id: 0, label: "Domingo", short: "D" },
 ];
 
-const WEEKS = [1, 2, 3, 4];
-
 const ROLES_TURNOS = [
   { id: "MERCADERISTA FULL", label: "Mercaderista Full Time" },
   { id: "MERCADERISTA PT",   label: "Mercaderista Part Time" },
 ];
 
-const getCurrentWeekNumber = () => {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  let firstDay = new Date(year, month, 1);
-  let dayOfWeek = firstDay.getDay() === 0 ? 7 : firstDay.getDay();
-  let firstMonday = new Date(firstDay);
-  if (dayOfWeek !== 1) firstMonday.setDate(1 + (8 - dayOfWeek));
-
-  const diffWeeks = Math.floor((today.getTime() - firstMonday.getTime()) / (1000 * 60 * 60 * 24 * 7));
-  const calculatedWeek = diffWeeks < 0 ? 1 : Math.min(diffWeeks + 1, 4);
-  return calculatedWeek;
-};
 
 // ─── COMPONENTE SELECTOR DE HORA EN FORMATO 24H ───────────────────────────────
 const TimePicker24h = ({ value, onChange, disabled }) => {
@@ -97,7 +94,20 @@ const ManageRoutesModal = ({
   const [codigoFilter, setCodigoFilter] = useState("");
 
   // 2. EL PINCEL Y LA SEMANA OBJETIVO
-  const [targetWeek, setTargetWeek] = useState(getCurrentWeekNumber());
+  const [targetWeek, setTargetWeek] = useState(null);
+  const [currentDate] = useState(new Date());
+
+  const WEEKS = useMemo(
+    () => getWeeksOfMonthCalendar(currentDate),
+    [currentDate]
+  );
+
+  useEffect(() => {
+    if (isOpen && WEEKS.length > 0) {
+      setTargetWeek(WEEKS[0]); // primera semana real
+    }
+  }, [isOpen, WEEKS]);
+
   const [brush, setBrush] = useState({
     user_id: "",
     rol: "",
@@ -128,12 +138,11 @@ const ManageRoutesModal = ({
 
   useEffect(() => {
     if (isOpen) {
-      setTargetWeek(getCurrentWeekNumber()); 
       setEraserMode(false);
       setIsUserDropdownOpen(false);
       setUserSearchTerm("");
       
-      if (initialData) {
+      if (initialData && targetWeek) {
         setLocalId(initialData.local_id || "");
         setCompanyId(initialData.company_id || currentUser?.company_id || "");
         setCadenaFilter("");
@@ -144,9 +153,8 @@ const ManageRoutesModal = ({
 
         if (initialData.scheduled_items && initialData.scheduled_items.length > 0) {
           initialData.scheduled_items.forEach(item => {
-            const w = parseInt(item.week, 10) || 1;
             const d = parseInt(item.day, 10);
-            const key = `${w}-${d}`;
+            const key = getCellKey(targetWeek, d);
             
             const itemUserId = item.user_id;
             if (!itemUserId) return; 
@@ -177,7 +185,7 @@ const ManageRoutesModal = ({
         setBrush({ user_id: "", rol: "", turno_id: "", start_time: "08:00", end_time: "16:00" });
       }
     }
-  }, [isOpen, initialData, currentUser?.company_id]);
+  }, [isOpen, initialData, targetWeek, currentUser?.company_id]);
 
   const fetchTurnos = async (cId) => {
     try {
@@ -246,8 +254,8 @@ const ManageRoutesModal = ({
     const newBrush = {
       ...brush,
       turno_id: tName,
-      start_time: tData?.entrada ? tData.entrada.slice(0,5) : brush.start_time,
-      end_time: tData?.salida ? tData.salida.slice(0,5) : brush.end_time,
+      start_time: tData?.entrada ? tData.entrada.slice(0, 5) : brush.start_time,
+      end_time: tData?.salida ? tData.salida.slice(0, 5) : brush.end_time,
     };
 
     setBrush(newBrush);
@@ -258,7 +266,7 @@ const ManageRoutesModal = ({
       setMatrix(prev => {
         const newState = { ...prev };
         diasObjetivo.forEach(d => {
-          const key = `${targetWeek}-${d}`;
+          const key = getCellKey(targetWeek, d);
           const currentCellArray = newState[key] || [];
           
           if (!currentCellArray.some(a => String(a.user_id) === String(newBrush.user_id))) {
@@ -269,184 +277,180 @@ const ManageRoutesModal = ({
         });
         return newState;
       });
-      toast.success(`Turno cargado en S${targetWeek}`, { icon: "⚡" });
+      toast.success("Turno cargado", { icon: "⚡" });
     }
   };
 
   const handleIndividualTimeChange = (field, value) => {
-  const newBrush = { ...brush, [field]: value };
-  setBrush(newBrush);
+    const newBrush = { ...brush, [field]: value };
+    setBrush(newBrush);
 
-  // 🚩 Auto-sincroniza: si ya hay celdas pintadas de este usuario en modo
-  // Individual, actualiza su horario en vivo (sin requerir re-clic)
-  if (newBrush.user_id && newBrush.turno_id === "INDIVIDUAL") {
-    setMatrix(prev => {
-      const newState = { ...prev };
-      Object.keys(newState).forEach(key => {
-        newState[key] = newState[key].map(a =>
-          String(a.user_id) === String(newBrush.user_id) && a.turno_id === "INDIVIDUAL"
-            ? { ...a, start_time: newBrush.start_time, end_time: newBrush.end_time }
-            : a
-        );
-      });
-      return newState;
-    });
-  }
-};
-
-  const handleCellClick = (w, d) => {
-  const key = `${w}-${d}`;
-
-  if (eraserMode) {
-    setMatrix(prev => {
-      const newState = { ...prev };
-      delete newState[key];
-      return newState;
-    });
-    return;
-  }
-
-  if (!brush.user_id || !brush.turno_id) {
-    toast.error("Configura tu pincel (Reponedor y Turno) antes de pintar", { icon: "🖌️" });
-    return;
-  }
-
-  setMatrix(prev => {
-    const currentCellArray = prev[key] || [];
-    const userIndex = currentCellArray.findIndex(a => String(a.user_id) === String(brush.user_id));
-    let newCellArray;
-
-    if (userIndex >= 0) {
-      // 🚩 Ya existe una asignación de este usuario en este día: la ACTUALIZAMOS
-      // con los datos actuales del pincel (hora, turno, rol), en vez de borrarla.
-      newCellArray = currentCellArray.map((a, idx) =>
-        idx === userIndex ? { ...brush } : a
-      );
-    } else {
-      newCellArray = [...currentCellArray, { ...brush }];
-    }
-
-    return { ...prev, [key]: newCellArray };
-  });
-};
-
-  const fillTargetWeek = (fillAllMonth = false) => {
-    if (!brush.user_id || !brush.turno_id) return toast.error("Configura tu pincel primero.");
-    const tData = turnosAgrupados.find(t => t.nombre === brush.turno_id);
-    const diasObjetivo = tData && tData.dias.length > 0 ? tData.dias : [1, 2, 3, 4, 5];
-    const semanasObjetivo = fillAllMonth ? [1, 2, 3, 4] : [targetWeek];
-
-    setMatrix(prev => {
-      const newState = { ...prev };
-      semanasObjetivo.forEach(w => {
-        diasObjetivo.forEach(d => { 
-          const key = `${w}-${d}`;
-          const currentCellArray = newState[key] || [];
-          if (!currentCellArray.some(a => String(a.user_id) === String(brush.user_id))) {
-            newState[key] = [...currentCellArray, { ...brush }];
-          } else {
-            newState[key] = currentCellArray.map(a => String(a.user_id) === String(brush.user_id) ? { ...brush } : a);
-          }
-        });
-      });
-      return newState;
-    });
-    toast.success(fillAllMonth ? "Copiado a todo el mes" : `S${targetWeek} rellenada`);
-  };
-
-  const clearWeek = () => {
-    if (window.confirm(`¿Seguro que deseas borrar TODA la planificación de la Semana ${targetWeek}?`)) {
+    if (newBrush.user_id && newBrush.turno_id === "INDIVIDUAL") {
       setMatrix(prev => {
         const newState = { ...prev };
         Object.keys(newState).forEach(key => {
-          if (key.startsWith(`${targetWeek}-`)) delete newState[key];
+          newState[key] = newState[key].map(a =>
+            String(a.user_id) === String(newBrush.user_id) && a.turno_id === "INDIVIDUAL"
+              ? { ...a, start_time: newBrush.start_time, end_time: newBrush.end_time }
+              : a
+          );
+        });
+        return newState;
+      });
+    }
+  };
+
+  const handleCellClick = (w, d) => {
+    console.log("--- DEBUG CLIC ---");
+    console.log("Día (d) recibido en función:", d);
+    console.log("Semana (w) recibida:", w);
+    const key = getCellKey(w, d);
+    console.log("Clave generada:", key);
+
+    if (eraserMode) {
+      setMatrix(prev => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
+      return;
+    }
+
+    if (!brush.user_id || !brush.turno_id) {
+      toast.error("Configura tu pincel (Reponedor y Turno) antes de pintar", { icon: "🖌️" });
+      return;
+    }
+
+    setMatrix(prev => {
+      const currentCellArray = prev[key] || [];
+      console.log("Guardando en Matrix con clave:", key);
+      const userIndex = currentCellArray.findIndex(a => String(a.user_id) === String(brush.user_id));
+      let newCellArray;
+
+      if (userIndex >= 0) {
+        newCellArray = currentCellArray.map((a, idx) =>
+          idx === userIndex ? { ...brush } : a
+        );
+      } else {
+        newCellArray = [...currentCellArray, { ...brush }];
+      }
+
+      return { ...prev, [key]: newCellArray };
+    });
+  };
+
+  const fillTargetWeek = (fillAllMonth = false) => {
+    const weeks = fillAllMonth ? WEEKS : [targetWeek];
+
+    setMatrix(prev => {
+      const newState = { ...prev };
+
+      weeks.forEach(w => {
+        [1, 2, 3, 4, 5, 6, 0].forEach(d => {
+          const key = getCellKey(w, d);
+
+          const current = newState[key] || [];
+
+          if (!current.some(a => a.user_id === brush.user_id)) {
+            newState[key] = [...current, { ...brush }];
+          }
+        });
+      });
+
+      return newState;
+    });
+  };
+
+  const clearWeek = () => {
+    if (window.confirm(`¿Seguro que deseas borrar la planificación de esta semana?`)) {
+      setMatrix(prev => {
+        const newState = { ...prev };
+        Object.keys(newState).forEach(key => {
+          if (key.startsWith(targetWeek.start.toISOString().slice(0, 10))) delete newState[key];
         });
         return newState;
       });
       setShowClearMenu(false);
-      toast.success(`Semana ${targetWeek} limpiada`);
+      toast.success(`Semana limpiada`);
     }
   };
 
   const clearMonth = () => {
-    if (window.confirm("¿Seguro que deseas borrar TODO el calendario del mes para todos los usuarios?")) {
+    if (window.confirm("¿Seguro que deseas borrar TODO el calendario?")) {
       setMatrix({});
       setShowClearMenu(false);
       toast.success("Calendario mensual limpiado");
     }
   };
 
-const handleManualSubmit = async (e) => {
-  e.preventDefault();
-  if (!localId) return toast.error("Selecciona un Local.");
-  if (Object.keys(matrix).length === 0) return toast.error("Debes pintar al menos un día.");
+  const handleManualSubmit = async (e) => {
+    e.preventDefault();
+    if (!localId) return toast.error("Selecciona un Local.");
+    if (Object.keys(matrix).length === 0) return toast.error("Debes pintar al menos un día.");
 
-  setLoading(true);
-  try {
-    const assignmentsByUser = {};
-    Object.entries(matrix).forEach(([key, userArray]) => {
-      const [w, d] = key.split('-');
-      userArray.forEach(data => {
-        const uId = String(data.user_id);
-        if (!assignmentsByUser[uId]) assignmentsByUser[uId] = [];
-        assignmentsByUser[uId].push({ week: parseInt(w), day: parseInt(d), ...data });
+    setLoading(true);
+    try {
+      const assignmentsByUser = {};
+      Object.entries(matrix).forEach(([key, userArray]) => {
+        const parts = key.split('-');
+        const d = parts[parts.length - 1];
+        const dateStr = parts.slice(0, 3).join('-');
+        userArray.forEach(data => {
+          const uId = String(data.user_id);
+          if (!assignmentsByUser[uId]) assignmentsByUser[uId] = [];
+          assignmentsByUser[uId].push({ date: dateStr, day: parseInt(d), ...data });
+        });
       });
-    });
 
-    const promises = [];
-    const usersToSave = Object.keys(assignmentsByUser);
+      const promises = [];
+      const usersToSave = Object.keys(assignmentsByUser);
 
-    for (const userId of usersToSave) {
-      const userAssignments = assignmentsByUser[userId];
-      
-      // Construcción segura del objeto
-      const dataToSubmit = {
-        local_id: localId,
-        company_id: companyId,
-        is_recurring: true,
-        origin: "TURNO",
-        assignments_data: userAssignments, 
-        user_id: userId, // <-- Esto es lo que el backend busca
-        categoria_rol: userAssignments[0].rol,
-        start_time: userAssignments[0].start_time,
-        end_time: userAssignments[0].end_time,
-        selectedDays: [...new Set(userAssignments.map(a => a.day))],
-      };
+      for (const userId of usersToSave) {
+        const userAssignments = assignmentsByUser[userId];
+        
+        const dataToSubmit = {
+          local_id: localId,
+          company_id: companyId,
+          is_recurring: true,
+          origin: "TURNO",
+          assignments_data: userAssignments, 
+          user_id: userId,
+          categoria_rol: userAssignments[0].rol,
+          start_time: userAssignments[0].start_time,
+          end_time: userAssignments[0].end_time,
+          selectedDays: [...new Set(userAssignments.map(a => a.day))],
+        };
 
-      const existingRouteId = initialData?.route_ids_by_user?.[userId];
-      
-      // Log de depuración final antes de la petición
-      console.log(`Enviando ${existingRouteId ? 'PUT' : 'POST'} para usuario ${userId}:`, dataToSubmit);
-
-      if (existingRouteId) {
-        promises.push(api.put(`/routes/${existingRouteId}`, dataToSubmit));
-      } else {
-        promises.push(api.post("/routes", dataToSubmit));
+        const existingRouteId = initialData?.route_ids_by_user?.[userId];
+        
+        if (existingRouteId) {
+          promises.push(api.put(`/routes/${existingRouteId}`, dataToSubmit));
+        } else {
+          promises.push(api.post("/routes", dataToSubmit));
+        }
       }
-    }
 
-    // Eliminación de usuarios que ya no están en la matriz
-    if (isEditing && initialData?.route_ids_by_user) {
-      const existingUsers = Object.keys(initialData.route_ids_by_user);
-      const usersToDelete = existingUsers.filter(u => !usersToSave.includes(u));
-      
-      usersToDelete.forEach(uId => {
-        const idToDelete = initialData.route_ids_by_user[uId];
-        promises.push(api.delete(`/routes/${idToDelete}`));
-      });
-    }
+      if (isEditing && initialData?.route_ids_by_user) {
+        const existingUsers = Object.keys(initialData.route_ids_by_user);
+        const usersToDelete = existingUsers.filter(u => !usersToSave.includes(u));
+        
+        usersToDelete.forEach(uId => {
+          const idToDelete = initialData.route_ids_by_user[uId];
+          promises.push(api.delete(`/routes/${idToDelete}`));
+        });
+      }
 
-    await Promise.all(promises);
-    onCreated();
-    onClose();
-    toast.success("Planificación guardada correctamente");
-  } catch (error) {
-    console.error("Error completo:", error.response?.data);
-    toast.error(error.response?.data?.message || "Error al guardar");
-  } finally { 
-    setLoading(false); 
-  }
-};
+      await Promise.all(promises);
+      onCreated();
+      onClose();
+      toast.success("Planificación guardada correctamente");
+    } catch (error) {
+      console.error("Error completo:", error.response?.data);
+      toast.error(error.response?.data?.message || "Error al guardar");
+    } finally { 
+      setLoading(false); 
+    }
+  };
 
   const handleDelete = async () => {
     if (!window.confirm("¿Eliminar completamente esta planificación agrupada para TODOS los mercaderistas?")) return;
@@ -485,13 +489,12 @@ const handleManualSubmit = async (e) => {
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8">
-          {/* Se ha ajustado el grid a col-span-5 y col-span-7 para ensanchar el lateral izquierdo */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
             
-            {/* HERRAMIENTAS - Ahora col-span-5 para ser más ancho */}
+            {/* HERRAMIENTAS */}
             <div className="lg:col-span-5 space-y-4 sm:space-y-6">
               
-              {/* PASO 1: DÓNDE (ESTILO ACTUALIZADO) */}
+              {/* PASO 1: DÓNDE */}
               <div className="bg-blue-50/50 p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] border border-blue-100 shadow-sm space-y-4">
                  <div className="flex items-center gap-2 text-[9px] font-black text-blue-600 uppercase tracking-widest">
                     <FiMapPin size={12} /> 1. Dónde (Local)
@@ -527,8 +530,8 @@ const handleManualSubmit = async (e) => {
                  </div>
 
                  <select 
-                   required className={`w-full rounded-xl px-4 py-3 text-xs font-bold border outline-none transition-all h-12 ${localId ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-blue-100 text-gray-900'}`}
-                   value={localId} onChange={(e) => setLocalId(e.target.value)}
+                    required className={`w-full rounded-xl px-4 py-3 text-xs font-bold border outline-none transition-all h-12 ${localId ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-blue-100 text-gray-900'}`}
+                    value={localId} onChange={(e) => setLocalId(e.target.value)}
                  >
                     <option value="" className="text-gray-900">
                       {filteredLocales.length === 1 ? "✅ Local Encontrado" : `Elegir Local (${filteredLocales.length} ref.)`}
@@ -552,18 +555,21 @@ const handleManualSubmit = async (e) => {
                         <FiCalendar /> Semana objetivo de carga:
                     </label>
                     <div className="bg-gray-200/50 p-1 rounded-2xl flex gap-1 shadow-inner">
-                        {WEEKS.map((w) => (
+                        {WEEKS.map((w, index) => (
                             <button
-                                key={w}
+                                key={w.start.toISOString()}
                                 type="button"
                                 onClick={() => setTargetWeek(w)}
                                 className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all duration-300 ${
-                                    targetWeek === w 
+                                    targetWeek?.start.toISOString() === w.start.toISOString()
                                     ? "bg-white text-gray-900 shadow-md scale-[1.02]" 
                                     : "text-gray-400 hover:text-gray-600"
                                 }`}
                             >
-                                S{w}
+                               S{index + 1}
+                               <div className="text-[8px] font-normal">
+                                 {formatWeekLabel(w)}
+                               </div>
                             </button>
                         ))}
                     </div>
@@ -623,7 +629,7 @@ const handleManualSubmit = async (e) => {
                  <select 
                     className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12"
                     value={brush.rol} onChange={(e) => setBrush({...brush, rol: e.target.value, turno_id: ""})}
-                  >
+                 >
                     <option value="">2º Elige Rol...</option>
                     <option value="INDIVIDUAL">Visita Individual</option>
                     {ROLES_TURNOS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
@@ -632,13 +638,12 @@ const handleManualSubmit = async (e) => {
                  <select 
                     className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all disabled:opacity-50 h-12"
                     value={brush.turno_id} onChange={handleTurnoChange} disabled={!brush.rol}
-                  >
+                 >
                     <option value="">3º Elige Turno (Auto-carga)</option>
                     {brush.rol === "INDIVIDUAL" ? <option value="INDIVIDUAL">Horario Manual</option> : turnosAgrupados.map(t => <option key={t.nombre} value={t.nombre}>{t.nombre}</option>)}
                  </select>
 
-                 {/* ── SELECTORES DE HORA EN FORMATO 24H ── */}
-                {brush.turno_id && (
+                 {brush.turno_id && (
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                       <FiClock size={10} /> Horario (formato 24h)
@@ -656,18 +661,18 @@ const handleManualSubmit = async (e) => {
                       />
                     </div>
                   </div>
-                )}
+                 )}
               </div>
             </div>
 
-            {/* CALENDARIO - Ahora col-span-7 */}
+            {/* CALENDARIO */}
             <div className="lg:col-span-7 flex flex-col mt-2 lg:mt-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 px-1 gap-3">
                 <div className="flex items-center gap-2 text-[10px] font-black text-gray-500 uppercase tracking-widest">
                   <FiCalendar size={14} className="shrink-0" /> 3. Calendario
                 </div>
                 <div className="flex flex-wrap gap-2 relative">
-                  <button type="button" disabled={eraserMode} onClick={() => fillTargetWeek(false)} className={`flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${eraserMode ? 'opacity-50 cursor-not-allowed' : ''}`}><FiCopy/> Llenar S{targetWeek}</button>
+                  <button type="button" disabled={eraserMode} onClick={() => fillTargetWeek(false)} className={`flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2.5 rounded-lg transition-all flex items-center justify-center gap-1.5 ${eraserMode ? 'opacity-50 cursor-not-allowed' : ''}`}><FiCopy/> Llenar Semana</button>
                   <button type="button" disabled={eraserMode} onClick={() => fillTargetWeek(true)} className={`flex-1 sm:flex-none text-[9px] font-black uppercase tracking-widest bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2.5 rounded-lg transition-all ${eraserMode ? 'opacity-50 cursor-not-allowed' : ''}`}>Llenar Mes</button>
 
                   {/* MENÚ DE LIMPIEZA */}
@@ -687,23 +692,22 @@ const handleManualSubmit = async (e) => {
                           <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-100 rounded-2xl shadow-2xl z-[160] overflow-hidden flex flex-col">
                             <button
                               type="button"
-                              onClick={() => { setEraserMode(true); setShowClearMenu(false); toast('Modo Borrador activado. Haz clic en un día para limpiarlo.', { icon: '🧽' }); }}
+                              onClick={() => { setEraserMode(true); setShowClearMenu(false); toast('Modo Borrador activado.', { icon: '🧽' }); }}
                               className="px-4 py-3.5 text-[10px] font-black uppercase text-left hover:bg-gray-50 text-gray-700 transition-all border-b border-gray-50 flex items-center gap-2"
                             >
-                              <FiMapPin size={12}/> 1. Limpiar Día (Borrador)
+                              <FiMapPin size={12}/> Limpiar Día (Borrador)
                             </button>
                             <button type="button" onClick={clearWeek} className="px-4 py-3.5 text-[10px] font-black uppercase text-left hover:bg-red-50 text-gray-700 hover:text-red-600 transition-all border-b border-gray-50 flex items-center gap-2">
-                              <FiLayers size={12}/> 2. Limpiar S{targetWeek}
+                              <FiLayers size={12}/> Limpiar Semana Actual
                             </button>
                             <button type="button" onClick={clearMonth} className="px-4 py-3.5 text-[10px] font-black uppercase text-left hover:bg-red-50 text-red-600 transition-all flex items-center gap-2">
-                              <FiCalendar size={12}/> 3. Limpiar Todo el Mes
+                              <FiCalendar size={12}/> Limpiar Todo el Mes
                             </button>
                           </div>
                         </>
                       )}
                     </div>
                   )}
-
                 </div>
               </div>
 
@@ -717,31 +721,33 @@ const handleManualSubmit = async (e) => {
                     </div>
                   ))}
 
-                  {WEEKS.map(w => (
-                    <React.Fragment key={`week-${w}`}>
-                      <div className="col-span-1 flex items-center justify-end pr-2 sm:pr-3 text-[10px] sm:text-[11px] font-black text-blue-600 uppercase">
-                        S{w}
+                  {WEEKS.map((w, index) => (
+                    <React.Fragment key={w.start.toISOString()}>
+                      <div className="col-span-1 flex flex-col items-center justify-center text-[10px] sm:text-[11px] font-black text-blue-600 uppercase">
+                        S{index + 1}
+                        <div className="text-[8px] text-gray-400">{formatWeekLabel(w)}</div>
                       </div>
                       
                       {DAYS_OF_WEEK.map(d => {
-                        const cellArray = matrix[`${w}-${d.id}`] || [];
+                        const key = getCellKey(w, d.id);
+                        const cellArray = matrix[key] || [];
                         const isActive = cellArray.length > 0;
-                        const isTargetWeek = w === targetWeek;
+                        const isTargetWeek = targetWeek?.start.toISOString() === w.start.toISOString();
                         
                         let baseClass = "relative min-h-[4rem] h-20 rounded-xl sm:rounded-2xl flex flex-col items-center justify-start p-1 cursor-pointer transition-all border-2 overflow-y-auto custom-scrollbar";
                         
                         if (eraserMode) {
-                          if (isActive) baseClass += " bg-[#87be00] border-[#87be00] text-white shadow-lg hover:!bg-red-500 hover:!border-red-600 hover:!text-white";
+                          if (isActive) baseClass += " bg-[#87be00] border-[#87be00] text-white hover:!bg-red-500 hover:!border-red-600";
                           else baseClass += " bg-white border-dashed border-gray-200 hover:!border-red-200 hover:!bg-red-50";
                         } else {
-                          if (isActive) baseClass += " bg-[#87be00] border-[#87be00] text-white shadow-lg sm:scale-[1.02]";
-                          else if (isTargetWeek) baseClass += " bg-white border-blue-200 hover:border-blue-400 shadow-sm";
-                          else baseClass += " bg-white border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50";
+                          if (isActive) baseClass += " bg-[#87be00] border-[#87be00] text-white shadow-lg";
+                          else if (isTargetWeek) baseClass += " bg-white border-blue-200 hover:border-blue-400";
+                          else baseClass += " bg-white border-dashed border-gray-200 hover:border-blue-300";
                         }
 
                         return (
                           <div 
-                            key={`cell-${w}-${d.id}`}
+                            key={key}
                             onClick={() => handleCellClick(w, d.id)}
                             className={baseClass}
                           >
@@ -750,20 +756,15 @@ const handleManualSubmit = async (e) => {
                                 const user = filteredUsers.find(u => String(u.id) === String(assign.user_id));
                                 const uName = user ? user.first_name : "User";
                                 const tLabel = assign.turno_id === "INDIVIDUAL" ? assign.start_time : assign.turno_id;
-                                
                                 return (
                                   <div key={idx} className="w-full bg-black/20 rounded mb-1 py-0.5 px-1 flex flex-col items-center shrink-0">
-                                    <span className="text-[7px] sm:text-[9px] font-black uppercase leading-tight truncate w-full text-center">
-                                      {uName}
-                                    </span>
-                                    <span className="text-[5px] sm:text-[7px] font-bold mt-0.5 truncate max-w-full">
-                                      {tLabel}
-                                    </span>
+                                    <span className="text-[7px] sm:text-[9px] font-black uppercase leading-tight truncate w-full text-center">{uName}</span>
+                                    <span className="text-[5px] sm:text-[7px] font-bold mt-0.5 truncate max-w-full">{tLabel}</span>
                                   </div>
                                 );
                               })
                             ) : (
-                              <span className="text-gray-300 opacity-0 hover:opacity-100 text-lg sm:text-xl font-black transition-opacity m-auto">+</span>
+                              <span className="text-gray-300 opacity-0 hover:opacity-100 text-lg font-black transition-opacity m-auto">+</span>
                             )}
                           </div>
                         );
@@ -772,14 +773,6 @@ const handleManualSubmit = async (e) => {
                   ))}
                 </div>
               </div>
-              
-              <div className="mt-4 flex items-start gap-2 text-[9px] sm:text-[10px] text-gray-400 font-medium px-2">
-                <FiInfo className="text-blue-500 shrink-0 mt-0.5" /> 
-                <p>
-                  <strong>Tip:</strong> Selecciona la semana en el Paso 2 (S1-S4). Los cambios que pintes se aplicarán a la semana activa.
-                </p>
-              </div>
-
             </div>
           </div>
         </div>
@@ -802,7 +795,6 @@ const handleManualSubmit = async (e) => {
             Confirmar e Implementar
           </button>
         </div>
-
       </div>
     </div>
   );

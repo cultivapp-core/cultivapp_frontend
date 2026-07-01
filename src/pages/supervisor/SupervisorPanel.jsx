@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import { useNavigate } from "react-router-dom"; // ✅ Añadido para la redirección
+
 
 /* ============================================================
    GRÁFICO DE TORTA / DONUT (SVG en tiempo real, proporcional y tooltips)
@@ -41,6 +43,12 @@ const DonutChart = ({ stats }) => {
   const fOff = eOff - eDash;
   const sOff = fOff - fDash;
 
+  console.log("Datos que recibe el componente:", stats?.locales_detalle.map(l => ({
+    cadena: l.cadena,
+    dias: l.dias_planificados,
+    horario: l.horario_plan
+})));
+
   return (
     <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-gray-50 flex items-center justify-center h-48 md:h-56 relative w-full">
       <svg className="w-40 h-40 transform -rotate-90" viewBox="0 0 40 40">
@@ -70,6 +78,7 @@ const DonutChart = ({ stats }) => {
 ============================================================ */
 const SupervisorPanel = () => {
   const { user } = useAuth();
+  const navigate = useNavigate(); // ✅ Añadido para la navegación
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -109,21 +118,34 @@ const SupervisorPanel = () => {
     refetchInterval: 10000,
   });
 
-  const filterData = () => {
+ const filterData = () => {
     let baseData = stats?.locales_detalle || [];
+
+    console.log("ANTES", baseData);
     
-    if (selectedDay) {
-      baseData = baseData.filter(l => l.dias_planificados && l.dias_planificados.includes(selectedDay));
-    }
+    // 1. Filtro por Día (si está seleccionado)
+ if (selectedDay) {
+  baseData = baseData.filter(l => {
+    const dias = parseDias(l.dias_planificados);
+
+    console.log({
+      local: l.cadena,
+      diasOriginal: l.dias_planificados,
+      diasParseados: dias,
+      selectedDay,
+      incluye: dias.includes(selectedDay)
+    });
+
+    return dias.includes(selectedDay);
+  });
+}
     
+    // 2. Filtros por estado / tipo (mantiene tu lógica actual)
     if (activeFilter === 'locales') {
       const uniqueMap = new Map();
       baseData.forEach(l => {
         const key = l.id || l.local_id || l.codigo_local;
-
-if (!uniqueMap.has(key)) {
-  uniqueMap.set(key, l);
-}
+        if (!uniqueMap.has(key)) uniqueMap.set(key, l);
       });
       baseData = Array.from(uniqueMap.values());
     } else if (activeFilter === 'pendientes') {
@@ -136,16 +158,17 @@ if (!uniqueMap.has(key)) {
       baseData = baseData.filter(l => l.estado === 'sin_planificacion');
     }
 
-    if (activeFilter === 'usuarios') {
-      return (baseData || []).filter(l => l.mercaderista && l.mercaderista.trim() !== '');
+    // 3. Búsqueda por texto (mantener al final para que filtre sobre lo ya filtrado)
+    if (searchTerm.trim() !== "") {
+      baseData = baseData.filter(local => 
+        local.direccion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        local.cadena?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        local.codigo_local?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        local.mercaderista?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
     }
 
-    return baseData.filter(local => 
-      local.direccion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      local.cadena?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      local.codigo_local?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      local.mercaderista?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    return baseData;
   };
 
   const getUniqueUsers = () => {
@@ -167,6 +190,21 @@ if (!uniqueMap.has(key)) {
       locales: usersMap[name].locales
     })).filter(u => u.name.toLowerCase().includes(searchTerm.toLowerCase()));
   };
+
+const parseDias = (dias) => {
+  if (!dias) return [];
+
+  if (Array.isArray(dias)) return dias;
+
+  if (typeof dias === "string") {
+    return dias
+      .split(",")
+      .map(d => d.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
 
   const filteredLocales = filterData();
   const uniqueUsers = getUniqueUsers();
@@ -196,64 +234,53 @@ if (!uniqueMap.has(key)) {
   /**
    * WeekPlan
    * 
-   * plan             → array de letras planificadas, ej: ['L','M','X','J','V']
-   * dayOfWeek        → entero de user_routes.day_of_week  (0=Dom … 6=Sab)
+   * plan           → array de letras planificadas, ej: ['L','M','X','J','V']
+   * dayOfWeek      → entero de user_routes.day_of_week  (0=Dom … 6=Sab)
    *                    Para visitas INDIVIDUALES se deriva de visit_date.
-   * visitDate        → string ISO de user_routes.visit_date, ej: "2025-06-10"
-   * origin           → user_routes.origin: 'INDIVIDUAL' | 'RECURRING' | etc.
+   * visitDate      → string ISO de user_routes.visit_date, ej: "2025-06-10"
+   * origin         → user_routes.origin: 'INDIVIDUAL' | 'RECURRING' | etc.
    *
-   * Regla de pintado:
-   *   - INDIVIDUAL  → se pinta el día que cae visit_date (ignorando plan)
-   *   - RECURRING   → se pinta el día indicado por day_of_week dentro del plan
-   *   - Sin datos   → comportamiento anterior (solo resalta días en plan)
+   * Regla de pintado ACTUALIZADA:
+   *   - SOLAMENTE se pinta de verde el día exacto correspondiente a la planificación.
    */
+
+  // Normaliza los días de la semana (convierte string "L,M,X" a array ["L", "M", "X"])
   const WeekPlan = ({ plan = [], dayOfWeek = null, visitDate = null, origin = null }) => {
-    const days = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-    // JS getDay():  0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sab
-    const jsToLetter = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+  const days = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const jsToLetter = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
-    // Calcular la letra del día de la visita
-    let visitDayLetter = null;
+  const planArray = parseDias(plan); // ✅ Normalizamos aquí
 
-    if (origin === 'INDIVIDUAL' && visitDate) {
-      // Para individuales usamos la fecha exacta
-      const d = new Date(visitDate + 'T00:00:00'); // forzar medianoche local
-      visitDayLetter = jsToLetter[d.getDay()];
-    } else if (dayOfWeek !== null && dayOfWeek !== undefined) {
-      // Para recurrentes / turnos usamos day_of_week
-      visitDayLetter = jsToLetter[dayOfWeek];
-    }
+  let visitDayLetter = null;
+  if (origin === 'INDIVIDUAL' && visitDate) {
+  const [year, month, day] = visitDate.split('-').map(Number);
+  const d = new Date(year, month - 1, day); // 👈 LOCAL DATE FIX
+  visitDayLetter = jsToLetter[d.getDay()];
+}
 
-    return (
-      <div className="flex gap-1">
-        {days.map(day => {
-          const isPlanned    = plan.includes(day);
-          const isVisitDay   = visitDayLetter !== null ? day === visitDayLetter : false;
+  return (
+    <div className="flex gap-1">
+      {days.map(day => {
+        const isPlanned = planArray.includes(day); // ✅ Ahora funciona correctamente
+        const isVisitDay = day === visitDayLetter;
 
-          // Prioridad: si tenemos info de visita, pintamos ese día en verde fuerte
-          // Los demás días planificados quedan en verde suave
-          // El día de visita no planificado (caso raro) igual se pinta
-          let colorClass = '';
-          if (isVisitDay) {
-            colorClass = 'bg-[#87be00] text-white shadow-md ring-2 ring-[#87be00] ring-offset-1 scale-110';
-          } else if (isPlanned) {
-            colorClass = 'bg-[#87be00]/40 text-[#4a6a00] shadow-sm';
-          } else {
-            colorClass = 'bg-gray-100 text-gray-400';
-          }
+        // Lógica: Verde brillante si es el día de la visita, Verde suave si es un día planificado
+        let colorClass = 'bg-gray-100 text-gray-400';
+        if (isVisitDay) {
+          colorClass = 'bg-[#87be00] text-white shadow-md ring-2 ring-[#87be00] ring-offset-1 scale-110';
+        } else if (isPlanned) {
+          colorClass = 'bg-[#87be00] text-white';
+        }
 
-          return (
-            <div
-              key={day}
-              className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black transition-all ${colorClass}`}
-            >
-              {day}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+        return (
+          <div key={day} className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black transition-all ${colorClass}`}>
+            {day}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
   const calculateDuration = (start, end) => {
     if (!start || !end) return null;
@@ -271,9 +298,6 @@ if (!uniqueMap.has(key)) {
       Cargando Cartera de Supervisor...
     </div>
   );
-
-  console.log("🔥 FINAL STATS EN COMPONENTE:", stats);
-console.log("📊 locales_detalle:", stats?.locales_detalle);
 
   return (
     <div className="space-y-6 md:space-y-8 font-[Outfit] pb-24 md:pb-20">
@@ -372,7 +396,9 @@ console.log("📊 locales_detalle:", stats?.locales_detalle);
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1 }}
                 key={card.id}
-                onClick={() => setActiveFilter(activeFilter === card.id ? null : card.id)}
+                onClick={() =>
+                  
+                  setActiveFilter(activeFilter === card.id ? null : card.id)}
                 className={`bg-white p-4 md:p-6 rounded-2xl md:rounded-[2.5rem] shadow-sm border cursor-pointer relative overflow-hidden group transition-all duration-300 ${activeFilter === card.id ? 'border-gray-300 shadow-md ring-4 ring-gray-50 scale-[1.02]' : 'border-gray-50 hover:shadow-lg'}`}
               >
                 <div className={`absolute top-0 left-0 h-full w-1.5 md:w-2 ${card.color}`}></div>
@@ -434,7 +460,7 @@ console.log("📊 locales_detalle:", stats?.locales_detalle);
                    activeFilter ? `Detalle: ${cards.find(c => c.id === activeFilter)?.label}` : 
                    'Mi Cartera Global'}
                 </h3>
-                <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widestrict mt-1">
+                <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
                   {activeFilter ? 'Mostrando resultados filtrados' : 'Todos los locales bajo tu gestión'}
                 </p>
             </div>
@@ -625,9 +651,12 @@ console.log("📊 locales_detalle:", stats?.locales_detalle);
                       )}
                     </div>
 
-                    {/* MÓVIL: Sin botón de acción para sin_planificacion cuando filtro es sin_ruta */}
+                    {/* ✅ MODIFICACIÓN: Redirección añadida en vista móvil */}
                     {item.estado !== 'sin_planificacion' && (
-                      <button className="w-full bg-white border border-gray-200 text-gray-600 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                      <button 
+                        onClick={() => navigate('/supervisor/ejecucion')}
+                        className="w-full bg-white border border-gray-200 text-gray-600 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                      >
                         Ver Ficha <FiExternalLink size={12} />
                       </button>
                     )}
@@ -765,7 +794,6 @@ console.log("📊 locales_detalle:", stats?.locales_detalle);
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/5">Estado / Local</th>
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Horarios Registrados</th>
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Planificación</th>
-                    {/* MEJORA: columna Acción oculta cuando el filtro es sin_ruta */}
                     {activeFilter !== 'sin_ruta' && (
                       <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-right">Acción</th>
                     )}
@@ -775,6 +803,7 @@ console.log("📊 locales_detalle:", stats?.locales_detalle);
                   <AnimatePresence>
                     {filteredLocales.length > 0 ? (
                       filteredLocales.map((item, idx) => (
+                        console.log("Nombres de propiedades disponibles en el item:", Object.keys(item)),
                         <motion.tr 
                             initial={{ opacity: 0, x: -10 }} 
                             animate={{ opacity: 1, x: 0 }} 
@@ -859,7 +888,6 @@ console.log("📊 locales_detalle:", stats?.locales_detalle);
                              </div>
                           </td>
 
-                          {/* MEJORA: celda Acción oculta cuando el filtro es sin_ruta */}
                           {activeFilter !== 'sin_ruta' && (
                             <td className="px-8 py-6 text-right">
                               {item.estado === 'sin_planificacion' ? (
@@ -867,7 +895,11 @@ console.log("📊 locales_detalle:", stats?.locales_detalle);
                                   Crear Plan
                                 </button>
                               ) : (
-                                <button className="w-10 h-10 bg-gray-50 text-gray-400 rounded-2xl flex items-center justify-center ml-auto group-hover:bg-gray-900 group-hover:text-[#87be00] transition-all duration-300 shadow-sm group-hover:shadow-lg group-hover:-translate-y-1">
+                                /* ✅ MODIFICACIÓN: Redirección añadida en vista de escritorio */
+                                <button 
+                                  onClick={() => navigate('/supervisor/ejecucion')}
+                                  className="w-10 h-10 bg-gray-50 text-gray-400 rounded-2xl flex items-center justify-center ml-auto group-hover:bg-gray-900 group-hover:text-[#87be00] transition-all duration-300 shadow-sm group-hover:shadow-lg group-hover:-translate-y-1"
+                                >
                                   <FiExternalLink size={16} />
                                 </button>
                               )}

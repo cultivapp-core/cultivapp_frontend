@@ -17,16 +17,18 @@ import {
   FiCalendar,
   FiGlobe, 
   FiMapPin,
-  FiTrash2 // 🚩 Nuevo Icono importado
+  FiTrash2 
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
+import { getWeeksOfMonthCalendar } from "../../utils/helper"; // 🚩 IMPORTADO PARA DINAMISMO
 
 /**
  * 📅 COMPONENTE: VISUALIZADOR MENSUAL CON TOOLTIP DINÁMICO
  */
 const MonthlyStatus = ({ scheduledDays = [] }) => {
-  const weeks = [1, 2, 3, 4];
+  // 🚩 CAMBIO: Ahora usamos el helper para obtener las semanas dinámicamente (puede ser 4 o 5)
+  const weeks = useMemo(() => getWeeksOfMonthCalendar(new Date()), []);
   const days = [
     { id: 1, label: 'L' }, { id: 2, label: 'M' }, { id: 3, label: 'X' },
     { id: 4, label: 'J' }, { id: 5, label: 'V' }, { id: 6, label: 'S' }, { id: 0, label: 'D' },
@@ -39,13 +41,13 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
 
   return (
     <div className="flex flex-col gap-2 py-1">
-      {weeks.map((week) => (
-        <div key={week} className="flex items-center gap-3">
-          <span className="text-[10px] font-black text-gray-400 w-4 tracking-tighter">S{week}</span>
+      {weeks.map((week, index) => (
+        <div key={week.id} className="flex items-center gap-3">
+          <span className="text-[10px] font-black text-gray-400 w-4 tracking-tighter">S{index + 1}</span>
           <div className="flex gap-1.5">
             {days.map((d) => {
               const scheduleInfo = scheduledDays.find(
-                (item) => parseInt(item.day) === d.id && parseInt(item.week) === week
+                (item) => parseInt(item.day) === d.id && parseInt(item.week) === week.id
               );
 
               const isActive = !!scheduleInfo;
@@ -159,49 +161,28 @@ const AdminRoutes = () => {
     }
   };
 
-  // CALCULO DE RANGOS DE SEMANA
+  // CALCULO DE RANGOS DE SEMANA (DINÁMICO PARA 5 SEMANAS)
   const weekRanges = useMemo(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth(); 
-    let firstDay = new Date(year, month, 1);
-    let dayOfWeek = firstDay.getDay() === 0 ? 7 : firstDay.getDay();
-    let firstMonday = new Date(firstDay);
-    if (dayOfWeek !== 1) firstMonday.setDate(1 + (8 - dayOfWeek));
-
-    const ranges = [];
-    const mesesAbr = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
-    for(let i=0; i<4; i++) {
-      let start = new Date(firstMonday);
-      start.setDate(firstMonday.getDate() + (i * 7));
-      let end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      ranges.push({ weekNum: i+1, label: `S${i+1}`, dates: `${start.getDate()} ${mesesAbr[start.getMonth()]} - ${end.getDate()} ${mesesAbr[end.getMonth()]}` });
-    }
-    return ranges;
+    const weeks = getWeeksOfMonthCalendar(new Date());
+    return weeks.map((w, index) => {
+        const start = w.start;
+        const end = w.end;
+        return { 
+            weekNum: w.id, 
+            label: `S${index + 1}`, 
+            dates: `${start.getDate()} ${start.toLocaleDateString('es-CL', { month: 'short' })} - ${end.getDate()} ${end.toLocaleDateString('es-CL', { month: 'short' })}` 
+        };
+    });
   }, []);
 
   // LÓGICA DE CÁLCULO DE FECHA EXACTA
   const targetDateInfo = useMemo(() => {
     if (!filterDate) return null;
     const selected = new Date(filterDate + "T12:00:00");
+    const weeks = getWeeksOfMonthCalendar(selected);
+    const found = weeks.find(w => selected >= w.start && selected <= w.end);
     
-    const year = selected.getFullYear();
-    const month = selected.getMonth();
-    let firstDay = new Date(year, month, 1);
-    let dow = firstDay.getDay() === 0 ? 7 : firstDay.getDay(); 
-    let firstMonday = new Date(firstDay);
-    if (dow !== 1) firstMonday.setDate(1 + (8 - dow));
-
-    const diffDays = Math.floor((selected.getTime() - firstMonday.getTime()) / (1000 * 60 * 60 * 24));
-    const diffWeeks = Math.floor(diffDays / 7);
-    const calculatedWeek = diffWeeks < 0 ? 1 : Math.min(diffWeeks + 1, 4);
-    
-    return {
-      weekNum: calculatedWeek,
-      dayId: selected.getDay()
-    };
+    return found ? { weekNum: found.id, dayId: selected.getDay() } : null;
   }, [filterDate]);
 
   const activeWeekByDate = targetDateInfo ? targetDateInfo.weekNum : null;
@@ -302,7 +283,7 @@ const AdminRoutes = () => {
         groups[key] = {
           ...r, 
           id: r.id, 
-          route_ids: [r.id], // 🚩 Guardamos el pool de rutas inicial
+          route_ids: [r.id], 
           route_ids_by_user: { [r.user_id]: r.id },
           users: new Set([fullName]), 
           scheduled_items: r.day_of_week !== null ? [{ 
@@ -319,7 +300,7 @@ const AdminRoutes = () => {
         };
       } else {
         groups[key].users.add(fullName);
-        groups[key].route_ids.push(r.id); // 🚩 Añadimos los siguientes IDs recopilados
+        groups[key].route_ids.push(r.id); 
         groups[key].route_ids_by_user[r.user_id] = r.id;
         
         if (r.day_of_week !== null) {
@@ -540,7 +521,7 @@ const AdminRoutes = () => {
                             </div>
                             
                             <div className="flex flex-wrap gap-1.5 pl-10">
-                              {[1, 2, 3, 4].map(wNum => {
+                              {[1, 2, 3, 4, 5].map(wNum => {
                                 const tName = turnsByWeek[wNum];
                                 if (!tName) return null;
                                 return (
@@ -565,7 +546,6 @@ const AdminRoutes = () => {
                       </td>
 
                       <td className="p-6 text-right">
-                        {/* 🚩 CONTENEDOR DE ACCIONES ALINEADO CON ANCHO SEGURO */}
                         <div className="flex justify-end items-center gap-2 min-w-[95px] inline-flex">
                           <button 
                             onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} 
@@ -617,7 +597,6 @@ const AdminRoutes = () => {
                   <div className="flex flex-col items-end gap-3 shrink-0">
                     {getStatusBadge(r.displayStatus)}
                     
-                    {/* 🚩 ACCIONES EN MÓVIL CON ALTO CONTRASTE */}
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} 
@@ -646,7 +625,7 @@ const AdminRoutes = () => {
                       {r.users.join(' / ')}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {[1, 2, 3, 4].map(wNum => {
+                      {[1, 2, 3, 4, 5].map(wNum => {
                         const tName = turnsByWeek[wNum];
                         if (!tName) return null;
                         return (
@@ -672,7 +651,6 @@ const AdminRoutes = () => {
         )}
       </div>
 
-      {/* MODAL PLANIFICADOR VISUAL */}
       <ManageRoutesModal 
         isOpen={isModalOpen} 
         onClose={() => { setIsModalOpen(false); setSelectedRoute(null); }} 
