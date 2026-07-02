@@ -9,7 +9,8 @@ import {
   FiUser, 
   FiUserPlus, 
   FiShield,
-  FiBriefcase
+  FiBriefcase,
+  FiGlobe
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 
@@ -25,12 +26,13 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
     role: "",
     rut: "",
     position: "",
-    trabajando_para: "", // 🚩 CAMPO AGREGADO
+    trabajando_para: "",
     fecha_inicio_contrato: "", 
     fecha_termino_contrato: "",
     tipo_contrato: "",
     supervisor_nombre: "",
     supervisor_telefono: "",
+    company_id: "", 
   };
 
   const [form, setForm] = useState(initialForm);
@@ -42,10 +44,12 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
   const [documentoAchs, setDocumentoAchs] = useState(null);
   const [documentoOtro, setDocumentoOtro] = useState(null);
   
+  // 🚩 ESTADOS PARA EMPRESAS (PROTEGIDOS)
+  const [empresas, setEmpresas] = useState([]);
+  const [loadingEmpresas, setLoadingEmpresas] = useState(false);
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  
-  // 🚩 ESTADO PARA EL ERROR DEL RUT
   const [rutError, setRutError] = useState("");
 
   useEffect(() => {
@@ -58,10 +62,36 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
       setDocumentoOtro(null);
       setError("");
       setRutError(""); 
+      
+      // 🚩 Cargar empresas al abrir con protección
+     const fetchEmpresas = async () => {
+        try {
+          setLoadingEmpresas(true);
+          const response = await api.get("/companies");
+          console.log("Objeto RESPONSE completo:", response);
+          
+          // Accedemos directamente a response.data
+          const data = Array.isArray(response) ? response : (response.data || []);
+          
+          if (Array.isArray(data)) {
+            console.log("Guardando en estado:", data);
+            setEmpresas(data);
+          } else {
+            console.error("La API no devolvió un array:", data);
+            setEmpresas([]);
+          }
+        } catch (err) {
+          console.error("Error al cargar empresas", err);
+          setEmpresas([]);
+        } finally {
+          setLoadingEmpresas(false);
+        }
+      };
+      
+      fetchEmpresas();
     }
   }, [isOpen]);
 
-  // 🚩 ALGORITMO MÓDULO 11 (VALIDACIÓN DE RUT REAL)
   const validarRutChileno = (rutCompleto) => {
     const rutLimpio = rutCompleto.replace(/[^0-9kK]/g, "").toUpperCase();
     if (rutLimpio.length < 2) return false;
@@ -81,7 +111,6 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
     return dvFinal === dv;
   };
 
-  // 🚩 CONTROLADOR Y FORMATEADOR DEL RUT
   const handleRutChange = (e) => {
     let value = e.target.value.replace(/[^0-9kK]/g, ""); 
     if (value.length > 9) return;
@@ -125,7 +154,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
       const formData = new FormData();
       Object.keys(form).forEach((key) => formData.append(key, form[key]));
       
-      formData.append("company_id", userAdmin.company_id);
+      if (!form.company_id) throw new Error("Debe seleccionar una empresa");
       
       if (foto) formData.append("foto", foto);
       if (documentoContrato) formData.append("documento_contrato", documentoContrato);
@@ -225,17 +254,31 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                     />
                     {rutError && <p className="text-red-500 text-[10px] font-bold mt-1 ml-1 animate-in slide-in-from-top-1">{rutError}</p>}
                   </div>
-                  
                   <input type="text" value={form.phone} placeholder="Teléfono" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                     onChange={e => setForm({...form, phone: e.target.value})} />
                 </div>
-
-                <hr className="border-gray-100 my-2" />
 
                 <div className="space-y-3">
                   <input type="email" value={form.email} placeholder="Correo Electrónico" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                     onChange={e => setForm({...form, email: e.target.value})} />
                   
+                  {/* 🚩 SELECTOR DE EMPRESA CON PROTECCIÓN DE ARREGLO */}
+                  <select 
+                    required 
+                    value={form.company_id} 
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all cursor-pointer"
+                    onChange={e => setForm({...form, company_id: e.target.value})}
+                  >
+                    <option value="" disabled>
+                      {loadingEmpresas ? "Cargando empresas..." : "Seleccione Empresa Asignada"}
+                    </option>
+                    {(empresas || []).map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name}
+                      </option>
+                    ))}
+                  </select>
+
                   <div className="grid grid-cols-2 gap-3">
                     <input type="password" value={form.password} placeholder="Contraseña" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                       onChange={e => setForm({...form, password: e.target.value})} />
@@ -260,7 +303,6 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                 <input type="text" value={form.position} placeholder="Cargo Laboral (Ej: Mercaderista)" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                   onChange={e => setForm({...form, position: e.target.value})} />
                 
-                {/* 🚩 NUEVO CAMPO: TRABAJANDO PARA */}
                 <input type="text" value={form.trabajando_para} placeholder="Trabajando para..." required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                   onChange={e => setForm({...form, trabajando_para: e.target.value})} />
                 
@@ -319,7 +361,6 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
               {loading ? "Procesando..." : <><FiCheck size={18}/> Confirmar y Generar Ficha</>}
             </button>
           </div>
-
         </form>
       </div>
     </div>
