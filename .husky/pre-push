@@ -1,5 +1,3 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
 
 # Obtiene el nombre de la rama actual
 current_branch=$(git branch --show-current)
