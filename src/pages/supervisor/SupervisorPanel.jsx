@@ -652,7 +652,17 @@ const parseDias = (dias) => {
                     </div>
 
                     {/* ✅ MODIFICACIÓN: Redirección añadida en vista móvil */}
-                    {item.estado !== 'sin_planificacion' && (
+                    {/* 🚩 NUEVO: Si el local está sin planificación, el botón lleva al link externo de creación de rutas */}
+                    {item.estado === 'sin_planificacion' ? (
+                      <a
+                        href="http://localhost:5173/admin/routes"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full bg-gray-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#87be00] transition-colors"
+                      >
+                        Crear Plan
+                      </a>
+                    ) : (
                       <button 
                         onClick={() => navigate('/supervisor/ejecucion')}
                         className="w-full bg-white border border-gray-200 text-gray-600 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors"
@@ -779,6 +789,79 @@ const parseDias = (dias) => {
                                 <FiMapPin size={32} />
                             </div>
                             <p className="text-xs font-black text-gray-400 uppercase italic tracking-[0.3em]">No hay locales asignados</p>
+                        </td>
+                      </motion.tr>
+                    )}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            ) : activeFilter === 'sin_ruta' ? (
+              /* 🚩 NUEVA TABLA: LOCALES SIN PLANIFICACIÓN
+                 Columnas: Cadena - Local - Dirección - Estado / Sala - Acción (Crear Plan → link externo) */
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50/50">
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/5">Cadena</th>
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/6">Local</th>
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/3">Dirección</th>
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/6">Estado / Sala</th>
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  <AnimatePresence>
+                    {filteredLocales.length > 0 ? (
+                      filteredLocales.map((item, idx) => (
+                        <motion.tr
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ delay: idx * 0.03 }}
+                          key={`${item.id}-${idx}`}
+                          className="hover:bg-gray-50/50 transition-colors group cursor-default"
+                        >
+                          <td className="px-8 py-6">
+                            <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                              {item.cadena}
+                            </p>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="bg-gray-100 px-3 py-1 rounded-lg text-[10px] font-black text-gray-600 uppercase w-max tracking-wider inline-block">
+                              {item.codigo_local || 'S/N'}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-2 text-gray-500">
+                              <FiMapPin size={12} className="shrink-0" />
+                              <span className="text-[11px] font-bold uppercase italic leading-tight">
+                                {item.direccion}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="bg-red-50 text-red-600 border border-red-100 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 w-max">
+                              <FiAlertCircle /> Sin Asignar
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <a
+                              href="https://cultivapp-frontend.vercel.app/admin/routes"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-block bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm"
+                            >
+                              Crear Plan
+                            </a>
+                          </td>
+                        </motion.tr>
+                      ))
+                    ) : (
+                      <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                        <td colSpan="5" className="py-24 text-center">
+                          <div className="bg-gray-50 w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 text-gray-200">
+                            <FiMapPin size={32} />
+                          </div>
+                          <p className="text-xs font-black text-gray-400 uppercase italic tracking-[0.3em]">No hay locales sin planificación</p>
                         </td>
                       </motion.tr>
                     )}
