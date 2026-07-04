@@ -13,7 +13,7 @@ const SupervisorVisitFlow = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   
-  // 🚩 NUEVO: Referencia para saber qué foto estamos tomando
+  // 🚩 Referencia para saber qué foto estamos tomando
   const captureTypeRef = useRef(null); 
 
   const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -147,7 +147,7 @@ const SupervisorVisitFlow = () => {
     const missingRequired = questions.some(q => q.is_required && !answers[q.id]);
     if (missingRequired) { toast.error("Faltan preguntas obligatorias"); setStep(2); return; }
     
-    // 🚩 Validación de fotos obligatorias
+    // Validación de fotos obligatorias
     if (!fotoTermino) { toast.error("Falta foto de término"); return; }
     if (!fotoObservacion) { toast.error("Falta foto de observación"); setStep(2); return; }
 
@@ -164,7 +164,7 @@ const SupervisorVisitFlow = () => {
       responses: answers,
       observations: generalObservations, 
       photo_entry: fotoEntrada, 
-      photo_observation: fotoObservacion, // Añadido al payload
+      photo_observation: fotoObservacion, 
       photo_exit: fotoTermino 
     };
     
@@ -181,7 +181,7 @@ const SupervisorVisitFlow = () => {
 
   const salirDeModulo = () => navigate("/supervisor");
 
-  // 🚩 Añadido el parámetro `photoKey`
+  // Uso de renderPhoto con key identificador
   const renderPhotoContainer = (photoUrl, setPhotoUrl, placeholderText, photoKey) => {
     if (photoUrl) {
       return (
@@ -195,7 +195,7 @@ const SupervisorVisitFlow = () => {
       <div 
         onClick={() => {
           if (!capturing) {
-            captureTypeRef.current = photoKey; // Registramos qué botón se apretó
+            captureTypeRef.current = photoKey; 
             fileInputRef.current.click();
           }
         }} 
@@ -259,7 +259,6 @@ const SupervisorVisitFlow = () => {
 
             {selectedLocal && (
               <div className="pt-2 animate-in zoom-in space-y-4">
-                {/* 🚩 Uso de renderPhoto con key "inicio_Jornada" */}
                 {renderPhotoContainer(fotoEntrada, setFotoEntrada, "Fachada", "inicio_Jornada")}
                 {fotoEntrada && (
                   <button onClick={() => setStep(2)} className="w-full bg-[#87be00] text-white py-5 md:py-6 rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs">
@@ -294,23 +293,37 @@ const SupervisorVisitFlow = () => {
               })}
             </div>
 
-            {/* 🚩 Nueva sección de captura en el Paso 2 */}
             <div className="pt-2">
               <p className="text-center text-[10px] font-black uppercase text-gray-400 tracking-widest mb-3">Evidencia de Sala</p>
               {renderPhotoContainer(fotoObservacion, setFotoObservacion, "Observación", "foto_observacion")}
             </div>
 
+            {/* 🚩 BOTÓN SIGUIENTE BLOQUEADO ESTRICTAMENTE */}
             <button 
               onClick={() => {
+                // 1. Validar preguntas obligatorias antes de avanzar
+                const missingRequired = questions.some(q => q.is_required && !answers[q.id]);
+                if (missingRequired) {
+                  toast.error("Faltan preguntas obligatorias por responder (*)");
+                  return;
+                }
+
+                // 2. Validar foto obligatoria (seguro extra)
                 if (!fotoObservacion) {
                   toast.error("Debes capturar la evidencia de sala para continuar.");
                   return;
                 }
+                
                 setStep(3);
               }} 
-              className="w-full bg-black text-white py-5 md:py-6 rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs"
+              disabled={!fotoObservacion} 
+              className={`w-full py-5 md:py-6 rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs transition-all duration-300 ${
+                !fotoObservacion 
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                  : 'bg-black text-white active:scale-95'
+              }`}
             >
-              Siguiente
+              {!fotoObservacion ? "Falta Evidencia de Sala" : "Siguiente"}
             </button>
           </div>
         )}
@@ -320,7 +333,6 @@ const SupervisorVisitFlow = () => {
           <div className="space-y-4 animate-in slide-in-from-right duration-300 text-left">
             <textarea value={generalObservations} onChange={(e) => setGeneralObservations(e.target.value)} placeholder="Observaciones..." className="w-full h-28 p-5 bg-gray-50 rounded-[2rem] text-xs md:text-sm font-bold" />
             
-            {/* 🚩 Uso de renderPhoto con key "termino_jornada" */}
             {renderPhotoContainer(fotoTermino, setFotoTermino, "Término", "termino_jornada")}
             
             <button onClick={enviarAuditoriaFinal} disabled={loading} className="w-full bg-black text-white py-5 md:py-6 rounded-[2.5rem] font-black uppercase text-[10px] md:text-xs disabled:opacity-40">
@@ -339,7 +351,6 @@ const SupervisorVisitFlow = () => {
         )}
       </div>
 
-      {/* El input oculto maestro, ahora controlado por captureTypeRef */}
       <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleCapture} className="hidden" />
     </div>
   );
