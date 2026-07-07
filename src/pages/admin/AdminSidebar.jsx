@@ -9,14 +9,14 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useNotificationContext } from "../../context/NotificationContext";
 
-const AdminSidebar = () => {
+// 🚩 MEJORA: Ahora recibe isCollapsed y setIsCollapsed como props desde AdminLayout
+const AdminSidebar = ({ isCollapsed, setIsCollapsed }) => {
   const { user, logout } = useAuth();
   const { unreadCount } = useNotificationContext();
   const location = useLocation();
   
-  // Estados para el colapso en escritorio, móvil y control de Tooltips
+  // Estados para el menú móvil y control de Tooltips (isCollapsed se eliminó de aquí)
   const [isOpen, setIsOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredLabel, setHoveredLabel] = useState(null);
   const [tooltipTop, setTooltipTop] = useState(0);
 
@@ -28,7 +28,7 @@ const AdminSidebar = () => {
     setIsOpen(false);
   }, [location]);
 
-  // --- SUB-COMPONENTE PARA LOS LINKS (Garantiza simetría matemática perfecta) ---
+  // --- SUB-COMPONENTE PARA LOS LINKS ---
   const NavItem = ({ to, icon: Icon, label, badge, end = false }) => (
     <NavLink 
       to={to} 
@@ -170,6 +170,7 @@ const AdminSidebar = () => {
             
             <SectionTitle title="Cuenta" />
             <button 
+              type="button"
               onClick={logout} 
               onMouseEnter={(e) => {
                 if (isCollapsed) {
@@ -181,7 +182,7 @@ const AdminSidebar = () => {
               onMouseLeave={() => setHoveredLabel(null)}
               className={`
                 relative flex items-center gap-3 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 group
-                text-gray-400 hover:bg-red-50 hover:text-red-500
+                text-gray-400 hover:bg-red-50 hover:text-red-500 w-full text-left
                 ${isCollapsed ? 'justify-center px-0 md:mx-2' : 'justify-center md:justify-start px-0 md:px-4 mx-2 md:mx-0'}
               `}
             >
@@ -217,7 +218,7 @@ const AdminSidebar = () => {
         </div>
       )}
     </>
-  )
-}
+  );
+};
 
 export default AdminSidebar;
