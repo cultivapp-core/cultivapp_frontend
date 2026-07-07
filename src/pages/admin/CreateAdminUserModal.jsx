@@ -44,7 +44,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
   const [documentoAchs, setDocumentoAchs] = useState(null);
   const [documentoOtro, setDocumentoOtro] = useState(null);
   
-  // 🚩 ESTADOS PARA EMPRESAS (PROTEGIDOS)
+  // ESTADOS PARA EMPRESAS (PROTEGIDOS)
   const [empresas, setEmpresas] = useState([]);
   const [loadingEmpresas, setLoadingEmpresas] = useState(false);
   
@@ -63,7 +63,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
       setError("");
       setRutError(""); 
       
-      // 🚩 Cargar empresas al abrir con protección
+      // Cargar empresas al abrir con protección
      const fetchEmpresas = async () => {
         try {
           setLoadingEmpresas(true);
@@ -262,7 +262,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                   <input type="email" value={form.email} placeholder="Correo Electrónico" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                     onChange={e => setForm({...form, email: e.target.value})} />
                   
-                  {/* 🚩 SELECTOR DE EMPRESA CON PROTECCIÓN DE ARREGLO */}
+                  {/* SELECTOR DE EMPRESA CON PROTECCIÓN DE ARREGLO */}
                   <select 
                     required 
                     value={form.company_id} 
@@ -307,8 +307,20 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                   onChange={e => setForm({...form, trabajando_para: e.target.value})} />
                 
                 <div className="grid grid-cols-2 gap-3">
-                  <select required value={form.tipo_contrato} className="col-span-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all"
-                    onChange={e => setForm({...form, tipo_contrato: e.target.value})}>
+                  {/* 🚩 CONTROLADOR DE CAMBIO: Si pasa a Indefinido limpia la fecha de término */}
+                  <select 
+                    required 
+                    value={form.tipo_contrato} 
+                    className="col-span-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all"
+                    onChange={e => {
+                      const val = e.target.value;
+                      setForm(prev => ({
+                        ...prev,
+                        tipo_contrato: val,
+                        fecha_termino_contrato: val === "Indefinido" ? "" : prev.fecha_termino_contrato
+                      }));
+                    }}
+                  >
                     <option value="" disabled>Seleccione Tipo de Contrato</option>
                     <option value="Indefinido">Indefinido</option>
                     <option value="Plazo Fijo">Plazo Fijo</option>
@@ -317,17 +329,21 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                     <option value="Propio">Propio</option>
                   </select>
 
-                  <div className="flex flex-col bg-gray-50 border border-gray-200 rounded-xl p-2 px-3">
+                  {/* 🚩 CLASE DINÁMICA: Si es indefinido toma col-span-2 para ocupar todo el ancho */}
+                  <div className={`flex flex-col bg-gray-50 border border-gray-200 rounded-xl p-2 px-3 ${form.tipo_contrato === "Indefinido" ? "col-span-2" : ""}`}>
                     <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Inicio Contrato</label>
                     <input type="date" required value={form.fecha_inicio_contrato} className="bg-transparent text-sm outline-none mt-1 text-gray-700 font-medium cursor-text"
                       onChange={e => setForm({...form, fecha_inicio_contrato: e.target.value})} />
                   </div>
                   
-                  <div className="flex flex-col bg-gray-50 border border-gray-200 rounded-xl p-2 px-3">
-                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Fin (Opcional)</label>
-                    <input type="date" value={form.fecha_termino_contrato} className="bg-transparent text-sm outline-none mt-1 text-gray-700 font-medium cursor-text"
-                      onChange={e => setForm({...form, fecha_termino_contrato: e.target.value})} />
-                  </div>
+                  {/* 🚩 RENDERIZADO CONDICIONAL: Oculta el campo de fin si es contrato Indefinido */}
+                  {form.tipo_contrato !== "Indefinido" && (
+                    <div className="flex flex-col bg-gray-50 border border-gray-200 rounded-xl p-2 px-3">
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Fin (Opcional)</label>
+                      <input type="date" value={form.fecha_termino_contrato} className="bg-transparent text-sm outline-none mt-1 text-gray-700 font-medium cursor-text"
+                        onChange={e => setForm({...form, fecha_termino_contrato: e.target.value})} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
