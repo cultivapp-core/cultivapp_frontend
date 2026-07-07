@@ -49,6 +49,7 @@ import PhotoValidation from "./pages/supervisor/PhotoValidation"
 
 /* ================= SUPERVISOR ================= */
 import SupervisorDashboard from "./pages/supervisor/SupervisorDashboard"
+import SupervisorLayout from "./pages/supervisor/SupervisorLayout";
 import SupervisorPanel from "./pages/supervisor/SupervisorPanel"
 import LiveMap from "./pages/supervisor/LiveMap"
 import AlertManager from "./pages/supervisor/AlertManager"
@@ -175,22 +176,29 @@ function App() {
               <Route path="notifications" element={<NotificationsLayout userRole="MERCADERISTA" />} />
             </Route>
 
-            {/* SUPERVISOR */}
-            <Route path="/supervisor" element={<ProtectedRoute role="SUPERVISOR"><SupervisorDashboard /></ProtectedRoute>}>
-              <Route index element={<SupervisorPanel />} />
-              
-              {/* ✅ AQUÍ ESTÁ LA NUEVA RUTA PARA EL SUPERVISOR */}
-              <Route path="routes" element={<AdminRoutes />} /> 
-              
-              <Route path="mapa" element={<LiveMap />} />
-              <Route path="alertas" element={<AlertManager />} />
-              <Route path="visita" element={<SupervisorVisitFlow />} />
-              <Route path="asistencia" element={<AttendanceControl />} />
-              <Route path="ejecucion" element={<PhotoValidation />} />
-              <Route path="tareas" element={<TaskControl />} />
-              <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
-              <Route path="informes" element={<ReportsPage />} />
-            </Route>
+           {/* SUPERVISOR */}
+<Route 
+  path="/supervisor" 
+  element={
+    <ProtectedRoute role="SUPERVISOR">
+      <SupervisorLayout />
+    </ProtectedRoute>
+  }
+>
+  <Route index element={<SupervisorPanel />} />
+  
+  {/* ✅ AQUÍ ESTÁ LA NUEVA RUTA PARA EL SUPERVISOR */}
+  <Route path="routes" element={<AdminRoutes />} /> 
+  
+  <Route path="mapa" element={<LiveMap />} />
+  <Route path="alertas" element={<AlertManager />} />
+  <Route path="visita" element={<SupervisorVisitFlow />} />
+  <Route path="asistencia" element={<AttendanceControl />} />
+  <Route path="ejecucion" element={<PhotoValidation />} />
+  <Route path="tareas" element={<TaskControl />} />
+  <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
+  <Route path="informes" element={<ReportsPage />} />
+</Route>
 
             {/* ADMIN */}
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminLayout /></ProtectedRoute>}>
