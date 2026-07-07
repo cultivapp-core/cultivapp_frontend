@@ -35,7 +35,7 @@ import SalesDashboard from "./pages/reports/SalesDashboard"
 import ReportsPage from "./pages/reports/ReportsPage" 
 
 /* ================= ADMIN CLIENTE ================= */
-import AdminLayout from "./pages/admin/AdminLayout" // Asegúrate de tener este layout creado
+import AdminLayout from "./pages/admin/AdminLayout" 
 import AdminOverview from "./pages/admin/AdminOverview"
 import AdminUsers from "./pages/admin/AdminUsers"
 import AdminLocales from "./pages/admin/AdminLocales"
@@ -117,7 +117,6 @@ function App() {
           <Toaster 
             position="top-right"
             toastOptions={{
-              // Estilo base para todos los toasts
               style: {
                 borderRadius: '1rem',
                 background: '#fff',
@@ -126,12 +125,10 @@ function App() {
                 border: '1px solid #e5e7eb',
                 padding: '16px',
               },
-              // Configuración específica para éxitos
               success: {
                 style: { border: '1px solid #87be00' },
                 iconTheme: { primary: '#87be00', secondary: '#fff' },
               },
-              // Configuración específica para errores
               error: {
                 style: { border: '1px solid #ef4444' },
                 iconTheme: { primary: '#ef4444', secondary: '#fff' },
@@ -181,6 +178,10 @@ function App() {
             {/* SUPERVISOR */}
             <Route path="/supervisor" element={<ProtectedRoute role="SUPERVISOR"><SupervisorDashboard /></ProtectedRoute>}>
               <Route index element={<SupervisorPanel />} />
+              
+              {/* ✅ AQUÍ ESTÁ LA NUEVA RUTA PARA EL SUPERVISOR */}
+              <Route path="routes" element={<AdminRoutes />} /> 
+              
               <Route path="mapa" element={<LiveMap />} />
               <Route path="alertas" element={<AlertManager />} />
               <Route path="visita" element={<SupervisorVisitFlow />} />
