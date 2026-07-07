@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom"; // ✅ Añadido para la redirección
+import { useNavigate } from "react-router-dom"; 
 
 
 /* ============================================================
@@ -43,12 +43,6 @@ const DonutChart = ({ stats }) => {
   const fOff = eOff - eDash;
   const sOff = fOff - fDash;
 
-  console.log("Datos que recibe el componente:", stats?.locales_detalle.map(l => ({
-    cadena: l.cadena,
-    dias: l.dias_planificados,
-    horario: l.horario_plan
-})));
-
   return (
     <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-gray-50 flex items-center justify-center h-48 md:h-56 relative w-full">
       <svg className="w-40 h-40 transform -rotate-90" viewBox="0 0 40 40">
@@ -78,11 +72,22 @@ const DonutChart = ({ stats }) => {
 ============================================================ */
 const SupervisorPanel = () => {
   const { user } = useAuth();
-  const navigate = useNavigate(); // ✅ Añadido para la navegación
+  const navigate = useNavigate(); 
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
   
+  // 🚩 ESTADOS PARA EL MODAL DE JUSTIFICACIÓN DE PLANIFICACIÓN
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [selectedLocalForPlan, setSelectedLocalForPlan] = useState(null);
+  const [reason, setReason] = useState("");
+
+  const REASONS = [
+    "Mercaderista Enfermo",
+    "Local sin mercaderista",
+    "Cumplir con planificacion"
+  ];
+
   const queryClient = useQueryClient();
 
   // 🚩 TIEMPO REAL: Conexión WebSocket con el Backend
@@ -234,11 +239,11 @@ const parseDias = (dias) => {
   /**
    * WeekPlan
    * 
-   * plan           → array de letras planificadas, ej: ['L','M','X','J','V']
-   * dayOfWeek      → entero de user_routes.day_of_week  (0=Dom … 6=Sab)
+   * plan         → array de letras planificadas, ej: ['L','M','X','J','V']
+   * dayOfWeek    → entero de user_routes.day_of_week  (0=Dom … 6=Sab)
    *                    Para visitas INDIVIDUALES se deriva de visit_date.
-   * visitDate      → string ISO de user_routes.visit_date, ej: "2025-06-10"
-   * origin         → user_routes.origin: 'INDIVIDUAL' | 'RECURRING' | etc.
+   * visitDate    → string ISO de user_routes.visit_date, ej: "2025-06-10"
+   * origin       → user_routes.origin: 'INDIVIDUAL' | 'RECURRING' | etc.
    *
    * Regla de pintado ACTUALIZADA:
    *   - SOLAMENTE se pinta de verde el día exacto correspondiente a la planificación.
@@ -650,18 +655,18 @@ const parseDias = (dias) => {
                         </>
                       )}
                     </div>
-
                     {/* ✅ MODIFICACIÓN: Redirección añadida en vista móvil */}
-                    {/* 🚩 NUEVO: Si el local está sin planificación, el botón lleva al link externo de creación de rutas */}
+                    {/* 🚩 NUEVO: Si el local está sin planificación, el botón abre el modal */}
                     {item.estado === 'sin_planificacion' ? (
-                      <a
-                        href="http://localhost:5173/admin/routes"
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => {
+                          setSelectedLocalForPlan(item);
+                          setIsPlanModalOpen(true);
+                        }}
                         className="w-full bg-gray-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#87be00] transition-colors"
                       >
                         Crear Plan
-                      </a>
+                      </button>
                     ) : (
                       <button 
                         onClick={() => navigate('/supervisor/ejecucion')}
@@ -797,7 +802,7 @@ const parseDias = (dias) => {
               </table>
             ) : activeFilter === 'sin_ruta' ? (
               /* 🚩 NUEVA TABLA: LOCALES SIN PLANIFICACIÓN
-                 Columnas: Cadena - Local - Dirección - Estado / Sala - Acción (Crear Plan → link externo) */
+                 Columnas: Cadena - Local - Dirección - Estado / Sala - Acción (Crear Plan) */
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50/50">
@@ -844,14 +849,15 @@ const parseDias = (dias) => {
                             </span>
                           </td>
                           <td className="px-8 py-6 text-right">
-                            <a
-                              href="https://cultivapp-frontend.vercel.app/admin/routes"
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              onClick={() => {
+                                setSelectedLocalForPlan(item);
+                                setIsPlanModalOpen(true);
+                              }}
                               className="inline-block bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm"
                             >
                               Crear Plan
-                            </a>
+                            </button>
                           </td>
                         </motion.tr>
                       ))
@@ -886,7 +892,6 @@ const parseDias = (dias) => {
                   <AnimatePresence>
                     {filteredLocales.length > 0 ? (
                       filteredLocales.map((item, idx) => (
-                        console.log("Nombres de propiedades disponibles en el item:", Object.keys(item)),
                         <motion.tr 
                             initial={{ opacity: 0, x: -10 }} 
                             animate={{ opacity: 1, x: 0 }} 
@@ -974,7 +979,13 @@ const parseDias = (dias) => {
                           {activeFilter !== 'sin_ruta' && (
                             <td className="px-8 py-6 text-right">
                               {item.estado === 'sin_planificacion' ? (
-                                <button className="bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm">
+                                <button
+                                  onClick={() => {
+                                    setSelectedLocalForPlan(item);
+                                    setIsPlanModalOpen(true);
+                                  }}
+                                  className="bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm"
+                                >
                                   Crear Plan
                                 </button>
                               ) : (
@@ -1008,6 +1019,56 @@ const parseDias = (dias) => {
         </div>
 
       </div>
+
+      {/* Modal de Justificación */}
+      {isPlanModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-[2rem] p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
+            <h3 className="text-sm font-black uppercase tracking-widest mb-4">Motivo de Planificación</h3>
+            
+            <div className="space-y-2 mb-6">
+              {REASONS.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setReason(r)}
+                  className={`w-full text-left p-4 rounded-xl text-[11px] font-bold uppercase transition-all ${
+                    reason === r ? 'bg-[#87be00] text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setIsPlanModalOpen(false)}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors rounded-xl text-[10px] font-black uppercase"
+              >
+                Cancelar
+              </button>
+              <button 
+                disabled={!reason}
+                onClick={() => {
+                  // 🚩 CORRECCIÓN DE LA RUTA AQUÍ:
+                  navigate('/supervisor/routes', { 
+                    state: { 
+                      reason, 
+                      localId: selectedLocalForPlan?.id, 
+                      cadena: selectedLocalForPlan?.cadena 
+                    } 
+                  });
+                  setIsPlanModalOpen(false);
+                }}
+                className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-colors ${!reason ? 'bg-gray-300 cursor-not-allowed' : 'bg-black text-white hover:bg-[#87be00]'}`}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
