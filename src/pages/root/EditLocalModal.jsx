@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { FiX, FiHash, FiUser, FiPhone, FiMapPin, FiLoader, FiBriefcase } from "react-icons/fi";
+import { 
+  FiX, FiHash, FiUser, FiPhone, FiMapPin, 
+  FiLoader, FiBriefcase, FiShoppingCart, FiGlobe 
+} from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 
@@ -7,7 +10,8 @@ const EditLocalModal = ({
   isOpen,
   onClose,
   onUpdated,
-  local
+  local,
+  companies = []
 }) => {
   const [regions, setRegions] = useState([]);
   const [comunas, setComunas] = useState([]);
@@ -91,81 +95,177 @@ const EditLocalModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 font-[Outfit]">
-      {/* 🔴 Contenedor responsivo: max-w-lg y max-h-[90vh] con scroll interno */}
-      <div className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col rounded-[2rem] md:rounded-[2.5rem] shadow-2xl animate-in zoom-in duration-300">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center z-[9999] p-0 sm:p-4 font-[Outfit]">
+      {/* CONTENEDOR PRINCIPAL ESTILO CULTIVAPP */}
+      <div className="bg-white w-full max-w-lg h-[95vh] sm:h-auto sm:max-h-[90vh] flex flex-col rounded-t-[2.5rem] sm:rounded-[3rem] shadow-2xl border border-gray-100 animate-in slide-in-from-bottom sm:zoom-in duration-300 overflow-hidden">
         
         {/* HEADER */}
-        <div className="flex justify-between items-center border-b border-gray-100 p-6 md:p-8 shrink-0">
+        <div className="flex justify-between items-center border-b border-gray-100 px-6 py-5 sm:px-8 sm:py-6 bg-white shrink-0">
           <div>
-            <h3 className="text-lg md:text-xl font-black text-gray-800 uppercase tracking-tight">Editar Local</h3>
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">ID: {local.id.split('-')[0]}...</p>
+            <h3 className="text-xl sm:text-2xl font-black text-gray-900 uppercase italic tracking-tight leading-none">
+              Editar <span className="text-[#87be00]">Local</span>
+            </h3>
+            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1.5 flex items-center gap-1">
+              <FiHash /> REF: {local.id.split('-')[0]}...
+            </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
-            <FiX size={20} />
+          <button 
+            onClick={onClose} 
+            className="p-2.5 sm:p-3 bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-red-500 rounded-xl transition-all"
+          >
+            <FiX size={18} />
           </button>
         </div>
 
         {/* CONTENIDO SCROLLABLE */}
-        <div className="overflow-y-auto p-6 md:p-8 custom-scrollbar flex-1">
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="overflow-y-auto px-6 py-5 sm:px-8 sm:py-6 custom-scrollbar flex-1 bg-white">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-red-50 text-red-500 text-[9px] font-black uppercase p-3 rounded-xl border border-red-100 flex items-center gap-2">
-                <FiX size={14} /> {error}
+              <div className="bg-red-50 text-red-600 text-[10px] font-black uppercase p-3.5 rounded-2xl border border-red-200 shadow-sm flex items-center gap-2 tracking-widest animate-pulse">
+                <FiX size={14} className="shrink-0" /> {error}
               </div>
             )}
 
-            {/* CÓDIGO */}
-            <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Código del Local</label>
-              <input type="text" name="codigo_local" value={form.codigo_local} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-[#87be00] transition-all" />
+            {/* FILA: EMPRESA Y CÓDIGO DEL LOCAL */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-1">
+                  <FiBriefcase className="text-[#87be00]" size={12} /> Empresa / Cliente
+                </label>
+                <select 
+                  name="company_id" 
+                  value={form.company_id} 
+                  onChange={handleChange} 
+                  required 
+                  className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-bold uppercase tracking-wide outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner text-gray-800 cursor-pointer h-12"
+                >
+                  <option value="">Seleccionar Empresa</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name?.toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-1">
+                  <FiHash className="text-[#87be00]" size={12} /> Código del Local
+                </label>
+                <input 
+                  type="text" 
+                  name="codigo_local" 
+                  value={form.codigo_local} 
+                  onChange={handleChange} 
+                  required
+                  className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-black outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner h-12 uppercase tracking-wider" 
+                />
+              </div>
             </div>
 
-            {/* CADENA (Grid responsivo: 1 col móvil, 2 col tablets) */}
+            {/* FILA: CADENA Y REGIÓN */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-               <div className="space-y-1">
-                <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Cadena</label>
-                <input type="text" name="cadena" value={form.cadena} onChange={handleChange} required className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-xs outline-none focus:ring-2 focus:ring-[#87be00] font-bold" />
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-1">
+                  <FiShoppingCart className="text-[#87be00]" size={12} /> Cadena
+                </label>
+                <input 
+                  type="text" 
+                  name="cadena" 
+                  value={form.cadena} 
+                  onChange={handleChange} 
+                  required 
+                  className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-black outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner h-12 uppercase tracking-wide" 
+                />
               </div>
-              <div className="space-y-1">
-                <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Región</label>
-                <select name="region_id" value={form.region_id} onChange={handleChange} required className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-xs outline-none focus:ring-2 focus:ring-[#87be00]">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-1">
+                  <FiGlobe className="text-[#87be00]" size={12} /> Región
+                </label>
+                <select 
+                  name="region_id" 
+                  value={form.region_id} 
+                  onChange={handleChange} 
+                  required 
+                  className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-bold uppercase tracking-wide outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner text-gray-800 cursor-pointer h-12"
+                >
                   <option value="">Seleccionar</option>
-                  {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  {regions.map(r => <option key={r.id} value={r.id}>{r.name?.toUpperCase()}</option>)}
                 </select>
               </div>
             </div>
 
+            {/* FILA: COMUNA Y TELÉFONO */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Comuna</label>
-                <select name="comuna_id" value={form.comuna_id} onChange={handleChange} required className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-xs outline-none focus:ring-2 focus:ring-[#87be00]">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-1">
+                  <FiMapPin className="text-[#87be00]" size={12} /> Comuna
+                </label>
+                <select 
+                  name="comuna_id" 
+                  value={form.comuna_id} 
+                  onChange={handleChange} 
+                  required 
+                  className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-bold uppercase tracking-wide outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner text-gray-800 cursor-pointer h-12"
+                >
                   <option value="">Seleccionar</option>
-                  {comunas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {comunas.map(c => <option key={c.id} value={c.id}>{c.name?.toUpperCase()}</option>)}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Teléfono</label>
-                <input type="text" name="telefono" value={form.telefono} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-xs outline-none focus:ring-2 focus:ring-[#87be00]" />
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-1">
+                  <FiPhone className="text-[#87be00]" size={12} /> Teléfono
+                </label>
+                <input 
+                  type="text" 
+                  name="telefono" 
+                  value={form.telefono} 
+                  onChange={handleChange} 
+                  className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-bold outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner h-12 tracking-wider" 
+                />
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Dirección</label>
-              <input type="text" name="direccion" value={form.direccion} onChange={handleChange} required className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-xs outline-none focus:ring-2 focus:ring-[#87be00]" />
+            {/* DIRECCIÓN */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-1">
+                <FiMapPin className="text-[#87be00]" size={12} /> Dirección Completa
+              </label>
+              <input 
+                type="text" 
+                name="direccion" 
+                value={form.direccion} 
+                onChange={handleChange} 
+                required 
+                className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-bold outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner h-12 uppercase" 
+              />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[9px] font-black uppercase text-gray-400 ml-2">Gerente</label>
-              <input type="text" name="gerente" value={form.gerente} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-xs outline-none focus:ring-2 focus:ring-[#87be00]" />
+            {/* GERENTE */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-1">
+                <FiUser className="text-[#87be00]" size={12} /> Gerente / Administrador
+              </label>
+              <input 
+                type="text" 
+                name="gerente" 
+                value={form.gerente} 
+                onChange={handleChange} 
+                className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-bold outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner h-12 uppercase" 
+              />
             </div>
 
+            {/* BOTÓN DE IMPLEMENTACIÓN */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-black text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-[#87be00] transition-all shadow-lg mt-4 disabled:opacity-50"
+              className="w-full bg-gray-900 hover:bg-black text-white py-4 rounded-[1.5rem] font-black text-[11px] uppercase tracking-[0.2em] shadow-xl hover:scale-[1.01] transition-all flex items-center justify-center gap-3 mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? <span className="flex items-center justify-center gap-2"><FiLoader className="animate-spin"/> Procesando...</span> : "Actualizar Local"}
+              {loading ? (
+                <>
+                  <FiLoader className="animate-spin" size={16} /> Procesando Cambios...
+                </>
+              ) : (
+                "Actualizar Local"
+              )}
             </button>
           </form>
         </div>
