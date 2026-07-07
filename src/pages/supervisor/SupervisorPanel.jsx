@@ -308,7 +308,7 @@ const parseDias = (dias) => {
     <div className="space-y-6 md:space-y-8 font-[Outfit] pb-24 md:pb-20">
       
       {/* HEADER RESPONSIVO */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-2">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-2 pt-12 pl-8">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
             Panel de Supervisión
