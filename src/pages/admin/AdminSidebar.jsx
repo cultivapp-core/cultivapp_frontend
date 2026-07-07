@@ -14,9 +14,11 @@ const AdminSidebar = () => {
   const { unreadCount } = useNotificationContext();
   const location = useLocation();
   
-  // Estados
+  // Estados para el colapso en escritorio, móvil y control de Tooltips
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hoveredLabel, setHoveredLabel] = useState(null);
+  const [tooltipTop, setTooltipTop] = useState(0);
 
   const ID_CULTIVA = '0e342e01-d213-4353-b210-39a12ac335cf';
   const canManageCompanies = user?.role === "ROOT" || (user?.role === "ADMIN_CLIENTE" && user?.company_id === ID_CULTIVA);
@@ -26,44 +28,47 @@ const AdminSidebar = () => {
     setIsOpen(false);
   }, [location]);
 
-  // --- SUB-COMPONENTE PARA LOS LINKS ---
-  const NavItem = ({ to, icon: Icon, label, badge }) => (
-    <NavLink to={to} end={to === "/admin"} className={({ isActive }) => `
-      relative flex items-center gap-3 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 group
-      ${isActive ? 'bg-[#87be00]/10 text-[#87be00] shadow-sm shadow-[#87be00]/5' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-900'}
-      ${isCollapsed ? 'justify-center px-0 md:mx-2' : 'px-4'} 
-    `}>
+  // --- SUB-COMPONENTE PARA LOS LINKS (Garantiza simetría matemática perfecta) ---
+  const NavItem = ({ to, icon: Icon, label, badge, end = false }) => (
+    <NavLink 
+      to={to} 
+      end={end} 
+      onMouseEnter={(e) => {
+        if (isCollapsed) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setHoveredLabel(label);
+          setTooltipTop(rect.top + rect.height / 2);
+        }
+      }}
+      onMouseLeave={() => setHoveredLabel(null)}
+      className={({ isActive }) => `
+        relative flex items-center gap-3 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 group
+        ${isActive ? 'bg-[#87be00]/10 text-[#87be00] shadow-sm shadow-[#87be00]/5' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-900'}
+        ${isCollapsed ? 'justify-center px-0 md:mx-2' : 'justify-center md:justify-start px-0 md:px-4 mx-2 md:mx-0'} 
+      `}
+    >
       <div className="relative flex items-center justify-center">
         <Icon size={isCollapsed ? 20 : 18} className="min-w-[20px] transition-all duration-300" />
         {badge > 0 && (
-          <span className={`absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-black text-white ring-2 ring-white ${isCollapsed ? '-right-2 top-0' : ''}`}>
+          <span className={`absolute -top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-black text-white ring-2 ring-white -right-2 top-0 ${isCollapsed ? '' : 'md:-right-1.5 md:top-1.5'}`}>
             {badge > 9 ? '9+' : badge}
           </span>
         )}
       </div>
 
-      <span className={`whitespace-nowrap transition-all duration-300 overflow-hidden ${isCollapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'w-auto opacity-100 block'}`}>
+      <span className={`whitespace-nowrap transition-all duration-300 overflow-hidden ${isCollapsed ? 'hidden' : 'hidden md:block w-auto opacity-100'}`}>
         {label}
       </span>
-
-      {/* Tooltip */}
-      <div className={`
-        absolute left-full ml-4 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-2xl 
-        opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[99999] whitespace-nowrap
-        ${isCollapsed ? 'md:block hidden' : 'hidden'}
-      `}>
-        {label}
-      </div>
     </NavLink>
   );
 
   // --- SUB-COMPONENTE PARA LOS TÍTULOS ---
   const SectionTitle = ({ title }) => (
     <div className="mt-6 mb-2">
-      <p className={`text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] ml-4 transition-all duration-300 ${isCollapsed ? 'md:hidden block' : 'block'}`}>
+      <p className={`text-[9px] font-black text-gray-300 uppercase tracking-[0.3em] ml-4 transition-all duration-300 ${isCollapsed ? 'hidden' : 'hidden md:block'}`}>
         {title}
       </p>
-      <div className={`h-[1px] bg-gray-100 mx-4 transition-all duration-300 ${isCollapsed ? 'md:block hidden' : 'hidden'}`} />
+      <div className={`h-[1px] bg-gray-100 mx-4 transition-all duration-300 ${isCollapsed ? 'block' : 'block md:hidden'}`} />
     </div>
   );
 
@@ -93,17 +98,19 @@ const AdminSidebar = () => {
       <div className={`
         fixed md:relative inset-y-0 left-0 z-[9999] bg-white h-screen flex flex-col justify-between font-[Outfit] shadow-2xl md:shadow-none border-r border-gray-100
         transition-all duration-300 ease-in-out
-        ${isOpen ? "translate-x-0 w-72" : "-translate-x-full md:translate-x-0"}
+        ${isOpen ? "translate-x-0 w-20 md:w-72" : "-translate-x-full md:translate-x-0"}
         ${isCollapsed ? "md:w-20" : "md:w-72"} 
       `}>
         
+        {/* BOTÓN DE CIERRE MÓVIL PERFECTAMENTE CENTRADO */}
         <button
           onClick={() => setIsOpen(false)}
-          className="md:hidden absolute top-4 right-4 p-2.5 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors z-50"
+          className="md:hidden absolute top-3 left-1/2 -translate-x-1/2 p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors z-50"
         >
           <FiX size={20} />
         </button>
 
+        {/* BOTÓN FLECHA DE COLAPSO DESKTOP */}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="hidden md:flex absolute -right-3 top-12 bg-white border border-gray-100 shadow-md rounded-full p-1.5 text-gray-400 hover:text-[#87be00] hover:scale-110 transition-all z-50"
@@ -111,12 +118,14 @@ const AdminSidebar = () => {
           {isCollapsed ? <FiChevronRight size={14} /> : <FiChevronLeft size={14} />}
         </button>
 
-        <div className={`overflow-x-visible pr-2 flex-1 pb-4 ${isCollapsed ? 'overflow-visible' : 'overflow-y-auto custom-scrollbar'}`}>
+        {/* CONTENEDOR CON SCROLL INTEGRADO SIN DESPLAZAMIENTO ASIMÉTRICO */}
+        <div className={`overflow-y-auto overflow-x-hidden custom-scrollbar flex-1 pb-4 ${isCollapsed ? 'pr-0' : 'pr-0 md:pr-2'}`}>
           
-          <Link to="/admin" className={`block mt-10 md:mt-8 mb-10 transition-all duration-300 hover:opacity-80 ${isCollapsed ? 'md:justify-center md:flex' : 'px-6'}`}>
+          {/* HEADER / LOGO CENTRADO */}
+          <Link to="/admin" className={`block mt-16 md:mt-8 mb-10 transition-all duration-300 hover:opacity-80 flex justify-center ${isCollapsed ? 'md:justify-center md:px-0' : 'md:justify-center md:justify-start md:px-6'}`}>
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-[#87be00] animate-pulse flex-shrink-0 shadow-[0_0_8px_rgba(135,190,0,0.6)]" />
-              <div className={`overflow-hidden transition-all duration-300 ${isCollapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'w-auto opacity-100 block'}`}>
+              <div className={`overflow-hidden transition-all duration-300 ${isCollapsed ? 'hidden' : 'hidden md:block'}`}>
                 <h2 className="text-xl font-black text-gray-900 tracking-tighter uppercase leading-none">
                   Cultiva<span className="text-[#87be00]">App</span>
                 </h2>
@@ -125,9 +134,10 @@ const AdminSidebar = () => {
             </div>
           </Link>
 
-          <nav className={`flex flex-col gap-1.5 ${isCollapsed ? 'md:px-2' : 'px-4'}`}>
+          {/* LISTA DE NAVEGACIÓN */}
+          <nav className={`flex flex-col gap-1.5 ${isCollapsed ? 'px-2' : 'px-0 md:px-4'}`}>
             <SectionTitle title="Métricas" />
-            <NavItem to="/admin" icon={FiBarChart2} label="Dashboard" />
+            <NavItem to="/admin" end={true} icon={FiBarChart2} label="Dashboard" />
             <NavItem to="/admin/informes" icon={FiFileText} label="Informes" />
             <NavItem to="/admin/upload-sales" icon={FiTrendingUp} label="Cargar Ventas" />
 
@@ -161,39 +171,51 @@ const AdminSidebar = () => {
             <SectionTitle title="Cuenta" />
             <button 
               onClick={logout} 
+              onMouseEnter={(e) => {
+                if (isCollapsed) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setHoveredLabel("Cerrar Sesión");
+                  setTooltipTop(rect.top + rect.height / 2);
+                }
+              }}
+              onMouseLeave={() => setHoveredLabel(null)}
               className={`
                 relative flex items-center gap-3 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 group
                 text-gray-400 hover:bg-red-50 hover:text-red-500
-                ${isCollapsed ? 'justify-center px-0 md:mx-2' : 'px-4'}
+                ${isCollapsed ? 'justify-center px-0 md:mx-2' : 'justify-center md:justify-start px-0 md:px-4 mx-2 md:mx-0'}
               `}
             >
               <FiLogOut size={isCollapsed ? 20 : 18} className="min-w-[20px] transition-all duration-300" />
-              <span className={`whitespace-nowrap transition-all duration-300 overflow-hidden ${isCollapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'w-auto opacity-100 block'}`}>
+              <span className={`whitespace-nowrap transition-all duration-300 overflow-hidden ${isCollapsed ? 'hidden' : 'hidden md:block'}`}>
                 Cerrar Sesión
               </span>
-              <div className={`
-                absolute left-full ml-4 px-3 py-2 bg-gray-900 text-white text-[10px] rounded-lg shadow-xl 
-                opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[99999] whitespace-nowrap
-                ${isCollapsed ? 'md:block hidden' : 'hidden'}
-              `}>
-                Cerrar Sesión
-              </div>
             </button>
           </nav>
         </div>
 
-        <div className="py-6 border-t border-gray-100 flex items-center justify-center">
-          <div className={`overflow-hidden transition-all duration-300 ${isCollapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'w-full px-6 opacity-100 block'}`}>
+        {/* FOOTER USER */}
+        <div className="py-6 border-t border-gray-100 flex items-center justify-center shrink-0">
+          <div className={`overflow-hidden transition-all duration-300 ${isCollapsed ? 'hidden' : 'hidden md:block w-full px-6'}`}>
             <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Empresa Cliente</p>
             <p className="text-[10px] font-black text-[#87be00] uppercase truncate italic">
               {user?.company_name || "Admin Panel"}
             </p>
           </div>
-          <div className={`w-8 h-8 rounded-full bg-[#87be00]/10 flex items-center justify-center text-[#87be00] font-black transition-all duration-300 ${isCollapsed ? 'md:flex hidden' : 'hidden'}`}>
+          <div className={`w-8 h-8 rounded-full bg-[#87be00]/10 flex items-center justify-center text-[#87be00] font-black transition-all duration-300 ${isCollapsed ? 'flex' : 'flex md:hidden'}`}>
              {user?.company_name ? user.company_name.charAt(0).toUpperCase() : 'A'}
           </div>
         </div>
       </div>
+
+      {/* TOOLTIP FLOTANTE GLOBAL DESKTOP */}
+      {isCollapsed && hoveredLabel && (
+        <div 
+          className="hidden md:block fixed left-24 px-3 py-2 bg-gray-900 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-2xl z-[99999] whitespace-nowrap pointer-events-none transform -translate-y-1/2 transition-all duration-150"
+          style={{ top: `${tooltipTop}px` }}
+        >
+          {hoveredLabel}
+        </div>
+      )}
     </>
   )
 }
