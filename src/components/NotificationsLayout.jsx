@@ -108,16 +108,7 @@ const NotificationsLayout = ({ userRole }) => {
                   )}
                 </div>
               </div>
- 
-              {/* BOTÓN ELIMINAR */}
-              {canDelete && (
-                <button
-                  onClick={() => onDelete(n.id)}
-                  className="absolute top-4 right-4 sm:static p-2 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
+              
             </div>
           ))
         )}
