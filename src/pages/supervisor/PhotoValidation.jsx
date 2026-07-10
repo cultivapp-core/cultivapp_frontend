@@ -304,8 +304,10 @@ const PhotoValidation = () => {
   };
 
   return (
-    <div className="space-y-6 md:space-y-8 font-[Outfit] pb-10">
-      <div className="flex flex-row justify-between items-start sm:items-center px-2 md:px-4 gap-4">
+    <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/30">
+      
+      {/* ── HEADER INTEGRADO (Ajustado para Sidebar) ── */}
+      <div className="bg-white border-b border-gray-100 pl-[76px] pr-4 py-5 md:px-8 md:py-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
           <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
             Validación de Ejecución
@@ -319,132 +321,137 @@ const PhotoValidation = () => {
         </div>
       </div>
 
-      <section className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm border border-gray-50 mx-2 md:mx-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 md:gap-4 items-end">
-          
-          <div className="relative">
-            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Desde</label>
-            <FiCalendar className="absolute left-4 top-[38px] text-[#87be00]" />
-            <input type="date" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.startDate} onChange={(e) => setInputs({...inputs, startDate: e.target.value})} />
+      {/* ── CONTENIDO PRINCIPAL (Con Padding Correcto) ── */}
+      <div className="p-4 md:p-8 flex-1 overflow-y-auto space-y-6 md:space-y-8 pb-10">
+        
+        {/* BARRA DE FILTROS */}
+        <section className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm border border-gray-50">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 md:gap-4 items-end">
+            
+            <div className="relative">
+              <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Desde</label>
+              <FiCalendar className="absolute left-4 top-[38px] text-[#87be00]" />
+              <input type="date" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.startDate} onChange={(e) => setInputs({...inputs, startDate: e.target.value})} />
+            </div>
+
+            <div className="relative">
+              <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Hasta</label>
+              <FiCalendar className="absolute left-4 top-[38px] text-[#87be00]" />
+              <input type="date" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.endDate} onChange={(e) => setInputs({...inputs, endDate: e.target.value})} />
+            </div>
+
+            <div className="relative">
+              <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Cód. Local</label>
+              <FiHash className="absolute left-4 top-[38px] text-[#87be00]" />
+              <input type="text" placeholder="EJ: J04" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.localCode} onChange={(e) => setInputs({...inputs, localCode: e.target.value})} />
+            </div>
+
+            <div className="relative">
+              <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Mercaderista</label>
+              <FiUser className="absolute left-4 top-[38px] text-[#87be00]" />
+              <input type="text" placeholder="NOMBRE" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.workerName} onChange={(e) => setInputs({...inputs, workerName: e.target.value})} />
+            </div>
+
+            <div className="relative">
+              <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Búsqueda</label>
+              <FiSearch className="absolute left-4 top-[38px] text-gray-400" />
+              <input type="text" placeholder="RUT/EMAIL" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.searchTerm} onChange={(e) => setInputs({...inputs, searchTerm: e.target.value})} />
+            </div>
+
+            <button onClick={handleApply} className="w-full py-3 bg-[#87be00] hover:bg-[#76a600] text-white rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+              <FiCheck size={14} /> Aplicar
+            </button>
+
+            {/* BOTÓN DESCARGAR TODO COMO UN SOLO ZIP CON SUBCARPETAS POR VISITA */}
+            <button 
+              onClick={handleDownloadAllZip}
+              disabled={isLoadingPhotos || zippingAll || visitGroups.length === 0}
+              className="w-full py-3 bg-black hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              {zippingAll ? (
+                <><FiLoader size={14} className="animate-spin" /> Empaquetando...</>
+              ) : (
+                <><FiDownloadCloud size={14} /> Todo (.zip)</>
+              )}
+            </button>
           </div>
+        </section>
 
-          <div className="relative">
-            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Hasta</label>
-            <FiCalendar className="absolute left-4 top-[38px] text-[#87be00]" />
-            <input type="date" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.endDate} onChange={(e) => setInputs({...inputs, endDate: e.target.value})} />
+        {/* LISTADO DE VISITAS CON DESCARGA ZIP INDIVIDUAL */}
+        {isLoadingPhotos ? (
+          <div className="py-20 text-center text-[10px] font-black uppercase italic animate-pulse text-gray-400">Cargando imágenes...</div>
+        ) : visitGroups.length === 0 ? (
+          <div className="py-20 text-center bg-white rounded-[2rem] border border-dashed border-gray-100">
+             <FiImage className="mx-auto text-gray-200 mb-4" size={40} />
+             <p className="text-xs font-black text-gray-300 uppercase italic tracking-widest">Sin registros encontrados</p>
           </div>
-
-          <div className="relative">
-            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Cód. Local</label>
-            <FiHash className="absolute left-4 top-[38px] text-[#87be00]" />
-            <input type="text" placeholder="EJ: J04" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.localCode} onChange={(e) => setInputs({...inputs, localCode: e.target.value})} />
-          </div>
-
-          <div className="relative">
-            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Mercaderista</label>
-            <FiUser className="absolute left-4 top-[38px] text-[#87be00]" />
-            <input type="text" placeholder="NOMBRE" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.workerName} onChange={(e) => setInputs({...inputs, workerName: e.target.value})} />
-          </div>
-
-          <div className="relative">
-            <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Búsqueda</label>
-            <FiSearch className="absolute left-4 top-[38px] text-gray-400" />
-            <input type="text" placeholder="RUT/EMAIL" className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-[#87be00]/20" value={inputs.searchTerm} onChange={(e) => setInputs({...inputs, searchTerm: e.target.value})} />
-          </div>
-
-          <button onClick={handleApply} className="w-full py-3 bg-[#87be00] hover:bg-[#76a600] text-white rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
-            <FiCheck size={14} /> Aplicar
-          </button>
-
-          {/* BOTÓN DESCARGAR TODO COMO UN SOLO ZIP CON SUBCARPETAS POR VISITA */}
-          <button 
-            onClick={handleDownloadAllZip}
-            disabled={isLoadingPhotos || zippingAll || visitGroups.length === 0}
-            className="w-full py-3 bg-black hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            {zippingAll ? (
-              <><FiLoader size={14} className="animate-spin" /> Empaquetando...</>
-            ) : (
-              <><FiDownloadCloud size={14} /> Todo (.zip)</>
-            )}
-          </button>
-        </div>
-      </section>
-
-      {/* LISTADO DE VISITAS CON DESCARGA ZIP INDIVIDUAL */}
-      {isLoadingPhotos ? (
-        <div className="py-20 text-center text-[10px] font-black uppercase italic animate-pulse text-gray-400">Cargando imágenes...</div>
-      ) : visitGroups.length === 0 ? (
-        <div className="py-20 text-center bg-white rounded-[2rem] border border-dashed border-gray-100 mx-4">
-           <FiImage className="mx-auto text-gray-200 mb-4" size={40} />
-           <p className="text-xs font-black text-gray-300 uppercase italic tracking-widest">Sin registros encontrados</p>
-        </div>
-      ) : (
-        <div className="space-y-6 px-4">
-          {visitGroups.map((group) => (
-            <div key={group.visit_id || Math.random()} className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-gray-50">
-              {/* CABECERA DE LA VISITA */}
-              <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b border-gray-50 bg-gray-50/50">
-                <div>
-                  <p className="text-xs font-black text-gray-900 uppercase italic">
-                    {group.local_codigo || 'Local s/c'} {group.visit_number ? `· ${group.visit_number}` : ''}
-                  </p>
-                  <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">
-                    {group.user_name || 'Sin Nombre'} · {group.local_nombre || ''} · {group.photos.length} foto(s)
-                  </p>
+        ) : (
+          <div className="space-y-6">
+            {visitGroups.map((group) => (
+              <div key={group.visit_id || Math.random()} className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-gray-50">
+                {/* CABECERA DE LA VISITA */}
+                <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b border-gray-50 bg-gray-50/50">
+                  <div>
+                    <p className="text-xs font-black text-gray-900 uppercase italic">
+                      {group.local_codigo || 'Local s/c'} {group.visit_number ? `· ${group.visit_number}` : ''}
+                    </p>
+                    <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">
+                      {group.user_name || 'Sin Nombre'} · {group.local_nombre || ''} · {group.photos.length} foto(s)
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDownloadVisitZip(group)}
+                    disabled={zippingVisitId === group.visit_id}
+                    className="py-2.5 px-4 bg-[#87be00] hover:bg-[#76a600] disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-[10px] font-black uppercase shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0"
+                  >
+                    {zippingVisitId === group.visit_id ? (
+                      <><FiLoader size={14} className="animate-spin" /> Empaquetando...</>
+                    ) : (
+                      <><FiPackage size={14} /> Descargar visita (.zip)</>
+                    )}
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleDownloadVisitZip(group)}
-                  disabled={zippingVisitId === group.visit_id}
-                  className="py-2.5 px-4 bg-[#87be00] hover:bg-[#76a600] disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-[10px] font-black uppercase shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0"
-                >
-                  {zippingVisitId === group.visit_id ? (
-                    <><FiLoader size={14} className="animate-spin" /> Empaquetando...</>
-                  ) : (
-                    <><FiPackage size={14} /> Descargar visita (.zip)</>
-                  )}
-                </button>
-              </div>
 
-              {/* GRID DE FOTOS DE ESTA VISITA */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-5">
-                {group.photos.map((item) => {
-                  const currentUrl = getImageUrl(item);
-                  // Si la foto tiene producto asociado, mostramos "Producto N° X - Nombre".
-                  // Si además es una foto de inicio/fin de góndola, lo indicamos aparte.
-                  const isInicio = item.photo_type?.startsWith('gondola_inicio');
-                  const isFin = item.photo_type?.startsWith('gondola_fin');
-                  const stageLabel = isInicio ? 'Inicio' : isFin ? 'Fin' : null;
-                  const badgeText = item.product_label || item.photo_type || 'Evidencia';
-                  return (
-                    <div key={item.id} className="rounded-[1.5rem] overflow-hidden border border-gray-50 group hover:shadow-xl transition-all flex flex-col">
-                      <div className="relative h-56 overflow-hidden bg-gray-50">
-                        <img src={currentUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Evidencia" onError={(e) => { e.target.src = "https://via.placeholder.com/400x300?text=No+Encontrada"; }} />
-                        <div className="absolute top-4 left-4 right-4 flex items-center gap-1.5">
-                          <div className="bg-black/80 text-[#87be00] text-[8px] font-black px-3 py-1.5 rounded-full uppercase italic shadow-md truncate max-w-full">
-                            {badgeText}
-                          </div>
-                          {stageLabel && (
-                            <div className="bg-white/90 text-gray-700 text-[8px] font-black px-2.5 py-1.5 rounded-full uppercase italic shadow-md shrink-0">
-                              {stageLabel}
+                {/* GRID DE FOTOS DE ESTA VISITA */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-5">
+                  {group.photos.map((item) => {
+                    const currentUrl = getImageUrl(item);
+                    // Si la foto tiene producto asociado, mostramos "Producto N° X - Nombre".
+                    // Si además es una foto de inicio/fin de góndola, lo indicamos aparte.
+                    const isInicio = item.photo_type?.startsWith('gondola_inicio');
+                    const isFin = item.photo_type?.startsWith('gondola_fin');
+                    const stageLabel = isInicio ? 'Inicio' : isFin ? 'Fin' : null;
+                    const badgeText = item.product_label || item.photo_type || 'Evidencia';
+                    return (
+                      <div key={item.id} className="rounded-[1.5rem] overflow-hidden border border-gray-50 group hover:shadow-xl transition-all flex flex-col">
+                        <div className="relative h-56 overflow-hidden bg-gray-50">
+                          <img src={currentUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="Evidencia" onError={(e) => { e.target.src = "https://via.placeholder.com/400x300?text=No+Encontrada"; }} />
+                          <div className="absolute top-4 left-4 right-4 flex items-center gap-1.5">
+                            <div className="bg-black/80 text-[#87be00] text-[8px] font-black px-3 py-1.5 rounded-full uppercase italic shadow-md truncate max-w-full">
+                              {badgeText}
                             </div>
-                          )}
+                            {stageLabel && (
+                              <div className="bg-white/90 text-gray-700 text-[8px] font-black px-2.5 py-1.5 rounded-full uppercase italic shadow-md shrink-0">
+                                {stageLabel}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="p-4">
+                           <div className="flex gap-2">
+                              <a href={currentUrl} target="_blank" rel="noreferrer" className="flex-1 py-2.5 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-black hover:text-[#87be00] transition-all"><FiExternalLink size={16}/></a>
+                              <button onClick={() => handleDownload(currentUrl, `foto_${item.id}.jpg`)} className="flex-1 py-2.5 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-[#87be00] hover:text-white transition-all"><FiDownload size={16}/></button>
+                           </div>
                         </div>
                       </div>
-                      <div className="p-4">
-                         <div className="flex gap-2">
-                            <a href={currentUrl} target="_blank" rel="noreferrer" className="flex-1 py-2.5 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-black hover:text-[#87be00] transition-all"><FiExternalLink size={16}/></a>
-                            <button onClick={() => handleDownload(currentUrl, `foto_${item.id}.jpg`)} className="flex-1 py-2.5 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:bg-[#87be00] hover:text-white transition-all"><FiDownload size={16}/></button>
-                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

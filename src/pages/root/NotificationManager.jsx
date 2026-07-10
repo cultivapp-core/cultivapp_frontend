@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import api from "../../api/apiClient";
 import { toast } from "react-hot-toast";
-import { Send, Users, Store, Globe, Loader2, X, CheckCircle2, Mail, UserCircle, Search } from "lucide-react";
+import { Bell, Search, UserCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { FiShield } from "react-icons/fi";
 
 const NotificationManager = () => {
   const { user } = useAuth();
@@ -13,7 +12,6 @@ const NotificationManager = () => {
   const [users, setUsers] = useState([]);
   
   const [loading, setLoading] = useState(false);
-  const [fetchingData, setFetchingData] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
   const ID_CULTIVA = '0e342e01-d213-4353-b210-39a12ac335cf'; 
@@ -29,36 +27,48 @@ const NotificationManager = () => {
     selectedTargets: [] 
   });
 
+  const safeGetData = (res) => (res?.data ? res.data : (Array.isArray(res) ? res : []));
+
   useEffect(() => {
-    if (canSeeCompanies) api.get("/companies").then(res => setCompanies(res || []));
+    if (canSeeCompanies) {
+      api.get("/companies").then(res => setCompanies(safeGetData(res)));
+    }
   }, [canSeeCompanies]);
 
   useEffect(() => {
     if (form.companyId) {
-      setFetchingData(true);
-      api.get(`/chains?company_id=${form.companyId}`).then(res => setChains(res || []));
-      api.get(`/users?company_id=${form.companyId}`).then(res => {
-        setUsers(res || []);
-        setFetchingData(false);
-      });
+      api.get(`/chains?company_id=${form.companyId}`)
+        .then(res => setChains(safeGetData(res)))
+        .catch(err => console.error("Error cargando cadenas:", err));
+        
+      api.get(`/users?company_id=${form.companyId}`)
+        .then(res => setUsers(safeGetData(res)));
     }
-    setForm(prev => ({ ...prev, chainId: "", localId: "", selectedTargets: [] }));
   }, [form.companyId]);
 
   useEffect(() => {
-    if (form.chainId) api.get(`/locales?chain_id=${form.chainId}`).then(res => setLocales(res || []));
+    if (form.chainId && form.companyId) {
+      api.get(`/locales?chain_id=${form.chainId}&company_id=${form.companyId}`)
+        .then(res => {
+            setLocales(safeGetData(res));
+        })
+        .catch(err => {
+            console.error("Error cargando locales:", err);
+            setLocales([]);
+        });
+    } else {
+        setLocales([]);
+    }
     setForm(prev => ({ ...prev, localId: "", selectedTargets: [] }));
-  }, [form.chainId]);
+  }, [form.chainId, form.companyId]);
 
   useEffect(() => {
     if (form.scope === 'local' && form.localId) {
-      setFetchingData(true);
-      api.get(`/users?local_id=${form.localId}`).then(res => {
-        setUsers(res || []);
-        setFetchingData(false);
-      });
+      api.get(`/users?local_id=${form.localId}`).then(res => setUsers(safeGetData(res)));
+    } else if (form.scope === 'global' && form.companyId) {
+      api.get(`/users?company_id=${form.companyId}`).then(res => setUsers(safeGetData(res)));
     }
-  }, [form.localId, form.scope]);
+  }, [form.localId, form.scope, form.companyId]);
 
   const filteredUsers = useMemo(() => {
     if (!searchTerm.trim()) return users;
@@ -80,98 +90,124 @@ const NotificationManager = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.scope !== 'global' && form.selectedTargets.length === 0) return toast.error("Selecciona destinatarios");
+    
+    // 🚩 VALIDACIÓN CORREGIDA: Solo requerir usuarios si el scope es individual
+    if (form.scope === 'individual' && form.selectedTargets.length === 0) {
+        return toast.error("Selecciona al menos un destinatario");
+    }
+    // Opcional: Validar que si es local, haya seleccionado un local
+    if (form.scope === 'local' && !form.localId) {
+        return toast.error("Selecciona un local");
+    }
+
     setLoading(true);
     try {
       await api.post("/notifications/send-bulk", { ...form, targetIds: form.selectedTargets, localId: form.localId || null });
-      toast.success("Notificación enviada");
-      setForm(prev => ({ ...prev, title: "", message: "", selectedTargets: [] }));
-    } catch (error) { toast.error("Error al enviar"); } finally { setLoading(false); }
+      toast.success("Notificación enviada correctamente");
+      setForm(prev => ({ ...prev, title: "", message: "", selectedTargets: [], localId: "" }));
+    } catch (error) { toast.error("Error al enviar notificación"); } finally { setLoading(false); }
   };
 
   return (
-    // 🔴 pt-20 asegura que el header no se solape con el botón de hamburguesa móvil
-    <div className="pt-20 md:pt-10 px-4 md:px-8 max-w-5xl mx-auto pb-20 font-[Outfit]">
-      
-      <div className="bg-white rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 shadow-xl border border-gray-100">
-        
-        {/* 🔴 Header: pl-10 en móvil para evitar choque visual */}
-        <div className="mb-8 pl-10 md:pl-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase tracking-tighter italic">Generador de Alertas</h2>
-            <p className="text-[9px] font-bold text-[#87be00] uppercase tracking-[0.2em] mt-1">Centro de Comunicaciones</p>
-          </div>
+    <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/30">
+      <div className="bg-white border-b border-gray-100 pl-[76px] pr-4 py-5 md:px-8 md:py-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 shrink-0">
+        <div>
+          <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+            Generador de Alertas
+          </h2>
+          <p className="text-[9px] md:text-[10px] font-bold text-[#87be00] uppercase tracking-widest mt-2">
+            Centro de Comunicaciones • Gestión de Notificaciones
+          </p>
         </div>
+        <div className="bg-black p-3 md:p-4 rounded-xl md:rounded-2xl shadow-xl shrink-0">
+          <Bell className="text-[#87be00] text-xl md:text-2xl" />
+        </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-[1.5rem]">
-            {canSeeCompanies && (
-              <select 
-                className="w-full bg-white border border-gray-100 rounded-xl px-4 py-3 text-xs font-bold outline-none"
-                value={form.companyId} onChange={(e) => setForm({...form, companyId: e.target.value})} required
-              >
-                <option value="">Seleccionar Empresa...</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name.toUpperCase()}</option>)}
-              </select>
+      <div className="p-4 md:p-8 flex-1 overflow-y-auto pb-10">
+        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-6">
+          <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-gray-100 shadow-sm space-y-6">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {canSeeCompanies && (
+                <div className="md:col-span-2">
+                    <label className="text-[9px] font-black text-gray-400 uppercase mb-1 block pl-1">Empresa</label>
+                    <select 
+                      className="w-full bg-gray-50 border border-gray-100 rounded-[1.2rem] px-4 py-4 text-[10px] font-black outline-none focus:border-[#87be00] transition-colors"
+                      value={form.companyId} onChange={(e) => setForm({...form, companyId: e.target.value})} required
+                    >
+                      <option value="">SELECCIONAR EMPRESA...</option>
+                      {companies.map(c => <option key={c.id} value={c.id}>{c.name.toUpperCase()}</option>)}
+                    </select>
+                </div>
+              )}
+
+              <div className="md:col-span-2">
+                <label className="text-[9px] font-black text-gray-400 uppercase mb-2 block pl-1">Alcance</label>
+                <div className="flex gap-2">
+                  {['global', 'individual', 'local'].map(s => (
+                    <button key={s} type="button" onClick={() => setForm({...form, scope: s})} 
+                      className={`flex-1 py-4 rounded-[1.2rem] text-[10px] font-black uppercase transition-all ${form.scope === s ? 'bg-[#87be00] text-white shadow-lg' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {form.scope === 'local' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-[1.5rem]">
+                <select className="bg-white rounded-[1.2rem] px-4 py-4 text-[10px] font-black border border-gray-100 outline-none focus:border-[#87be00]" value={form.chainId} onChange={(e) => setForm({...form, chainId: e.target.value})}>
+                  <option value="">CADENA...</option>
+                  {chains.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                </select>
+                <select className="bg-white rounded-[1.2rem] px-4 py-4 text-[10px] font-black border border-gray-100 outline-none focus:border-[#87be00]" value={form.localId} onChange={(e) => setForm({...form, localId: e.target.value})}>
+                  <option value="">LOCAL...</option>
+                  {locales.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.nombre_local || `LOCAL ${l.codigo_local}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
 
-            <div className="flex gap-2 col-span-1 md:col-span-2">
-              {['global', 'individual', 'local'].map(s => (
-                <button key={s} type="button" onClick={() => setForm({...form, scope: s})} 
-                  className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${form.scope === s ? 'bg-gray-900 text-white' : 'bg-white text-gray-400 border-gray-100'}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {form.scope === 'local' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <select className="bg-gray-50 rounded-xl px-4 py-3 text-xs font-bold border-none ring-1 ring-gray-100" value={form.chainId} onChange={(e) => setForm({...form, chainId: e.target.value})}>
-                <option value="">Cadena...</option>
-                {chains.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-              </select>
-              <select className="bg-gray-50 rounded-xl px-4 py-3 text-xs font-bold border-none ring-1 ring-gray-100" value={form.localId} onChange={(e) => setForm({...form, localId: e.target.value})}>
-                <option value="">Local...</option>
-                {locales.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            </div>
-          )}
-
-          {(form.scope === 'individual' || form.scope === 'local') && (
-            <div className="space-y-4">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input type="text" placeholder="Buscar personal..." className="w-full bg-gray-50 rounded-xl px-12 py-3 text-[10px] font-bold outline-none ring-1 ring-gray-100" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            {/* 🚩 CORRECCIÓN: Ahora esto solo aparece si el scope es individual */}
+            {form.scope === 'individual' && (
+              <div className="space-y-4">
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input type="text" placeholder="BUSCAR PERSONAL..." className="w-full bg-gray-50 rounded-[1.2rem] px-12 py-4 text-[10px] font-black outline-none border border-gray-100 focus:border-[#87be00]" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                  {filteredUsers.map(u => {
+                    const isSelected = form.selectedTargets.includes(u.id);
+                    return (
+                      <button key={u.id} type="button" onClick={() => toggleUserSelection(u.id)}
+                        className={`p-4 rounded-2xl text-left border-2 flex items-center gap-3 transition-all ${isSelected ? 'border-[#87be00] bg-[#87be00]/5' : 'border-gray-50 bg-white hover:border-gray-200'}`}>
+                        <div className={`p-3 rounded-xl ${isSelected ? 'bg-[#87be00] text-white' : 'bg-gray-50 text-gray-400'}`}>
+                          <UserCircle size={18}/>
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`text-[10px] font-black uppercase truncate ${isSelected ? 'text-[#87be00]' : 'text-gray-900'}`}>{u.first_name} {u.last_name}</p>
+                          <p className="text-[8px] font-bold text-gray-400">{u.role}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+            )}
+
+            <div className="space-y-4 pt-4 border-t border-gray-50">
+              <input type="text" placeholder="TÍTULO DE LA ALERTA..." className="w-full p-4 bg-gray-50 rounded-[1.2rem] text-[10px] font-black uppercase outline-none focus:border-[#87be00] border border-gray-100" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} required />
+              <textarea placeholder="MENSAJE PARA EL USUARIO..." rows="3" className="w-full p-4 bg-gray-50 rounded-[1.2rem] text-[10px] font-black uppercase outline-none focus:border-[#87be00] border border-gray-100 resize-none" value={form.message} onChange={(e) => setForm({...form, message: e.target.value})} required />
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto custom-scrollbar">
-                {filteredUsers.map(u => {
-                  const isSelected = form.selectedTargets.includes(u.id);
-                  return (
-                    <button key={u.id} type="button" onClick={() => toggleUserSelection(u.id)}
-                      className={`p-4 rounded-2xl text-left border-2 flex items-center gap-3 ${isSelected ? 'border-[#87be00] bg-green-50' : 'border-gray-100 bg-white'}`}>
-                      <div className={`p-2 rounded-lg ${isSelected ? 'bg-[#87be00] text-white' : 'bg-gray-100 text-gray-400'}`}>
-                        <UserCircle size={16}/>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-black uppercase truncate">{u.first_name} {u.last_name}</p>
-                        <p className="text-[8px] font-bold text-gray-400">{u.role}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+              <button type="submit" disabled={loading} className="w-full bg-gray-900 hover:bg-black text-white py-5 rounded-[1.2rem] font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">
+                {loading ? "EMITIENDO..." : "EMITIR NOTIFICACIÓN"}
+              </button>
             </div>
-          )}
-
-          <div className="space-y-4 bg-gray-50 p-5 rounded-[2rem]">
-            <input type="text" placeholder="Título..." className="w-full p-4 rounded-xl text-xs font-bold border-none outline-none" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} required />
-            <textarea placeholder="Mensaje..." rows="3" className="w-full p-4 rounded-xl text-xs font-bold border-none outline-none resize-none" value={form.message} onChange={(e) => setForm({...form, message: e.target.value})} required />
-            <button type="submit" disabled={loading} className="w-full bg-[#87be00] text-white py-4 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg">
-              {loading ? "Enviando..." : "Emitir Notificación"}
-            </button>
           </div>
         </form>
       </div>
