@@ -1,6 +1,6 @@
 {
-  "name": "CULTIVAPP",
-  "short_name": "CULTIVAPP",
+  "name": "Cultivapp",
+  "short_name": "Cultivapp",
   "description": "Aplicación de gestion de mercaderistas",
   "start_url": "/",
   "scope": "/",
@@ -10,27 +10,15 @@
   "background_color": "#ffffff",
   "icons": [
     {
-      "src": "/assets/images/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
+      "src": "https://www.cultivasp.cl/wp-content/uploads/2025/03/cropped-Logo-Cultiva-SP-150p.jpg",
+      "sizes": "150x150",
+      "type": "image/jpeg",
       "purpose": "any"
     },
     {
-      "src": "/assets/images/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/assets/images/icon-maskable-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/assets/images/icon-maskable-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "https://www.cultivasp.cl/wp-content/uploads/2025/03/cropped-Logo-Cultiva-SP-150p.jpg",
+      "sizes": "150x150",
+      "type": "image/jpeg",
       "purpose": "maskable"
     }
   ]
