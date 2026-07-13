@@ -4,6 +4,7 @@ import { NotificationProvider } from "./context/NotificationContext"
 import { Toaster } from "react-hot-toast"
 import { useEffect } from "react" 
 import api from "./api/apiClient" 
+import { io } from "socket.io-client" // 🔌 Importamos el cliente oficial de Socket.io
 
 // --- HOOKS ---
 import { useOfflineSync } from "./hooks/useOfflineSync"
@@ -77,15 +78,31 @@ import "./App.css"
 
 const HeartbeatMonitor = () => {
   const { user } = useAuth();
+  
   useEffect(() => {
     if (!user) return;
+
+    // 1. Inicializar canal WebSocket en tiempo real apuntando a tu API externa o local
+    const socket = io(import.meta.env.VITE_API_URL, { credentials: true });
+
+    // Enviar el ID del colaborador conectado para el Radar
+    if (user.id) {
+      socket.emit("register_user", user.id);
+    }
+
+    // 2. Mantener fallback tradicional por REST API de contingencia (Sin modificaciones)
     const sendPing = async () => {
       try { await api.post("/users/ping"); } catch (error) { console.warn("Ping fallido..."); }
     };
     sendPing();
     const intervalId = setInterval(sendPing, 60000);
-    return () => clearInterval(intervalId);
+
+    return () => {
+      clearInterval(intervalId);
+      socket.disconnect(); // Desconectar socket limpiamente al desloguearse
+    };
   }, [user]);
+
   return null; 
 };
 
@@ -177,28 +194,25 @@ function App() {
             </Route>
 
            {/* SUPERVISOR */}
-<Route 
-  path="/supervisor" 
-  element={
-    <ProtectedRoute role="SUPERVISOR">
-      <SupervisorLayout />
-    </ProtectedRoute>
-  }
->
-  <Route index element={<SupervisorPanel />} />
-  
-  {/* ✅ AQUÍ ESTÁ LA NUEVA RUTA PARA EL SUPERVISOR */}
-  <Route path="routes" element={<AdminRoutes />} /> 
-  
-  <Route path="mapa" element={<LiveMap />} />
-  <Route path="alertas" element={<AlertManager />} />
-  <Route path="visita" element={<SupervisorVisitFlow />} />
-  <Route path="asistencia" element={<AttendanceControl />} />
-  <Route path="ejecucion" element={<PhotoValidation />} />
-  <Route path="tareas" element={<TaskControl />} />
-  <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
-  <Route path="informes" element={<ReportsPage />} />
-</Route>
+            <Route 
+              path="/supervisor" 
+              element={
+                <ProtectedRoute role="SUPERVISOR">
+                  <SupervisorLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<SupervisorPanel />} />
+              <Route path="routes" element={<AdminRoutes />} /> 
+              <Route path="mapa" element={<LiveMap />} />
+              <Route path="alertas" element={<AlertManager />} />
+              <Route path="visita" element={<SupervisorVisitFlow />} />
+              <Route path="asistencia" element={<AttendanceControl />} />
+              <Route path="ejecucion" element={<PhotoValidation />} />
+              <Route path="tareas" element={<TaskControl />} />
+              <Route path="notificaciones" element={<NotificationsLayout userRole="SUPERVISOR" />} />
+              <Route path="informes" element={<ReportsPage />} />
+            </Route>
 
             {/* ADMIN */}
             <Route path="/admin" element={<ProtectedRoute roles={["ADMIN_CLIENTE", "ROOT"]}><AdminLayout /></ProtectedRoute>}>
