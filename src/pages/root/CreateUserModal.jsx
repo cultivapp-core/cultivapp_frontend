@@ -1,5 +1,17 @@
 import { useState, useEffect } from "react"
-import { FiX, FiUserPlus, FiBriefcase, FiMail, FiLock, FiCalendar, FiShield, FiSave, FiPhone, FiUser } from "react-icons/fi"
+import { 
+  FiX, 
+  FiCamera, 
+  FiUploadCloud, 
+  FiFileText, 
+  FiCheck, 
+  FiPhone, 
+  FiUser, 
+  FiUserPlus, 
+  FiShield,
+  FiBriefcase,
+  FiSave
+} from "react-icons/fi"
 import api from "../../api/apiClient"
 import { toast } from "react-hot-toast"
 
@@ -9,64 +21,117 @@ const CreateUserModal = ({
   onCreated,
   defaultRole = ""
 }) => {
-
-  const [form, setForm] = useState({
+  const initialForm = {
     first_name: "",
     last_name: "",
     email: "",
+    phone: "",
     password: "",
-    company_id: "",
     role: defaultRole,
     rut: "",
     position: "",
-    tipo_contrato: "Plazo Fijo",
-    fecha_inicio_contrato: "",
+    trabajando_para: "",
+    fecha_inicio_contrato: "", 
     fecha_termino_contrato: "",
-    // 🚩 AGREGADOS: Datos de Supervisor
+    tipo_contrato: "Plazo Fijo",
     supervisor_nombre: "",
-    supervisor_telefono: ""
-  })
+    supervisor_telefono: "",
+    company_id: "", 
+  }
 
+  const [form, setForm] = useState(initialForm)
+  const [foto, setFoto] = useState(null)
+  const [preview, setPreview] = useState(null)
+  
+  // ESTADOS PARA ADJUNTOS LEGALES
+  const [documentoContrato, setDocumentoContrato] = useState(null)
+  const [documentoAchs, setDocumentoAchs] = useState(null)
+  const [documentoOtro, setDocumentoOtro] = useState(null)
+  
+  // ESTADOS DE EMPRESA Y LICENCIAS
   const [companies, setCompanies] = useState([])
   const [companyStats, setCompanyStats] = useState(null)
+  const [loadingCompanies, setLoadingCompanies] = useState(false)
+  
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [rutError, setRutError] = useState("")
 
   useEffect(() => {
     if (isOpen) {
       fetchCompanies()
-      setForm({
-        first_name: "",
-        last_name: "",
-        email: "",
-        password: "",
-        company_id: "",
-        role: defaultRole,
-        rut: "",
-        position: "",
-        tipo_contrato: "Plazo Fijo",
-        fecha_inicio_contrato: "",
-        fecha_termino_contrato: "",
-        supervisor_nombre: "",
-        supervisor_telefono: ""
-      })
+      setForm(initialForm)
+      setFoto(null)
+      setPreview(null)
+      setDocumentoContrato(null)
+      setDocumentoAchs(null)
+      setDocumentoOtro(null)
       setCompanyStats(null)
       setError("")
+      setRutError("")
     }
   }, [isOpen, defaultRole])
 
   const fetchCompanies = async () => {
     try {
-      const data = await api.get("/companies")
+      setLoadingCompanies(true)
+      const response = await api.get("/companies")
+      const data = Array.isArray(response) ? response : (response.data || [])
       setCompanies(data)
-    } catch (err) { console.error(err) }
+    } catch (err) { 
+      console.error("Error al cargar empresas", err) 
+    } finally {
+      setLoadingCompanies(false)
+    }
   }
 
   const fetchCompanyStats = async (companyId) => {
     try {
       const data = await api.get(`/api/users/company/${companyId}/stats`)
       setCompanyStats(data)
-    } catch (error) { console.error(error) }
+    } catch (error) { 
+      console.error(error) 
+    }
+  }
+
+  const validarRutChileno = (rutCompleto) => {
+    const rutLimpio = rutCompleto.replace(/[^0-9kK]/g, "").toUpperCase()
+    if (rutLimpio.length < 2) return false
+    const cuerpo = rutLimpio.slice(0, -1)
+    const dv = rutLimpio.slice(-1)
+    let suma = 0
+    let multiplicador = 2
+    for (let i = cuerpo.length - 1; i >= 0; i--) {
+      suma += parseInt(cuerpo.charAt(i)) * multiplicador
+      multiplicador = multiplicador === 7 ? 2 : multiplicador + 1
+    }
+    const dvEsperado = 11 - (suma % 11)
+    let dvFinal = ""
+    if (dvEsperado === 11) dvFinal = "0"
+    else if (dvEsperado === 10) dvFinal = "K"
+    else dvFinal = dvEsperado.toString()
+    return dvFinal === dv
+  }
+
+  const handleRutChange = (e) => {
+    let value = e.target.value.replace(/[^0-9kK]/g, "")
+    if (value.length > 9) return
+    
+    if (value.length > 1) {
+      const dv = value.slice(-1)
+      const cuerpo = value.slice(0, -1)
+      const cuerpoFormateado = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+      value = `${cuerpoFormateado}-${dv}`
+    }
+
+    setForm(prev => ({ ...prev, rut: value }))
+
+    const caracteresLimpios = value.replace(/[^0-9kK]/g, "")
+    if (caracteresLimpios.length >= 8) {
+      setRutError(validarRutChileno(value) ? "" : "RUT inválido")
+    } else {
+      setRutError("")
+    }
   }
 
   const handleChange = (e) => {
@@ -75,8 +140,16 @@ const CreateUserModal = ({
     if (name === "company_id" && value) fetchCompanyStats(value)
   }
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setFoto(file)
+      setPreview(URL.createObjectURL(file))
+    }
+  }
+
   const isRoleFull = (role) => {
-    if (!companyStats) return false
+    if (!companyStats || !role) return false
     const { counts, limits } = companyStats
     if (role === "SUPERVISOR") return counts.SUPERVISOR >= limits.max_supervisors
     if (role === "USUARIO") return counts.USUARIO >= limits.max_users
@@ -86,23 +159,39 @@ const CreateUserModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setLoading(true)
-    setError("")
-
-    if (form.role !== "ROOT" && isRoleFull(form.role)) {
-      setError("No hay cupos disponibles en esta empresa")
-      setLoading(false)
+    if (!validarRutChileno(form.rut)) {
+      setRutError("Ingresa un RUT válido para continuar")
       return
     }
 
+    if (form.role !== "ROOT" && isRoleFull(form.role)) {
+      setError("No hay cupos disponibles para este rol en la empresa seleccionada")
+      return
+    }
+
+    setLoading(true)
+    setError("")
+
     try {
-      const finalForm = {
-        ...form,
-        fecha_inicio_contrato: form.fecha_inicio_contrato || null,
-        fecha_termino_contrato: form.fecha_termino_contrato || null
-      }
+      const formData = new FormData()
+      Object.keys(form).forEach((key) => {
+        if (form.role !== "USUARIO" && (key === "supervisor_nombre" || key === "supervisor_telefono")) {
+          formData.append(key, "")
+        } else if (key === "fecha_inicio_contrato" || key === "fecha_termino_contrato") {
+          formData.append(key, form[key] || "")
+        } else {
+          formData.append(key, form[key])
+        }
+      })
       
-      await api.post("/users", finalForm)
+      if (!form.company_id) throw new Error("Debe seleccionar una empresa obligatoriamente")
+      
+      if (foto) formData.append("foto", foto)
+      if (documentoContrato) formData.append("documento_contrato", documentoContrato)
+      if (documentoAchs) formData.append("documento_achs", documentoAchs)
+      if (documentoOtro) formData.append("documento_otro", documentoOtro)
+
+      await api.post("/users", formData)
       toast.success("Usuario creado exitosamente")
       onCreated()
       onClose()
@@ -113,133 +202,239 @@ const CreateUserModal = ({
     }
   }
 
-  if (!isOpen) return null
-
-  const Label = ({ children }) => (
-    <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] ml-5 mb-2 block italic">
-      {children}
-    </label>
+  const DocumentUploader = ({ title, file, onChangeHandler }) => (
+    <div className={`flex items-center gap-3 p-3 border rounded-xl transition-all ${file ? 'border-[#87be00] bg-[#87be00]/5' : 'border-slate-200 bg-white hover:border-[#87be00]/30'}`}>
+      <div className={`p-2 rounded-lg shrink-0 ${file ? 'bg-[#87be00] text-white' : 'bg-slate-100 text-slate-400'}`}>
+        {file ? <FiCheck size={16}/> : <FiFileText size={16}/>}
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider leading-none">{title}</p>
+        <p className="text-xs font-bold text-slate-700 truncate mt-1">{file ? file.name : "Sin adjuntar"}</p>
+      </div>
+      <label className="cursor-pointer bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-[9px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#87be00] shadow-sm transition-colors shrink-0">
+        {file ? "Cambiar" : "Subir"}
+        <input type="file" className="hidden" accept=".pdf" onChange={onChangeHandler} />
+      </label>
+    </div>
   )
 
-  const inputClass = "w-full bg-gray-50 border-2 border-transparent rounded-[1.5rem] px-6 py-4 text-sm font-black text-gray-900 outline-none focus:bg-white focus:border-[#87be00]/20 focus:ring-4 focus:ring-[#87be00]/5 transition-all placeholder:text-gray-300"
+  if (!isOpen) return null
+
+  const inputClass = "w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-xs font-bold text-slate-800 outline-none focus:bg-white focus:border-[#87be00] focus:ring-1 focus:ring-[#87be00] transition-all placeholder:text-slate-400 placeholder:font-medium shadow-sm"
 
   return (
-    <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[100] font-[Outfit]">
-      <div className="bg-white w-full max-w-2xl rounded-[3.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-500 max-h-[95vh] flex flex-col">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100] font-[Outfit]">
+      <div className="bg-white w-full max-w-4xl rounded-[2rem] shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200 border border-slate-100">
         
-        {/* HEADER */}
-        <div className="p-10 pb-6 flex justify-between items-start border-b border-gray-50">
-          <div className="flex items-center gap-5">
-            <div className="w-14 h-14 bg-gray-900 rounded-[1.5rem] flex items-center justify-center text-[#87be00]">
-              <FiUserPlus size={28} />
+        {/* HEADER MODAL */}
+        <div className="px-6 py-5 md:px-8 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-slate-900 text-[#87be00] rounded-xl shadow-md">
+              <FiUserPlus size={22} />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter leading-none italic">Crear Acceso</h2>
-              <p className="text-[10px] font-black text-[#87be00] uppercase tracking-[0.3em] mt-2">Configuración Global ROOT</p>
+              <h3 className="text-xl md:text-2xl font-extrabold text-slate-900 uppercase tracking-tight leading-none italic">Nuevo Colaborador</h3>
+              <p className="text-[9px] font-black text-[#87be00] uppercase tracking-[0.2em] mt-1.5">Ficha de Ingreso Global</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-3 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-2xl transition-all"><FiX size={28} /></button>
+          <button onClick={onClose} className="p-2.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 rounded-xl transition-all">
+            <FiX size={22} />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-10 pt-6 overflow-y-auto space-y-8">
-          {error && <div className="bg-red-50 text-red-500 p-4 rounded-2xl text-[11px] font-black uppercase tracking-widest border border-red-100">{error}</div>}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* IDENTIDAD */}
-            <div className="space-y-4">
-              <Label>Datos Personales</Label>
-              <input type="text" name="first_name" placeholder="Nombres" value={form.first_name} onChange={handleChange} required className={inputClass} />
-              <input type="text" name="last_name" placeholder="Apellidos" value={form.last_name} onChange={handleChange} required className={inputClass} />
-              <input type="text" name="rut" placeholder="RUT (12.345.678-9)" value={form.rut} onChange={handleChange} required className={inputClass} />
+        {/* FORMS CON CONTROL SCROLLBAR RESPONSIVO */}
+        <form onSubmit={handleSubmit} className="p-6 md:p-8 overflow-y-auto bg-slate-50/30 flex-1 space-y-6 custom-scrollbar">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-4 rounded-xl text-[10px] font-bold uppercase tracking-wider border border-red-100 shadow-sm flex items-center gap-2">
+              ⚠️ {error}
             </div>
+          )}
 
-            {/* CUENTA */}
-            <div className="space-y-4">
-              <Label>Credenciales de Acceso</Label>
-              <input type="email" name="email" placeholder="Correo Electrónico" value={form.email} onChange={handleChange} required className={inputClass} />
-              <input type="password" name="password" placeholder="Contraseña Inicial" value={form.password} onChange={handleChange} required className={inputClass} />
-              <select name="company_id" value={form.company_id} onChange={handleChange} required className={`${inputClass} bg-white`}>
-                <option value="">Seleccionar Empresa</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            {/* LADO IZQUIERDO: IDENTIFICACIÓN Y ACCESO */}
+            <div className="lg:col-span-6 space-y-5">
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+                <h4 className="text-[10px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2 mb-2">
+                  <FiUser size={13}/> 1. Identificación y Acceso
+                </h4>
 
-            {/* CONTRATO */}
-            <div className="md:col-span-2 bg-gray-50/50 p-8 rounded-[2.5rem] border border-gray-100 space-y-6">
-               <Label>Vigencia y Cargo</Label>
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input type="text" name="position" placeholder="Cargo (ej: Supervisor)" value={form.position} onChange={handleChange} required className="w-full bg-white border-none rounded-2xl px-5 py-4 text-sm font-bold shadow-sm" />
-                  <div className="space-y-2">
-                    <span className="text-[8px] font-black text-gray-400 uppercase ml-2 italic">Fecha Inicio</span>
-                    <input type="date" name="fecha_inicio_contrato" value={form.fecha_inicio_contrato} onChange={handleChange} required className="w-full bg-white border-none rounded-2xl px-5 py-3 text-xs font-bold shadow-sm" />
+                <div className="flex gap-4 items-center">
+                  <div className="shrink-0 relative group cursor-pointer">
+                    {preview ? (
+                      <img src={preview} className="w-20 h-20 rounded-xl object-cover border-2 border-[#87be00] shadow-sm" />
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl bg-slate-50 border border-dashed border-slate-300 flex items-center justify-center group-hover:border-[#87be00] transition-colors shadow-inner">
+                        <FiCamera size={20} className="text-slate-400 group-hover:text-[#87be00]"/>
+                      </div>
+                    )}
+                    <label className="absolute inset-0 w-full h-full cursor-pointer rounded-xl">
+                      <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                    </label>
                   </div>
-                  <div className="space-y-2">
-                    <span className="text-[8px] font-black text-gray-400 uppercase ml-2 italic">Fecha Término</span>
-                    <input type="date" name="fecha_termino_contrato" value={form.fecha_termino_contrato} onChange={handleChange} className="w-full bg-white border-none rounded-2xl px-5 py-3 text-xs font-bold shadow-sm" />
+                  
+                  <div className="flex-1 space-y-2.5">
+                    <input type="text" name="first_name" value={form.first_name} placeholder="Nombres" required className={inputClass} onChange={handleChange} />
+                    <input type="text" name="last_name" value={form.last_name} placeholder="Apellidos" required className={inputClass} onChange={handleChange} />
                   </div>
-               </div>
-            </div>
+                </div>
 
-            {/* 🚩 NUEVA SECCIÓN: SUPERVISOR ASIGNADO */}
-            <div className="md:col-span-2 bg-gray-900 p-8 rounded-[2.5rem] text-white space-y-6 shadow-xl shadow-black/20">
-               <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[#87be00] rounded-lg text-black">
-                    <FiUser size={18} />
-                  </div>
-                  <Label><span className="text-[#87be00]">Contacto de Supervisor</span> (Aparece en Credencial)</Label>
-               </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input 
-                    type="text" 
-                    name="supervisor_nombre" 
-                    placeholder="Nombre del Supervisor" 
-                    value={form.supervisor_nombre} 
-                    onChange={handleChange} 
-                    className="w-full bg-white/10 border-none rounded-2xl px-6 py-4 text-sm font-bold text-white placeholder:text-gray-500 focus:bg-white/20 transition-all outline-none" 
-                  />
-                  <div className="relative flex items-center">
-                    <FiPhone className="absolute left-5 text-[#87be00]" size={16} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                  <div className="w-full">
                     <input 
                       type="text" 
-                      name="supervisor_telefono" 
-                      placeholder="+56 9 0000 0000" 
-                      value={form.supervisor_telefono} 
-                      onChange={handleChange} 
-                      className="w-full bg-white/10 border-none rounded-[1.3rem] pl-12 pr-6 py-4 text-sm font-bold text-white placeholder:text-gray-500 focus:bg-white/20 transition-all outline-none" 
+                      name="rut"
+                      value={form.rut} 
+                      placeholder="RUT (Ej: 12.345.678-9)" 
+                      required 
+                      className={`w-full px-5 py-3.5 text-xs font-bold text-slate-800 rounded-xl outline-none border transition-all ${
+                        rutError ? 'border-red-400 focus:ring-1 focus:ring-red-400 focus:bg-red-50/20' : 'border-slate-200 focus:border-[#87be00] focus:ring-1 focus:ring-[#87be00]'
+                      }`}
+                      onChange={handleRutChange} 
                     />
+                    {rutError && <p className="text-red-500 text-[9px] font-bold mt-1 ml-1 animate-in fade-in">{rutError}</p>}
                   </div>
-               </div>
+                  <input type="text" name="phone" value={form.phone} placeholder="Teléfono" required className={inputClass} onChange={handleChange} />
+                </div>
+
+                <div className="space-y-3">
+                  <input type="email" name="email" value={form.email} placeholder="Correo Electrónico" required className={inputClass} onChange={handleChange} />
+                  
+                  <select 
+                    name="company_id"
+                    required 
+                    value={form.company_id} 
+                    className={`${inputClass} bg-white cursor-pointer`}
+                    onChange={handleChange}
+                  >
+                    <option value="" disabled>
+                      {loadingCompanies ? "Cargando empresas..." : "Seleccione Empresa Asignada"}
+                    </option>
+                    {companies.map((emp) => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input type="password" name="password" value={form.password} placeholder="Contraseña Inicial" required className={inputClass} onChange={handleChange} />
+                    <select 
+                      name="role"
+                      required 
+                      value={form.role} 
+                      className="w-full bg-white border border-[#87be00]/30 text-[#87be00] font-bold rounded-xl px-4 py-3.5 text-xs focus:ring-1 focus:ring-[#87be00] outline-none transition-all cursor-pointer shadow-sm"
+                      onChange={handleChange}
+                    >
+                      <option value="" disabled>Perfil de Sistema</option>
+                      <option value="ROOT">ROOT (Acceso Total)</option>
+                      <option value="ADMIN_CLIENTE">Admin Cliente</option>
+                      <option value="USUARIO" disabled={isRoleFull("USUARIO")}>Mercaderista</option>
+                      <option value="SUPERVISOR" disabled={isRoleFull("SUPERVISOR")}>Supervisor</option>
+                      <option value="VIEW" disabled={isRoleFull("VIEW")}>Viewer</option>
+                    </select>
+                  </div>
+
+                  {companyStats && form.role !== "ROOT" && form.role !== "" && (
+                    <div className="bg-emerald-50/50 rounded-xl p-3 flex justify-between items-center border border-emerald-100/60 shadow-sm">
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider ml-1">Licencias de Perfil:</span>
+                      <span className="text-[11px] font-extrabold text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-100 shadow-sm">
+                        {companyStats.counts[form.role] || 0} / {companyStats.limits[`max_${form.role.toLowerCase()}s`] || 0}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* ROL Y CUPOS */}
-            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-               <div>
-                  <Label>Perfil de Usuario</Label>
-                  <select name="role" value={form.role} onChange={handleChange} required className={`${inputClass} bg-white`}>
-                    <option value="">Seleccionar Rol</option>
-                    <option value="ROOT">ROOT (Acceso Total)</option>
-                    <option value="ADMIN_CLIENTE">Admin Cliente</option>
-                    <option value="SUPERVISOR" disabled={isRoleFull("SUPERVISOR")}>Supervisor</option>
-                    <option value="USUARIO" disabled={isRoleFull("USUARIO")}>Usuario (Mercaderista)</option>
+            {/* LADO DERECHO: SECCIÓN LABORAL Y ADJUNTOS */}
+            <div className="lg:col-span-6 space-y-5">
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+                <h4 className="text-[10px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2 mb-2">
+                  <FiBriefcase size={13}/> 2. Datos Laborales
+                </h4>
+
+                <input type="text" name="position" value={form.position} placeholder="Cargo Laboral (Ej: Mercaderista)" required className={inputClass} onChange={handleChange} />
+                <input type="text" name="trabajando_para" value={form.trabajando_para} placeholder="Trabajando para..." required className={inputClass} onChange={handleChange} />
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <select 
+                    name="tipo_contrato"
+                    required 
+                    value={form.tipo_contrato} 
+                    className="sm:col-span-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-xs font-bold text-slate-800 outline-none focus:bg-white focus:border-[#87be00] transition-all"
+                    onChange={e => {
+                      const val = e.target.value
+                      setForm(prev => ({
+                        ...prev,
+                        tipo_contrato: val,
+                        fecha_termino_contrato: val === "Indefinido" ? "" : prev.fecha_termino_contrato
+                      }))
+                    }}
+                  >
+                    <option value="" disabled>Seleccione Tipo de Contrato</option>
+                    <option value="Indefinido">Indefinido</option>
+                    <option value="Plazo Fijo">Plazo Fijo</option>
+                    <option value="EST">Servicios Transitorios (EST)</option>
+                    <option value="OT">Outsourcing (OT)</option>
+                    <option value="Propio">Propio</option>
                   </select>
-               </div>
-               
-               {companyStats && form.role !== "ROOT" && (
-                 <div className="bg-gray-100 rounded-[1.5rem] p-5 flex justify-around items-center border border-gray-200">
-                    <div className="text-center">
-                       <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Cupo Rol</p>
-                       <p className="text-xl font-black text-gray-900 italic tracking-tighter">
-                          {companyStats.counts[form.role] || 0} / {companyStats.limits[`max_${form.role.toLowerCase()}s`] || 0}
-                       </p>
+
+                  <div className={`flex flex-col bg-slate-50 border border-slate-200 rounded-xl p-2 px-3 ${form.tipo_contrato === "Indefinido" ? "sm:col-span-2" : ""}`}>
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Inicio Contrato</label>
+                    <input type="date" name="fecha_inicio_contrato" required value={form.fecha_inicio_contrato} className="bg-transparent text-xs outline-none mt-1 text-slate-700 font-bold cursor-pointer" onChange={handleChange} />
+                  </div>
+                  
+                  {form.tipo_contrato !== "Indefinido" && (
+                    <div className="flex flex-col bg-slate-50 border border-slate-200 rounded-xl p-2 px-3">
+                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Fin Contrato</label>
+                      <input type="date" name="fecha_termino_contrato" value={form.fecha_termino_contrato} className="bg-transparent text-xs outline-none mt-1 text-slate-700 font-bold cursor-pointer" onChange={handleChange} />
                     </div>
-                 </div>
-               )}
+                  )}
+                </div>
+
+                {/* SUPERVISOR DIRECTO CONDICIONAL */}
+                {form.role === "USUARIO" && (
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in duration-200">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-2.5 italic">
+                      <FiShield size={12}/> Supervisor Directo de Campo
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input type="text" name="supervisor_nombre" value={form.supervisor_nombre} placeholder="Nombre completo" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-[#87be00]" onChange={handleChange} />
+                      <input type="text" name="supervisor_telefono" value={form.supervisor_telefono} placeholder="Teléfono" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-[#87be00]" onChange={handleChange} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CARGA DE ARCHIVOS MULTIPLE */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-2.5">
+                <h4 className="text-[10px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2 mb-1">
+                  <FiUploadCloud size={13}/> 3. Documentación Extra (PDF)
+                </h4>
+                
+                <DocumentUploader title="Contrato Laboral" file={documentoContrato} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoContrato(f); }} />
+                <DocumentUploader title="Mutualidad / ACHS" file={documentoAchs} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoAchs(f); }} />
+                <DocumentUploader title="Otros Antecedentes" file={documentoOtro} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoOtro(f); }} />
+              </div>
             </div>
           </div>
 
-          <button type="submit" disabled={loading} className="w-full bg-gray-900 hover:bg-black text-[#87be00] py-6 rounded-[2rem] font-black uppercase tracking-[0.2em] text-[11px] transition-all flex items-center justify-center gap-4 shadow-2xl hover:scale-[1.01] active:scale-95 disabled:opacity-50">
-            {loading ? <div className="w-5 h-5 border-4 border-[#87be00]/20 border-t-[#87be00] rounded-full animate-spin" /> : <><FiSave size={20} /> Crear Colaborador</>}
-          </button>
+          {/* ACCIÓN PRINCIPAL */}
+          <div className="pt-2">
+            <button 
+              type="submit" 
+              disabled={loading || rutError !== ""} 
+              className="w-full bg-slate-900 hover:bg-black text-[#87be00] py-4 rounded-xl font-bold uppercase tracking-wider text-[11px] transition-all flex items-center justify-center gap-2 shadow-md hover:scale-[1.002] active:scale-95 disabled:opacity-50"
+            >
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-[#87be00]/20 border-t-[#87be00] rounded-full animate-spin" />
+              ) : (
+                <>
+                  <FiSave size={15} /> 
+                  <span>Confirmar y Registrar Ficha</span>
+                </>
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>
