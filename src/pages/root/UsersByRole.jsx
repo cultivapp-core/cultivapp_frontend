@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
   FiPlus, FiTrash2, FiEdit2, FiKey, FiUsers, FiUserCheck, 
-  FiUserX, FiSearch, FiHome, FiMapPin, FiXSquare 
+  FiUserX, FiSearch, FiHome, FiMapPin, FiXSquare, FiX, FiAlertTriangle 
 } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-hot-toast";
@@ -26,6 +26,7 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [openEdit, setOpenEdit] = useState(false);
   const [openReset, setOpenReset] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null); // Nuevo estado para controlar el modal de eliminación
   
   // ESTADOS PARA PASAR LA DATA A LOS MODALES (Igual que en AdminUsers)
   const [assignSupervisor, setAssignSupervisor] = useState(null);
@@ -93,13 +94,20 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
     } catch (error) { console.error(error); }
   };
 
+  // Lógica de eliminación conectada al nuevo modal
   const deleteUser = async (id) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este usuario?")) return;
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/users/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) { toast.success("Usuario eliminado"); fetchUsers(); }
-    } catch (error) { console.error(error); }
+      if (res.ok) { 
+        toast.success("Usuario eliminado"); 
+        fetchUsers(); 
+        setUserToDelete(null);
+      }
+    } catch (error) { 
+      console.error(error); 
+      toast.error("Error al intentar eliminar el usuario");
+    }
   };
 
   const stats = {
@@ -114,7 +122,7 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 font-[Outfit] pb-12 pt-20 md:pt-4 w-full bg-slate-50/50 min-h-screen" onClick={() => setActivePopover(null)}>
+    <div className="space-y-8 animate-in fade-in duration-500 font-[Outfit] pb-12 pt-20 md:pt-4 w-full bg-slate-50/50 min-h-screen relative" onClick={() => setActivePopover(null)}>
       
       {/* HEADER ESTILO CULTIVA */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-6">
@@ -231,7 +239,7 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
 
                         <button onClick={() => { setSelectedUser(u); setOpenEdit(true); }} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg transition-colors" title="Editar Contacto"><FiEdit2 size={14}/></button>
                         <button onClick={() => { setSelectedUser(u); setOpenReset(true); }} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg transition-colors" title="Restablecer Clave"><FiKey size={14}/></button>
-                        {canDeleteUser(u) && <button onClick={() => deleteUser(u.id)} className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 rounded-lg transition-colors" title="Eliminar"><FiTrash2 size={14}/></button>}
+                        {canDeleteUser(u) && <button onClick={() => setUserToDelete(u)} className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 rounded-lg transition-colors" title="Eliminar"><FiTrash2 size={14}/></button>}
                       </div>
                     </td>
                   </tr>
@@ -289,6 +297,7 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
 
                    <button onClick={() => { setSelectedUser(u); setOpenEdit(true); }} className="p-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg"><FiEdit2 size={14}/></button>
                    <button onClick={() => { setSelectedUser(u); setOpenReset(true); }} className="p-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg"><FiKey size={14}/></button>
+                   {canDeleteUser(u) && <button onClick={() => setUserToDelete(u)} className="p-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg"><FiTrash2 size={14}/></button>}
                 </div>
              </div>
           </div>
@@ -303,9 +312,88 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
       {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchUsers} />}
       {assignUser && <AssignUsersModal targetUser={assignUser} onClose={() => setAssignUser(null)} onRefresh={fetchUsers} />}
       
+      {/* MODAL DE ELIMINACIÓN ESTILO CULTIVA (Usa absolute para seguir el reajuste el sidebar) */}
+      {userToDelete && (
+        <DeleteUserModal 
+          user={userToDelete} 
+          onClose={() => setUserToDelete(null)} 
+          onConfirm={() => deleteUser(userToDelete.id)} 
+        />
+      )}
+      
     </div>
   )
 }
+
+/* SUBCOMPONENT: MODAL DE ELIMINACIÓN PREMIUM */
+const DeleteUserModal = ({ user, onClose, onConfirm }) => {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirm = async () => {
+    setIsDeleting(true);
+    await onConfirm();
+    setIsDeleting(false);
+  };
+
+  return (
+    <div className="absolute inset-0 bg-[#111111]/70 backdrop-blur-sm flex items-center justify-center p-4 z-[110] font-[Outfit] transition-all duration-300 min-h-full">
+      <div className="bg-white w-full max-w-md rounded-2xl border border-slate-100 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 p-6 relative">
+        
+        {/* Botón Cerrar */}
+        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-all">
+          <FiX size={16} />
+        </button>
+
+        {/* Contenido Alerta */}
+        <div className="flex flex-col items-center text-center mt-3">
+          <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center mb-4">
+            <FiAlertTriangle size={24} />
+          </div>
+          
+          <h3 className="text-base font-extrabold text-[#111111] uppercase tracking-tight">
+            ¿Confirmar Eliminación?
+          </h3>
+          
+          <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+            Estás a punto de eliminar de forma permanente al colaborador <strong className="text-slate-800 uppercase font-bold">{user.first_name} {user.last_name}</strong>. Esta acción no se puede deshacer.
+          </p>
+          
+          <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 mt-3 w-full flex items-center justify-center gap-2">
+            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Rol: {user.role}</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-[10px] font-medium font-mono text-slate-500">ID: {user.id?.slice(0, 8)}...</span>
+          </div>
+        </div>
+
+        {/* Acciones */}
+        <div className="grid grid-cols-2 gap-3 mt-6">
+          <button 
+            onClick={onClose} 
+            disabled={isDeleting}
+            className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-500 font-bold uppercase text-[10px] tracking-wider rounded-xl transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          
+          <button
+            onClick={handleConfirm}
+            disabled={isDeleting}
+            className="w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl font-bold uppercase tracking-wider text-[10px] transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+          >
+            {isDeleting ? (
+              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <FiTrash2 size={13} /> Eliminar
+              </>
+            )}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+};
 
 const StatCard = ({ label, value, icon, color = "text-slate-800", bgIcon = "bg-slate-50" }) => (
   <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
