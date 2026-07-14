@@ -6,6 +6,9 @@ import { useAuth } from "../../context/AuthContext";
 import { format, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+// 🚩 CORRECCIÓN CRÍTICA 1: Importar la misma lógica de semanas que usa el Modal de creación
+import { getWeeksOfMonthCalendar } from "../../utils/helper";
+
 import 'react-calendar/dist/Calendar.css';
 
 // ─────────────────────────────────────────────
@@ -18,28 +21,18 @@ const parseLocalDate = (dateStr) => {
   return new Date(year, month - 1, day);
 };
 
-// 🚩 CORRECCIÓN CRÍTICA: Calcula con precisión quirúrgica el número de semana del mes (1 a 4+)
+// 🚩 CORRECCIÓN CRÍTICA 2: Usar exactamente el mismo helper del Administrador para que "hablen el mismo idioma"
 const getWeekNumber = (date) => {
-  const targetDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
-  
-  // Encontrar el primer lunes del mes actual
-  let firstMonday = new Date(firstDayOfMonth);
-  while (firstMonday.getDay() !== 1) {
-    firstMonday.setDate(firstMonday.getDate() + 1);
-  }
-  
-  // Si la fecha consultada es previa al primer lunes, por regla de negocio pertenece a la semana 1
-  if (targetDate < firstMonday) {
-    return 1;
-  }
-  
-  // Calcular la diferencia exacta en semanas transcurridas desde el primer lunes de la malla
-  const daysDiff = Math.floor((targetDate - firstMonday) / (1000 * 60 * 60 * 24));
-  const weekNum = Math.floor(daysDiff / 7) + 1;
-  
-  // Topar el resultado a un máximo de 4 semanas según el estándar de planificación recurrente de CultivaApp
-  return Math.min(weekNum, 4);
+  const weeks = getWeeksOfMonthCalendar(date);
+  const targetTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+  const foundWeek = weeks.find(w => {
+    const start = new Date(w.start).setHours(0, 0, 0, 0);
+    const end = new Date(w.end).setHours(23, 59, 59, 999);
+    return targetTime >= start && targetTime <= end;
+  });
+
+  return foundWeek ? foundWeek.id : 1;
 };
 
 const taskMatchesDate = (task, date) => {
@@ -51,7 +44,18 @@ const taskMatchesDate = (task, date) => {
   
   // 2. Validación por Malla Recurrente Multi-semana
   if (task.is_recurring) {
-    const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay(); // Mapeo Domingo = 7
+    
+    // 🚩 CANDADO DE MES: Asegurarnos de que la ruta recurrente SOLO pertenezca al mes en que se planificó
+    if (task.created_at) {
+      const createdDate = new Date(task.created_at);
+      // Si el mes o el año del día que está dibujando el calendario NO coincide con el de creación, lo ocultamos
+      if (date.getMonth() !== createdDate.getMonth() || date.getFullYear() !== createdDate.getFullYear()) {
+        return false; 
+      }
+    }
+
+    // 🚩 CORRECCIÓN CRÍTICA 3: En el Modal el domingo es 0, no 7. getDay() de JS retorna 0 para domingo.
+    const dayOfWeek = date.getDay(); 
     const weekNumber = getWeekNumber(date);
     
     if (Number(task.day_of_week) === dayOfWeek && Number(task.week_number) === weekNumber) {
