@@ -9,7 +9,7 @@ import { es } from 'date-fns/locale';
 import 'react-calendar/dist/Calendar.css';
 
 // ─────────────────────────────────────────────
-// HELPERS
+// HELPERS CORREGIDOS
 // ─────────────────────────────────────────────
 
 const parseLocalDate = (dateStr) => {
@@ -18,31 +18,42 @@ const parseLocalDate = (dateStr) => {
   return new Date(year, month - 1, day);
 };
 
+// 🚩 CORRECCIÓN CRÍTICA: Calcula con precisión quirúrgica el número de semana del mes (1 a 4+)
 const getWeekNumber = (date) => {
-  const isoDay = date.getDay() === 0 ? 7 : date.getDay();
-  const currentMonday = new Date(date);
-  currentMonday.setDate(date.getDate() - isoDay + 1);
-
-  const month = currentMonday.getMonth();
-  const year = currentMonday.getFullYear();
-  let firstMonday = new Date(year, month, 1, 12, 0, 0);
-  let fmIsoDay = firstMonday.getDay() === 0 ? 7 : firstMonday.getDay();
-  if (fmIsoDay !== 1) firstMonday.setDate(1 + (8 - fmIsoDay));
-
-  const diffWeeks = Math.floor(
-    (currentMonday.getTime() - firstMonday.getTime()) / (1000 * 60 * 60 * 24 * 7)
-  );
-  return diffWeeks < 0 ? 4 : Math.min(diffWeeks + 1, 4);
+  const targetDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+  
+  // Encontrar el primer lunes del mes actual
+  let firstMonday = new Date(firstDayOfMonth);
+  while (firstMonday.getDay() !== 1) {
+    firstMonday.setDate(firstMonday.getDate() + 1);
+  }
+  
+  // Si la fecha consultada es previa al primer lunes, por regla de negocio pertenece a la semana 1
+  if (targetDate < firstMonday) {
+    return 1;
+  }
+  
+  // Calcular la diferencia exacta en semanas transcurridas desde el primer lunes de la malla
+  const daysDiff = Math.floor((targetDate - firstMonday) / (1000 * 60 * 60 * 24));
+  const weekNum = Math.floor(daysDiff / 7) + 1;
+  
+  // Topar el resultado a un máximo de 4 semanas según el estándar de planificación recurrente de CultivaApp
+  return Math.min(weekNum, 4);
 };
 
 const taskMatchesDate = (task, date) => {
+  // 1. Prioridad: Validación por fecha explícita de visita única
   if (task.visit_date) {
     const taskDate = parseLocalDate(task.visit_date);
     if (taskDate && isSameDay(taskDate, date)) return true;
   }
+  
+  // 2. Validación por Malla Recurrente Multi-semana
   if (task.is_recurring) {
-    const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay();
+    const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay(); // Mapeo Domingo = 7
     const weekNumber = getWeekNumber(date);
+    
     if (Number(task.day_of_week) === dayOfWeek && Number(task.week_number) === weekNumber) {
       return true;
     }
@@ -51,7 +62,7 @@ const taskMatchesDate = (task, date) => {
 };
 
 // ─────────────────────────────────────────────
-// COMPONENTE
+// COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────
 
 const UserAgenda = () => {
@@ -76,10 +87,12 @@ const UserAgenda = () => {
 
   useEffect(() => { fetchAllUserRoutes(); }, [fetchAllUserRoutes]);
 
+  // Filtrado reactivo en tiempo real para el día activo en la UI
   const displayTasks = useMemo(() => {
     return allTasks.filter(t => taskMatchesDate(t, selectedDate));
   }, [selectedDate, allTasks]);
 
+  // Contenido visual interno de las celdas del calendario
   const tileContent = useCallback(({ date, view }) => {
     if (view !== 'month') return null;
     const dayTasks = allTasks.filter(t => taskMatchesDate(t, date));
@@ -149,7 +162,7 @@ const UserAgenda = () => {
             </div>
             <div className="text-right relative z-10">
               <span className="text-[10px] bg-[#87be00] text-white px-3 py-1 rounded-full font-black uppercase">
-                {displayTasks.length} Rutas
+                {displayTasks.length} {displayTasks.length === 1 ? 'Ruta' : 'Rutas'}
               </span>
             </div>
             <FiCalendar className="absolute -right-4 -bottom-4 text-white/5" size={120} />
@@ -165,7 +178,6 @@ const UserAgenda = () => {
               </div>
             ) : (
               displayTasks.map((task) => (
-                // ✅ Sin onClick, sin cursor-pointer, sin hover interactivo — solo lectura
                 <div
                   key={task.id}
                   className="bg-white p-4 md:p-6 rounded-[2rem] border border-gray-100 flex justify-between items-center shadow-sm"
@@ -198,7 +210,7 @@ const UserAgenda = () => {
                       </p>
                     </div>
                   </div>
-                  {/* Badge de estado — reemplaza el botón de navegación */}
+                  
                   <div className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase shrink-0 ${
                     task.status === 'COMPLETED'
                       ? 'bg-[#87be00]/10 text-[#87be00]'
@@ -254,7 +266,7 @@ const UserAgenda = () => {
         }
         .react-calendar__tile--active .text-\[7px\] {
           display: none !important;
-        }
+          }
         .react-calendar__tile--now {
           background: #f8fafc !important;
           color: #87be00 !important;

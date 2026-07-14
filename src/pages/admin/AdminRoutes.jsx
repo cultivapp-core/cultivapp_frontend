@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useAuth } from "../../context/AuthContext";
 import api from "../../api/apiClient";
 import ManageRoutesModal from "../../components/ManageRoutesModal";
 import toast from "react-hot-toast";
@@ -17,17 +18,18 @@ import {
   FiCalendar,
   FiGlobe, 
   FiMapPin,
-  FiTrash2 
+  FiTrash2,
+  FiXCircle,
+  FiBriefcase
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
-import { getWeeksOfMonthCalendar } from "../../utils/helper"; // 🚩 IMPORTADO PARA DINAMISMO
+import { getWeeksOfMonthCalendar } from "../../utils/helper";
 
 /**
  * 📅 COMPONENTE: VISUALIZADOR MENSUAL CON TOOLTIP DINÁMICO
  */
 const MonthlyStatus = ({ scheduledDays = [] }) => {
-  // 🚩 CAMBIO: Ahora usamos el helper para obtener las semanas dinámicamente (puede ser 4 o 5)
   const weeks = useMemo(() => getWeeksOfMonthCalendar(new Date()), []);
   const days = [
     { id: 1, label: 'L' }, { id: 2, label: 'M' }, { id: 3, label: 'X' },
@@ -90,6 +92,7 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
 };
 
 const AdminRoutes = () => {
+  const { user } = useAuth();
   const [routes, setRoutes] = useState([]);
   const [users, setUsers] = useState([]);
   const [locales, setLocales] = useState([]);
@@ -98,11 +101,16 @@ const AdminRoutes = () => {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading]           = useState(true);
 
-  // ESTADOS PARA LOS BUSCADORES Y FILTROS
+  const CULTIVA_COMPANY_ID = "0e342e01-d213-4353-b210-39a12ac335cf";
+
+  const isCultivaAdmin =
+    user?.role === "ADMIN_CLIENTE" &&
+    user?.company_id === CULTIVA_COMPANY_ID;
+  
+  const [filterDate, setFilterDate] = useState("");
+  const [filterCompany, setFilterCompany] = useState("");
   const [searchTerm, setSearchTerm]     = useState("");
   const [filterUser, setFilterUser]     = useState("");
-  const [filterDate, setFilterDate]     = useState("");
-  
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedComuna, setSelectedComuna] = useState("");
 
@@ -139,7 +147,6 @@ const AdminRoutes = () => {
     fetchData();
   }, [fetchData]);
 
-  // 🚩 CONTROLADOR PARA BORRAR LAS RUTAS SELECCIONADAS
   const handleDeleteRoute = async (group) => {
     const routeIds = group.route_ids || [group.id];
     if (routeIds.length === 0) return;
@@ -161,21 +168,19 @@ const AdminRoutes = () => {
     }
   };
 
-  // CALCULO DE RANGOS DE SEMANA (DINÁMICO PARA 5 SEMANAS)
   const weekRanges = useMemo(() => {
     const weeks = getWeeksOfMonthCalendar(new Date());
     return weeks.map((w, index) => {
-        const start = w.start;
-        const end = w.end;
-        return { 
-            weekNum: w.id, 
-            label: `S${index + 1}`, 
-            dates: `${start.getDate()} ${start.toLocaleDateString('es-CL', { month: 'short' })} - ${end.getDate()} ${end.toLocaleDateString('es-CL', { month: 'short' })}` 
-        };
+      const start = w.start;
+      const end = w.end;
+      return { 
+          weekNum: w.id, 
+          label: `S${index + 1}`, 
+          dates: `${start.getDate()} ${start.toLocaleDateString('es-CL', { month: 'short' })} - ${end.getDate()} ${end.toLocaleDateString('es-CL', { month: 'short' })}` 
+      };
     });
   }, []);
 
-  // LÓGICA DE CÁLCULO DE FECHA EXACTA
   const targetDateInfo = useMemo(() => {
     if (!filterDate) return null;
     const selected = new Date(filterDate + "T12:00:00");
@@ -188,11 +193,15 @@ const AdminRoutes = () => {
   const activeWeekByDate = targetDateInfo ? targetDateInfo.weekNum : null;
 
   const uniqueMercaderistas = useMemo(() => {
-    const names = routes
-      .filter(r => r.first_name && r.last_name)
-      .map(r => `${r.first_name} ${r.last_name}`);
+    // Extracción tolerante en caso de que el backend no mande nombres en routes
+    const names = routes.map(r => {
+      const userData = users.find(u => String(u.id) === String(r.user_id)) || {};
+      const fName = r.first_name || userData.first_name || userData.nombre || '';
+      const lName = r.last_name || userData.last_name || userData.apellido || '';
+      return `${fName} ${lName}`.trim();
+    }).filter(Boolean);
     return [...new Set(names)].sort();
-  }, [routes]);
+  }, [routes, users]);
 
   const regions = useMemo(() => {
     return [...new Set(locales.map(l => l.region_name || l.region).filter(Boolean))].sort();
@@ -253,23 +262,36 @@ const AdminRoutes = () => {
   const groupedRoutes = useMemo(() => {
     const groups = {};
     const search = searchTerm.toLowerCase();
+    
+    const monthWeeks = getWeeksOfMonthCalendar(new Date());
 
     routes.forEach((r) => {
       if (!r.local_id) return;
 
-      const localData = locales.find(l => String(l.id) === String(r.local_id));
+      if (isCultivaAdmin && filterCompany && String(r.company_id) !== String(filterCompany)) return;
+
+      // 🚩 CRUCE DE DATOS MANUAL: Por si el backend nos manda la ruta sin nombres (sin JOIN)
+      const localData = locales.find(l => String(l.id) === String(r.local_id)) || {};
+      const userData = users.find(u => String(u.id) === String(r.user_id)) || {};
+
       const region = localData?.region_name || localData?.region || "";
       const comuna = localData?.comuna_name || localData?.comuna || "";
 
       if (selectedRegion && region !== selectedRegion) return;
       if (selectedComuna && comuna !== selectedComuna) return;
       
-      const fullName = `${r.first_name} ${r.last_name}`;
+      const cadenaStr = r.cadena || localData.cadena || localData.nombre || 'LOCAL DESCONOCIDO';
+      const direccionStr = r.direccion || localData.direccion || 'Sin dirección';
+      const codigoStr = r.codigo_local || localData.codigo_local || localData.codigo || 'S/C';
+
+      const fName = r.first_name || userData.first_name || userData.nombre || '';
+      const lName = r.last_name || userData.last_name || userData.apellido || '';
+      const fullName = `${fName} ${lName}`.trim() || 'Sin Asignar';
 
       const matchText = 
-        r.cadena?.toLowerCase().includes(search) ||
-        r.direccion?.toLowerCase().includes(search) ||
-        r.codigo_local?.toString().includes(search) ||
+        cadenaStr.toLowerCase().includes(search) ||
+        direccionStr.toLowerCase().includes(search) ||
+        String(codigoStr).toLowerCase().includes(search) ||
         fullName.toLowerCase().includes(search);
         
       const matchUser = !filterUser || fullName === filterUser;
@@ -277,21 +299,51 @@ const AdminRoutes = () => {
       if (!matchText || !matchUser) return;
 
       const key = r.schedule_group_id ? `group-${r.schedule_group_id}` : `local-${r.local_id}`;
-      const weekNum = r.week_number || 1; 
+      
+      let finalWeek = 1;
+      let finalDay = null;
+
+      const exactDate = r.fecha || r.date || r.fecha_planificacion;
+      if (exactDate) {
+        const d = new Date(exactDate + "T12:00:00"); 
+        finalDay = d.getDay();
+        const wFound = monthWeeks.find(w => d >= w.start && d <= w.end);
+        if (wFound) finalWeek = wFound.id;
+      }
+
+      let rawWeek = r.week_number ?? r.weekNumber ?? r.week ?? r.semana ?? r.numero_semana;
+      if (rawWeek !== undefined && rawWeek !== null) {
+        if (typeof rawWeek === 'string') rawWeek = rawWeek.replace(/\D/g, ''); 
+        if (parseInt(rawWeek)) finalWeek = parseInt(rawWeek);
+      }
+
+      let rawDay = r.day_of_week ?? r.dayOfWeek ?? r.day ?? r.dia;
+      if (rawDay !== undefined && rawDay !== null) {
+        finalDay = parseInt(rawDay);
+      }
+
+      const hasDay = finalDay !== null && !isNaN(finalDay);
+
+      const startTime = r.start_time ?? r.startTime ?? r.entrada;
+      const endTime = r.end_time ?? r.endTime ?? r.salida;
+      const turnName = r.nombre_turno ?? r.nombreTurno ?? r.turno_id ?? 'Turno';
 
       if (!groups[key]) {
         groups[key] = {
           ...r, 
+          cadena: cadenaStr,          // Forzamos los datos cruzados para evitar filas fantasmas
+          direccion: direccionStr,    
+          codigo_local: codigoStr,    
           id: r.id, 
           route_ids: [r.id], 
           route_ids_by_user: { [r.user_id]: r.id },
           users: new Set([fullName]), 
-          scheduled_items: r.day_of_week !== null ? [{ 
-            day: r.day_of_week, 
-            week: weekNum, 
-            time: r.start_time || r.entrada,      
-            endTime: r.end_time || r.salida,    
-            turno: `${r.start_time?.slice(0,5)} - ${r.end_time?.slice(0,5)}`,
+          scheduled_items: hasDay ? [{ 
+            day: finalDay, 
+            week: finalWeek, 
+            time: startTime,      
+            endTime: endTime,    
+            turno: `${startTime?.slice(0,5) || '00:00'} - ${endTime?.slice(0,5) || '00:00'}`,
             userName: fullName,
             user_id: r.user_id,
             turno_id: r.nombre_turno
@@ -303,17 +355,17 @@ const AdminRoutes = () => {
         groups[key].route_ids.push(r.id); 
         groups[key].route_ids_by_user[r.user_id] = r.id;
         
-        if (r.day_of_week !== null) {
+        if (hasDay) {
           const exists = groups[key].scheduled_items.some(
-            item => parseInt(item.day) === parseInt(r.day_of_week) && parseInt(item.week) === parseInt(weekNum) && String(item.user_id) === String(r.user_id)
+            item => parseInt(item.day) === finalDay && parseInt(item.week) === finalWeek && String(item.user_id) === String(r.user_id)
           );
           if (!exists) {
             groups[key].scheduled_items.push({ 
-              day: r.day_of_week, 
-              week: weekNum, 
-              time: r.start_time || r.entrada,
-              endTime: r.end_time || r.salida,
-              turno: r.origin === 'INDIVIDUAL' ? 'Individual' : r.nombre_turno || 'Turno',
+              day: finalDay, 
+              week: finalWeek, 
+              time: startTime,
+              endTime: endTime,
+              turno: r.origin === 'INDIVIDUAL' ? 'Individual' : turnName,
               userName: fullName,
               user_id: r.user_id,
               turno_id: r.nombre_turno
@@ -328,23 +380,25 @@ const AdminRoutes = () => {
       ...group,
       users: Array.from(group.users), 
       displayStatus: group.all_statuses.includes('IN_PROGRESS') ? 'IN_PROGRESS' : 
+                     group.all_statuses.includes('INCOMPLETE') ? 'INCOMPLETE' :
                      group.all_statuses.every(s => s === 'COMPLETED' || s === 'OK') ? 'COMPLETED' : 
                      group.all_statuses.some(s => s === 'COMPLETED' || s === 'OK') ? 'PARTIAL' : 'PENDING'
     })).filter(group => {
-      if (!targetDateInfo) return true;
+      if (!targetDateInfo) return true; 
       return group.scheduled_items.some(item => 
         parseInt(item.week) === targetDateInfo.weekNum &&
         parseInt(item.day) === targetDateInfo.dayId
       );
     });
 
-  }, [routes, searchTerm, filterUser, targetDateInfo, selectedRegion, selectedComuna, locales]);
+  }, [routes, searchTerm, filterUser, filterCompany, isCultivaAdmin, targetDateInfo, selectedRegion, selectedComuna, locales, users]);
 
   const getStatusBadge = (status) => {
     const config = {
       COMPLETED: { bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200', icon: <FiCheckCircle/>, label: 'Completado' },
       IN_PROGRESS: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', icon: <FiPlayCircle className="animate-pulse"/>, label: 'En Curso' },
       PARTIAL: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200', icon: <FiRefreshCw/>, label: 'Parcial' },
+      INCOMPLETE: { bg: 'bg-red-50', text: 'text-red-500', border: 'border-red-200', icon: <FiXCircle/>, label: 'Incompleto' },
       PENDING: { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200', icon: <FiAlertCircle/>, label: 'Pendiente' }
     };
     const s = config[status?.toUpperCase()] || config.PENDING;
@@ -362,7 +416,6 @@ const AdminRoutes = () => {
 
   return (
     <div className="space-y-6 font-[Outfit] pb-20 px-2 sm:px-4">
-      {/* HEADER PREMIUM */}
       <div className="flex flex-col bg-white p-6 md:p-8 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100 gap-6">
         
         <div className="flex flex-col lg:flex-row justify-between gap-6">
@@ -394,9 +447,26 @@ const AdminRoutes = () => {
           </div>
         </div>
 
-        {/* BARRA DE FILTROS AVANZADA */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 pt-4 border-t border-gray-50">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${isCultivaAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4 pt-4 border-t border-gray-50`}>
           
+          {isCultivaAdmin && (
+            <div className="relative">
+              <FiBriefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <select 
+                className={`w-full pl-12 pr-10 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner appearance-none cursor-pointer ${filterCompany ? 'text-[#87be00]' : 'text-gray-500'}`}
+                value={filterCompany} 
+                onChange={(e) => setFilterCompany(e.target.value)}
+              >
+                <option value="">TODAS LAS EMPRESAS</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name || c.nombre || 'Empresa'}</option>)}
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+              {filterCompany && <button onClick={() => setFilterCompany("")} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 pointer-events-auto"><FiX size={14}/></button>}
+            </div>
+          )}
+
           <div className="relative">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input type="text" placeholder="BUSCAR LOCAL O CÓDIGO..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -470,7 +540,6 @@ const AdminRoutes = () => {
 
       </div>
 
-      {/* 💻 TABLA DESKTOP */}
       <div className="hidden lg:block bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-visible">
         <div className="overflow-visible">
           <table className="w-full text-left border-collapse">
@@ -572,7 +641,6 @@ const AdminRoutes = () => {
         </div>
       </div>
       
-      {/* 📱 VISTA MÓVIL */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:hidden">
         {groupedRoutes.length === 0 ? (
           <div className="col-span-1 md:col-span-2 py-16 text-center text-sm text-gray-400 font-bold bg-white rounded-[2.5rem] border border-gray-100">
