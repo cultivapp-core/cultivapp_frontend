@@ -30,6 +30,8 @@ const ROLES_TURNOS = [
   { id: "MERCADERISTA PT",   label: "Mercaderista Part Time" },
 ];
 
+// Cultiva company ID constante
+const CULTIVA_COMPANY_ID = "0e342e01-d213-4353-b210-39a12ac335cf";
 
 // ─── COMPONENTE SELECTOR DE HORA EN FORMATO 24H ───────────────────────────────
 const TimePicker24h = ({ value, onChange, disabled }) => {
@@ -86,6 +88,8 @@ const ManageRoutesModal = ({
   const userString = localStorage.getItem("user");
   const currentUser = userString ? JSON.parse(userString) : null;
   const isRoot = currentUser?.role?.toUpperCase() === "ROOT";
+  const isAdminClient = currentUser?.role?.toUpperCase() === "ADMIN_CLIENTE";
+  const canSelectCompany = isRoot || isAdminClient;
 
   // 1. DÓNDE
   const [localId, setLocalId] = useState("");
@@ -104,7 +108,18 @@ const ManageRoutesModal = ({
 
   useEffect(() => {
     if (isOpen && WEEKS.length > 0) {
-      setTargetWeek(WEEKS[0]); // primera semana real
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const currentWeek = WEEKS.find(w => {
+        const wStart = new Date(w.start);
+        const wEnd = new Date(w.end);
+        wStart.setHours(0, 0, 0, 0);
+        wEnd.setHours(0, 0, 0, 0);
+        return today >= wStart && today <= wEnd;
+      });
+      
+      setTargetWeek(currentWeek || WEEKS[0]);
     }
   }, [isOpen, WEEKS]);
 
@@ -116,12 +131,10 @@ const ManageRoutesModal = ({
     end_time: "16:00",
   });
 
-  // 3. EL LIENZO Y HERRAMIENTAS DE LIMPIEZA
   const [matrix, setMatrix] = useState({});
   const [showClearMenu, setShowClearMenu] = useState(false);
   const [eraserMode, setEraserMode] = useState(false);
 
-  // ESTADOS DEL BUSCADOR DE REPONEDOR
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const userDropdownRef = useRef(null);
@@ -154,7 +167,12 @@ const ManageRoutesModal = ({
         if (initialData.scheduled_items && initialData.scheduled_items.length > 0) {
           initialData.scheduled_items.forEach(item => {
             const d = parseInt(item.day, 10);
-            const key = getCellKey(targetWeek, d);
+            
+            // 🚩 CORRECCIÓN CRÍTICA: Buscar a qué semana pertenecía esto realmente
+            const itemWeekId = parseInt(item.week) || (targetWeek ? targetWeek.id : 1);
+            const matchedWeek = WEEKS.find(w => w.id === itemWeekId) || targetWeek;
+            
+            const key = getCellKey(matchedWeek, d);
             
             const itemUserId = item.user_id;
             if (!itemUserId) return; 
@@ -185,11 +203,11 @@ const ManageRoutesModal = ({
         setBrush({ user_id: "", rol: "", turno_id: "", start_time: "08:00", end_time: "16:00" });
       }
     }
-  }, [isOpen, initialData, targetWeek, currentUser?.company_id]);
+  }, [isOpen, initialData, targetWeek, currentUser?.company_id, WEEKS]);
 
   const fetchTurnos = async (cId) => {
     try {
-      const targetId = cId || (isRoot ? companyId : currentUser?.company_id);
+      const targetId = cId || (canSelectCompany ? companyId : currentUser?.company_id);
       if (!targetId) return setTurnosRaw([]);
       const res = await api.get(`/turnos-config?company_id=${targetId}`);
       setTurnosRaw(Array.isArray(res) ? res : []);
@@ -219,9 +237,9 @@ const ManageRoutesModal = ({
 
   const filteredUsers = useMemo(() => {
     let pool = users.filter((u) => u.role?.toUpperCase() === "USUARIO");
-    if (isRoot && companyId) pool = pool.filter((u) => u.company_id === companyId);
+    if (companyId) pool = pool.filter((u) => u.company_id === companyId);
     return pool;
-  }, [users, companyId, isRoot]);
+  }, [users, companyId]);
 
   const selectedUserText = useMemo(() => {
     if (!brush.user_id) return "1º Elige Reponedor...";
@@ -229,17 +247,40 @@ const ManageRoutesModal = ({
     return u ? `${u.first_name} ${u.last_name}` : "1º Elige Reponedor...";
   }, [brush.user_id, filteredUsers]);
 
+  const availableCompanies = useMemo(() => {
+    const userCompanyId = currentUser?.company_id?.trim?.() || "";
+    const isCultivaAdmin = isAdminClient && userCompanyId === CULTIVA_COMPANY_ID;
+    
+    if (isRoot || isCultivaAdmin) {
+      return companies.sort((a, b) => {
+        if (a.id === CULTIVA_COMPANY_ID) return -1;
+        if (b.id === CULTIVA_COMPANY_ID) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    }
+    
+    if (isAdminClient && userCompanyId) {
+      return companies.filter(c => c.id === userCompanyId);
+    }
+    
+    return [];
+  }, [companies, isRoot, isAdminClient, currentUser?.company_id]);
+
   const uniqueCadenas = useMemo(() => {
-    const availableLocales = locales.filter(l => !isRoot || !companyId || l.company_id === companyId);
-    return [...new Set(availableLocales.map(l => l.cadena))].filter(Boolean).sort();
-  }, [locales, isRoot, companyId]);
+    const availableLocales = companyId 
+      ? locales.filter(l => String(l.company_id).trim() === String(companyId).trim())
+      : locales;
+    
+    const cadenas = [...new Set(availableLocales.map(l => l.cadena).filter(Boolean))].sort();
+    return cadenas;
+  }, [locales, companyId]);
 
   const filteredLocales = useMemo(() => locales.filter(l => {
-    const matchCompany = !isRoot || !companyId || l.company_id === companyId;
-    const matchCadena = !cadenaFilter || l.cadena === cadenaFilter;
+    const matchCompany = !companyId || String(l.company_id).trim() === String(companyId).trim();
+    const matchCadena = !cadenaFilter || String(l.cadena).trim() === String(cadenaFilter).trim();
     const matchCodigo = !codigoFilter || (l.codigo_local && String(l.codigo_local).toLowerCase().includes(codigoFilter.toLowerCase()));
     return matchCompany && matchCadena && matchCodigo;
-  }), [locales, isRoot, companyId, cadenaFilter, codigoFilter]);
+  }), [locales, companyId, cadenaFilter, codigoFilter]);
 
   useEffect(() => {
     if (filteredLocales.length === 1 && localId !== filteredLocales[0].id) {
@@ -301,11 +342,7 @@ const ManageRoutesModal = ({
   };
 
   const handleCellClick = (w, d) => {
-    console.log("--- DEBUG CLIC ---");
-    console.log("Día (d) recibido en función:", d);
-    console.log("Semana (w) recibida:", w);
     const key = getCellKey(w, d);
-    console.log("Clave generada:", key);
 
     if (eraserMode) {
       setMatrix(prev => {
@@ -323,7 +360,6 @@ const ManageRoutesModal = ({
 
     setMatrix(prev => {
       const currentCellArray = prev[key] || [];
-      console.log("Guardando en Matrix con clave:", key);
       const userIndex = currentCellArray.findIndex(a => String(a.user_id) === String(brush.user_id));
       let newCellArray;
 
@@ -348,7 +384,6 @@ const ManageRoutesModal = ({
       weeks.forEach(w => {
         [1, 2, 3, 4, 5, 6, 0].forEach(d => {
           const key = getCellKey(w, d);
-
           const current = newState[key] || [];
 
           if (!current.some(a => a.user_id === brush.user_id)) {
@@ -391,14 +426,26 @@ const ManageRoutesModal = ({
     setLoading(true);
     try {
       const assignmentsByUser = {};
+      
+      // 🚩 CORRECCIÓN CRÍTICA: Extraer la semana correcta y adjuntarla a la data a enviar
       Object.entries(matrix).forEach(([key, userArray]) => {
         const parts = key.split('-');
         const d = parts[parts.length - 1];
         const dateStr = parts.slice(0, 3).join('-');
+        
+        // Encontrar matemáticamente a qué semana pertenece la celda pintada
+        const matchedWeek = WEEKS.find(w => w.start.toISOString().slice(0, 10) === dateStr);
+        const weekNum = matchedWeek ? matchedWeek.id : (targetWeek?.id || 1);
+
         userArray.forEach(data => {
           const uId = String(data.user_id);
           if (!assignmentsByUser[uId]) assignmentsByUser[uId] = [];
-          assignmentsByUser[uId].push({ date: dateStr, day: parseInt(d), ...data });
+          assignmentsByUser[uId].push({ 
+            date: dateStr, 
+            day: parseInt(d), 
+            week_number: weekNum, // ENVIANDO LA SEMANA
+            ...data 
+          });
         });
       });
 
@@ -407,6 +454,7 @@ const ManageRoutesModal = ({
 
       for (const userId of usersToSave) {
         const userAssignments = assignmentsByUser[userId];
+        const primaryWeek = userAssignments[0].week_number; // Semana base 
         
         const dataToSubmit = {
           local_id: localId,
@@ -419,6 +467,7 @@ const ManageRoutesModal = ({
           start_time: userAssignments[0].start_time,
           end_time: userAssignments[0].end_time,
           selectedDays: [...new Set(userAssignments.map(a => a.day))],
+          week_number: primaryWeek, // 🚩 ENVIANDO LA SEMANA EN LA RAÍZ AL BACKEND
         };
 
         const existingRouteId = initialData?.route_ids_by_user?.[userId];
@@ -500,14 +549,30 @@ const ManageRoutesModal = ({
                     <FiMapPin size={12} /> 1. Dónde (Local)
                  </div>
                  
-                 {isRoot && (
-                   <select
-                     className="w-full bg-white rounded-xl px-4 py-3 text-xs font-bold border border-blue-100 outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12 text-gray-900"
-                     value={companyId} onChange={(e) => { setCompanyId(e.target.value); setLocalId(""); }}
-                   >
-                     <option value="" className="text-gray-900">Empresa...</option>
-                     {companies.map((c) => <option key={c.id} value={c.id} className="text-gray-900">{c.name}</option>)}
-                   </select>
+                 {/* ✅ SELECTOR DE EMPRESA MEJORADO */}
+                 {availableCompanies.length > 0 && (
+                   <div className="space-y-2">
+                     <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                       <FiBriefcase size={11} /> Empresa
+                     </label>
+                     <select
+                       className="w-full bg-white rounded-xl px-4 py-3 text-xs font-bold border border-blue-100 outline-none focus:ring-4 focus:ring-blue-50 transition-all h-12 text-gray-900"
+                       value={companyId} 
+                       onChange={(e) => { 
+                         setCompanyId(e.target.value); 
+                         setLocalId(""); 
+                         setCadenaFilter(""); 
+                         setCodigoFilter("");
+                       }}
+                     >
+                       <option value="" className="text-gray-900">Selecciona una empresa...</option>
+                       {availableCompanies.map((c) => (
+                         <option key={c.id} value={c.id} className="text-gray-900">
+                           {c.name}
+                         </option>
+                       ))}
+                     </select>
+                   </div>
                  )}
                  
                  <div className="grid grid-cols-2 gap-2">
@@ -555,13 +620,15 @@ const ManageRoutesModal = ({
                         <FiCalendar /> Semana objetivo de carga:
                     </label>
                     <div className="bg-gray-200/50 p-1 rounded-2xl flex gap-1 shadow-inner">
-                        {WEEKS.map((w, index) => (
+                        {WEEKS.map((w, index) => {
+                          const isCurrentWeek = targetWeek?.start.toISOString() === w.start.toISOString();
+                          return (
                             <button
                                 key={w.start.toISOString()}
                                 type="button"
                                 onClick={() => setTargetWeek(w)}
                                 className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all duration-300 ${
-                                    targetWeek?.start.toISOString() === w.start.toISOString()
+                                    isCurrentWeek
                                     ? "bg-white text-gray-900 shadow-md scale-[1.02]" 
                                     : "text-gray-400 hover:text-gray-600"
                                 }`}
@@ -571,7 +638,8 @@ const ManageRoutesModal = ({
                                  {formatWeekLabel(w)}
                                </div>
                             </button>
-                        ))}
+                          );
+                        })}
                     </div>
                  </div>
                  
