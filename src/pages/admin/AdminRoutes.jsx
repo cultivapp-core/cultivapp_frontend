@@ -101,6 +101,9 @@ const AdminRoutes = () => {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading]           = useState(true);
 
+  // NUEVO ESTADO PARA EL MODAL DE ELIMINACIÓN
+  const [groupToDelete, setGroupToDelete] = useState(null);
+
   const CULTIVA_COMPANY_ID = "0e342e01-d213-4353-b210-39a12ac335cf";
 
   const isCultivaAdmin =
@@ -147,15 +150,15 @@ const AdminRoutes = () => {
     fetchData();
   }, [fetchData]);
 
-  const handleDeleteRoute = async (group) => {
-    const routeIds = group.route_ids || [group.id];
-    if (routeIds.length === 0) return;
+  // ACTUALIZACIÓN DE LA LÓGICA DE ELIMINACIÓN
+  const handleDeleteRoute = (group) => {
+    setGroupToDelete(group);
+  };
 
-    const confirmacion = window.confirm(
-      `¿Estás completamente seguro de eliminar la planificación de este punto de venta (${group.cadena})? Se removerán ${routeIds.length} asignaciones de forma permanente.`
-    );
-    
-    if (!confirmacion) return;
+  const confirmDelete = async () => {
+    if (!groupToDelete) return;
+    const routeIds = groupToDelete.route_ids || [groupToDelete.id];
+    if (routeIds.length === 0) return;
 
     const toastId = toast.loading("Eliminando planificación...");
     try {
@@ -165,6 +168,8 @@ const AdminRoutes = () => {
     } catch (error) {
       console.error("❌ Error al eliminar rutas:", error);
       toast.error("Error al eliminar la planificación", { id: toastId });
+    } finally {
+      setGroupToDelete(null);
     }
   };
 
@@ -724,6 +729,77 @@ const AdminRoutes = () => {
         onClose={() => { setIsModalOpen(false); setSelectedRoute(null); }} 
         users={users} locales={locales} companies={companies} onCreated={fetchData} initialData={selectedRoute} 
       />
+
+      {/* RENDER DEL MODAL DE ELIMINACIÓN */}
+      {groupToDelete && (
+        <DeleteRouteModal 
+          group={groupToDelete} 
+          onClose={() => setGroupToDelete(null)} 
+          onConfirm={confirmDelete} 
+        />
+      )}
+    </div>
+  );
+};
+
+/* SUBCOMPONENTE: MODAL DE ELIMINACIÓN DE RUTA */
+const DeleteRouteModal = ({ group, onClose, onConfirm }) => {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirm = async () => {
+    setIsDeleting(true);
+    await onConfirm();
+    setIsDeleting(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-[#111111]/70 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] font-[Outfit]">
+      <div className="bg-white w-full max-w-md rounded-2xl border border-gray-100 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 p-6 relative">
+        
+        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-400 hover:text-gray-600 rounded-lg transition-all">
+          <FiX size={16} />
+        </button>
+
+        <div className="flex flex-col items-center text-center mt-3">
+          <div className="w-12 h-12 bg-red-50 text-red-600 rounded-xl flex items-center justify-center mb-4">
+            <FiAlertCircle size={24} />
+          </div>
+          
+          <h3 className="text-base font-extrabold text-[#111111] uppercase tracking-tight">
+            ¿Confirmar Eliminación?
+          </h3>
+          
+          <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+            Se eliminarán permanentemente <strong>{group.route_ids?.length || 1} asignaciones</strong> asociadas al punto de venta <strong className="text-gray-800 uppercase font-bold">{group.cadena}</strong>. Esta acción no se puede deshacer.
+          </p>
+          
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 mt-3 w-full flex items-center justify-center gap-2">
+            <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Código: {group.codigo_local}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mt-6">
+          <button 
+            onClick={onClose} 
+            disabled={isDeleting}
+            className="w-full py-3 bg-gray-50 hover:bg-gray-100 text-gray-500 font-bold uppercase text-[10px] tracking-wider rounded-xl transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          
+          <button
+            onClick={handleConfirm}
+            disabled={isDeleting}
+            className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold uppercase tracking-wider text-[10px] transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+          >
+            {isDeleting ? (
+              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            ) : (
+              <> <FiTrash2 size={13} /> Eliminar </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
