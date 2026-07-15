@@ -7,7 +7,6 @@ import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom"; 
 
-
 /* ============================================================
    GRÁFICO DE TORTA / DONUT (SVG en tiempo real, proporcional y tooltips)
 ============================================================ */
@@ -108,7 +107,6 @@ const SupervisorPanel = () => {
   }, [user?.company_id, queryClient]);
 
   const { data: stats, isLoading, error, isFetching } = useQuery({
-    
     queryKey: ['dashboard-stats', user?.company_id, user?.id],
     queryFn: async () => {
       const response = await api.get("/reports/dashboard-stats", {
@@ -123,27 +121,27 @@ const SupervisorPanel = () => {
     refetchInterval: 10000,
   });
 
- const filterData = () => {
+  const filterData = () => {
     let baseData = stats?.locales_detalle || [];
 
     console.log("ANTES", baseData);
     
     // 1. Filtro por Día (si está seleccionado)
- if (selectedDay) {
-  baseData = baseData.filter(l => {
-    const dias = parseDias(l.dias_planificados);
+    if (selectedDay) {
+      baseData = baseData.filter(l => {
+        const dias = parseDias(l.dias_planificados);
 
-    console.log({
-      local: l.cadena,
-      diasOriginal: l.dias_planificados,
-      diasParseados: dias,
-      selectedDay,
-      incluye: dias.includes(selectedDay)
-    });
+        console.log({
+          local: l.cadena,
+          diasOriginal: l.dias_planificados,
+          diasParseados: dias,
+          selectedDay,
+          incluye: dias.includes(selectedDay)
+        });
 
-    return dias.includes(selectedDay);
-  });
-}
+        return dias.includes(selectedDay);
+      });
+    }
     
     // 2. Filtros por estado / tipo (mantiene tu lógica actual)
     if (activeFilter === 'locales') {
@@ -163,61 +161,83 @@ const SupervisorPanel = () => {
       baseData = baseData.filter(l => l.estado === 'sin_planificacion');
     }
 
-    // 3. Búsqueda por texto (mantener al final para que filtre sobre lo ya filtrado)
+    // 3. Búsqueda por texto 
     if (searchTerm.trim() !== "") {
-      baseData = baseData.filter(local => 
-        local.direccion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        local.cadena?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        local.codigo_local?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        local.mercaderista?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const term = searchTerm.toLowerCase();
+      baseData = baseData.filter(local => {
+        // Extracción segura del nombre del mercaderista
+        const mercName = String(local.mercaderista || local.usuario || local.nombre_mercaderista || '').toLowerCase();
+        
+        return (
+          local.direccion?.toLowerCase().includes(term) ||
+          local.cadena?.toLowerCase().includes(term) ||
+          local.codigo_local?.toLowerCase().includes(term) ||
+          mercName.includes(term)
+        );
+      });
     }
 
     return baseData;
   };
 
+  const parseDias = (dias) => {
+    if (!dias) return [];
+    if (Array.isArray(dias)) return dias;
+    if (typeof dias === "string") {
+      return dias
+        .split(",")
+        .map(d => d.trim())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
+  // 1. Obtenemos los locales ya filtrados
+  const filteredLocales = filterData();
+
+  // 2. Generamos uniqueUsers filtrando agresivamente strings basura
   const getUniqueUsers = () => {
     const usersMap = {};
-    const baseData = stats?.locales_detalle || [];
-    baseData.forEach(l => {
-      if (l.mercaderista && l.mercaderista.trim() !== '') {
-        if (!usersMap[l.mercaderista]) {
-          usersMap[l.mercaderista] = { name: l.mercaderista, locales: [] };
+    
+    const baseParaUsuarios = stats?.locales_detalle || [];
+
+    baseParaUsuarios.forEach(l => {
+      const mName = l.mercaderista || l.nombre_mercaderista || l.usuario || l.user_name;
+      
+      // Limpiamos el nombre asegurando que sea un string
+      const cleanName = mName ? String(mName).trim() : '';
+      const nameLower = cleanName.toLowerCase();
+      
+      // 🚩 Lista negra de strings que NO son usuarios reales
+      const invalidNames = ['', 'null', 'null null', 'sin asignar', 'undefined', 'none'];
+
+      // Solo si tiene nombre y NO está en la lista negra, lo sumamos
+      if (cleanName && !invalidNames.includes(nameLower)) {
+        if (!usersMap[cleanName]) {
+          usersMap[cleanName] = { name: cleanName, locales: [] };
         }
-        if (!usersMap[l.mercaderista].locales.includes(l.cadena)) {
-          usersMap[l.mercaderista].locales.push(l.cadena);
+        const localStr = l.cadena || l.nombre_local || l.codigo_local || 'Local';
+        if (!usersMap[cleanName].locales.includes(localStr)) {
+          usersMap[cleanName].locales.push(localStr);
         }
       }
     });
+    
     return Object.keys(usersMap).map((name, idx) => ({
       id: `user-${idx}`,
       name,
       locales: usersMap[name].locales
-    })).filter(u => u.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }));
   };
 
-const parseDias = (dias) => {
-  if (!dias) return [];
-
-  if (Array.isArray(dias)) return dias;
-
-  if (typeof dias === "string") {
-    return dias
-      .split(",")
-      .map(d => d.trim())
-      .filter(Boolean);
-  }
-
-  return [];
-};
-
-  const filteredLocales = filterData();
   const uniqueUsers = getUniqueUsers();
 
   const cards = [
     { id: 'sin_ruta', label: "Locales fuera Ruta", value: stats?.sin_asignacion || 0, color: "bg-gray-900", text: "text-gray-900", icon: <FiXCircle size={24} /> },
     { id: 'locales', label: "Locales Asignados", value: stats?.total_locales || 0, color: "bg-blue-600", text: "text-blue-600", icon: <FiMapPin size={24} /> },
-    { id: 'usuarios', label: "Usuarios Asignados", value: stats?.total_usuarios || 0, color: "bg-indigo-600", text: "text-indigo-600", icon: <FiUsers size={24} /> },
+    // 🚩 AQUÍ ESTÁ LA MAGIA: Quitamos el "|| stats?.total_usuarios". 
+    // Obligamos a que muestre estrictamente el conteo (aunque sea 0).
+    { id: 'usuarios', label: "Usuarios Asignados", value: uniqueUsers.length, color: "bg-indigo-600", text: "text-indigo-600", icon: <FiUsers size={24} /> },
     { id: 'pendientes', label: "Rutas Pendientes", value: stats?.no_atendido || 0, color: "bg-red-500", text: "text-red-500", icon: <FiAlertCircle size={24} /> },
     { id: 'en_curso', label: "Visitas en Curso", value: stats?.atendiendo || 0, color: "bg-yellow-400", text: "text-yellow-500", icon: <FiClock size={24} /> },
     { id: 'finalizadas', label: "Visitas Finalizadas", value: stats?.atendido || 0, color: "bg-[#87be00]", text: "text-[#87be00]", icon: <FiCheckCircle size={24} /> },
