@@ -75,6 +75,9 @@ const SupervisorPanel = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
+
+  // Controla qué pastilla de mercaderista externo está desplegada
+  const [expandedExternalMerchant, setExpandedExternalMerchant] = useState(null);
   
   // 🚩 ESTADOS PARA EL MODAL DE JUSTIFICACIÓN DE PLANIFICACIÓN
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -87,7 +90,9 @@ const SupervisorPanel = () => {
     "Cumplir con planificacion"
   ];
 
+  
   const queryClient = useQueryClient();
+  
 
   // 🚩 TIEMPO REAL: Conexión WebSocket con el Backend
   useEffect(() => {
@@ -109,7 +114,7 @@ const SupervisorPanel = () => {
   const { data: stats, isLoading, error, isFetching } = useQuery({
     queryKey: ['dashboard-stats', user?.company_id, user?.id],
     queryFn: async () => {
-      const response = await api.get("/reports/dashboard-stats", {
+      const response = await api.get("/supervisor/dashboard-stats", {
         params: { 
           company_id: user?.company_id,
           supervisor_id: user?.id 
@@ -120,6 +125,9 @@ const SupervisorPanel = () => {
     enabled: !!user?.id,
     refetchInterval: 10000,
   });
+
+  console.log("Dashboard Stats");
+console.log(stats);
 
   const filterData = () => {
     let baseData = stats?.locales_detalle || [];
@@ -197,38 +205,12 @@ const SupervisorPanel = () => {
 
   // 2. Generamos uniqueUsers filtrando agresivamente strings basura
   const getUniqueUsers = () => {
-    const usersMap = {};
-    
-    const baseParaUsuarios = stats?.locales_detalle || [];
-
-    baseParaUsuarios.forEach(l => {
-      const mName = l.mercaderista || l.nombre_mercaderista || l.usuario || l.user_name;
-      
-      // Limpiamos el nombre asegurando que sea un string
-      const cleanName = mName ? String(mName).trim() : '';
-      const nameLower = cleanName.toLowerCase();
-      
-      // 🚩 Lista negra de strings que NO son usuarios reales
-      const invalidNames = ['', 'null', 'null null', 'sin asignar', 'undefined', 'none'];
-
-      // Solo si tiene nombre y NO está en la lista negra, lo sumamos
-      if (cleanName && !invalidNames.includes(nameLower)) {
-        if (!usersMap[cleanName]) {
-          usersMap[cleanName] = { name: cleanName, locales: [] };
-        }
-        const localStr = l.cadena || l.nombre_local || l.codigo_local || 'Local';
-        if (!usersMap[cleanName].locales.includes(localStr)) {
-          usersMap[cleanName].locales.push(localStr);
-        }
-      }
-    });
-    
-    return Object.keys(usersMap).map((name, idx) => ({
-      id: `user-${idx}`,
-      name,
-      locales: usersMap[name].locales
-    }));
-  };
+  return (stats?.usuarios_asignados || []).map((u, idx) => ({
+    id: u.id || `user-${idx}`,
+    name: u.name || 'Usuario sin nombre',
+    locales: u.locales || []
+  }));
+};
 
   const uniqueUsers = getUniqueUsers();
 
@@ -237,7 +219,7 @@ const SupervisorPanel = () => {
     { id: 'locales', label: "Locales Asignados", value: stats?.total_locales || 0, color: "bg-blue-600", text: "text-blue-600", icon: <FiMapPin size={24} /> },
     // 🚩 AQUÍ ESTÁ LA MAGIA: Quitamos el "|| stats?.total_usuarios". 
     // Obligamos a que muestre estrictamente el conteo (aunque sea 0).
-    { id: 'usuarios', label: "Usuarios Asignados", value: uniqueUsers.length, color: "bg-indigo-600", text: "text-indigo-600", icon: <FiUsers size={24} /> },
+    { id: 'usuarios', label: "Usuarios Asignados", value: stats?.total_usuarios || 0, color: "bg-indigo-600", text: "text-indigo-600", icon: <FiUsers size={24} /> },
     { id: 'pendientes', label: "Rutas Pendientes", value: stats?.no_atendido || 0, color: "bg-red-500", text: "text-red-500", icon: <FiAlertCircle size={24} /> },
     { id: 'en_curso', label: "Visitas en Curso", value: stats?.atendiendo || 0, color: "bg-yellow-400", text: "text-yellow-500", icon: <FiClock size={24} /> },
     { id: 'finalizadas', label: "Visitas Finalizadas", value: stats?.atendido || 0, color: "bg-[#87be00]", text: "text-[#87be00]", icon: <FiCheckCircle size={24} /> },
@@ -316,6 +298,72 @@ const SupervisorPanel = () => {
     const hrs = Math.floor(diffMins / 60);
     const mins = diffMins % 60;
     return `${hrs}h ${mins.toString().padStart(2, '0')}m`;
+  };
+
+  // Pastilla reutilizable para visitas realizadas por usuarios externos.
+  // Al presionarla, despliega u oculta el nombre del mercaderista.
+  const ExternalMerchantBadge = ({ item, compact = false }) => {
+    if (item?.mercaderista_tipo !== 'EXTERNO') return null;
+
+    const externalKey = `${item.route_id || item.id}-external`;
+    const isExpanded = expandedExternalMerchant === externalKey;
+
+    return (
+      <div className={`flex flex-col ${compact ? 'items-start' : 'items-start'} gap-1.5`}>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setExpandedExternalMerchant(isExpanded ? null : externalKey);
+          }}
+          aria-expanded={isExpanded}
+          className="inline-flex items-center gap-2 bg-purple-50 text-purple-600 border border-purple-100 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-purple-100 hover:border-purple-200 transition-all shadow-sm"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0"></span>
+          Mercaderista Externo
+          <span className={`text-[8px] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+            ▼
+          </span>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              initial={{ opacity: 0, y: -4, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -4, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="bg-purple-50/60 border border-purple-100 rounded-xl px-3 py-2">
+                <p className="text-[8px] font-black text-purple-400 uppercase tracking-widest">
+                  Visita realizada por
+                </p>
+                <p className="text-[11px] font-black text-gray-900 uppercase italic tracking-tight mt-0.5">
+                  {item.mercaderista || 'Usuario externo'}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+
+  // Pastilla para usuarios del supervisor que visitan un local fuera de su cobertura.
+  // Mantiene visible el nombre del mercaderista y destaca únicamente la condición del local.
+  const ExternalLocalBadge = ({ item, compact = false }) => {
+    if (item?.tipo_cobertura !== 'LOCAL_EXTERNO') return null;
+
+    return (
+      <div className={`flex flex-col ${compact ? 'items-start' : 'items-start'} gap-1.5`}>
+        <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 border border-blue-100 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+          Local Externo
+        </span>
+      </div>
+    );
   };
 
   if (isLoading) return (
@@ -583,7 +631,8 @@ const SupervisorPanel = () => {
                     <span className="bg-gray-100 px-2 py-1 rounded-md text-[9px] font-black text-gray-600 uppercase w-max tracking-wider">
                       {item.codigo_local || 'S/N'}
                     </span>
-                    <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none mt-1">{item.cadena}</p>
+                    <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none mt-1">
+                      {item.cadena}</p>
                     <div className="flex items-start gap-2 text-gray-500 mt-2 bg-gray-50/50 p-2 rounded-xl">
                       <FiMapPin size={12} className="shrink-0 mt-0.5" />
                       <span className="text-[10px] font-bold uppercase italic leading-tight">{item.direccion}</span>
@@ -629,9 +678,24 @@ const SupervisorPanel = () => {
                           <div className="w-10 h-10 rounded-2xl bg-gray-100 overflow-hidden shrink-0">
                             <img src={`https://ui-avatars.com/api/?name=${item.mercaderista || 'User'}&background=random&bold=true`} alt="avatar" />
                           </div>
-                          <div className="pr-16">
-                            <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">{item.mercaderista || 'Mercaderista'}</p>
-                            <p className="text-[10px] font-bold text-gray-600 uppercase italic mt-1 truncate">{item.cadena || 'Local X'}</p>
+                          <div className="pr-16 min-w-0">
+                            {item.tipo_cobertura === 'MERCADERISTA_EXTERNO' ? (
+                              <ExternalMerchantBadge item={item} compact />
+                            ) : item.tipo_cobertura === 'LOCAL_EXTERNO' ? (
+                              <div className="space-y-2">
+                                <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                  {item.mercaderista || 'Mercaderista'}
+                                </p>
+                                <ExternalLocalBadge item={item} compact />
+                              </div>
+                            ) : (
+                              <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                {item.mercaderista || 'Mercaderista'}
+                              </p>
+                            )}
+                            <p className="text-[10px] font-bold text-gray-600 uppercase italic mt-1 truncate">
+                              {item.cadena || 'Local X'}
+                            </p>
                           </div>
                         </>
                       )}
@@ -797,8 +861,16 @@ const SupervisorPanel = () => {
                             </span>
                           </td>
                           <td className="px-8 py-6">
-                            <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">{item.cadena}</p>
-                          </td>
+  <div className="flex items-center gap-3 flex-wrap">
+    <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+      {item.cadena}
+    </p>
+
+    {item.local_tipo === 'EXTERNO' && (
+      <ExternalLocalBadge item={item} />
+    )}
+  </div>
+</td>
                           <td className="px-8 py-6" colSpan="2">
                             <div className="flex items-center gap-2 text-gray-500">
                                 <FiMapPin size={12} className="shrink-0" />
@@ -842,7 +914,7 @@ const SupervisorPanel = () => {
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, scale: 0.95 }}
                           transition={{ delay: idx * 0.03 }}
-                          key={`${item.id}-${idx}`}
+                          key={item.route_id || `${item.id}-${idx}`}
                           className="hover:bg-gray-50/50 transition-colors group cursor-default"
                         >
                           <td className="px-8 py-6">
@@ -917,7 +989,7 @@ const SupervisorPanel = () => {
                             animate={{ opacity: 1, x: 0 }} 
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ delay: idx * 0.03 }}
-                            key={`${item.id}-${idx}`} 
+                            key={item.route_id || `${item.id}-${idx}`} 
                             className="hover:bg-gray-50/50 transition-colors group cursor-default"
                         >
                           <td className="px-8 py-6">
@@ -933,9 +1005,26 @@ const SupervisorPanel = () => {
                                 <div className="w-10 h-10 rounded-2xl bg-gray-100 overflow-hidden shrink-0">
                                   <img src={`https://ui-avatars.com/api/?name=${item.mercaderista || 'User'}&background=random&bold=true`} alt="avatar" />
                                 </div>
-                                <div>
-                                  <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">{item.mercaderista || 'Mercaderista'}</p>
-                                  <p className="text-[9px] font-bold text-[#87be00] mt-1 uppercase tracking-widest">Punto de Venta Activo</p>
+                                <div className="min-w-0">
+                                  {item.tipo_cobertura === 'MERCADERISTA_EXTERNO' ? (
+                                    <ExternalMerchantBadge item={item} />
+                                  ) : item.tipo_cobertura === 'LOCAL_EXTERNO' ? (
+                                    <div className="space-y-2">
+                                      <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                        {item.mercaderista || 'Mercaderista'}
+                                      </p>
+                                      <ExternalLocalBadge item={item} />
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                        {item.mercaderista || 'Mercaderista'}
+                                      </p>
+                                      <p className="text-[9px] font-bold text-[#87be00] mt-1 uppercase tracking-widest">
+                                        Punto de Venta Activo
+                                      </p>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             )}
