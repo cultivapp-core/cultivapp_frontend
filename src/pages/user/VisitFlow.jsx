@@ -46,6 +46,13 @@ const VisitFlow = () => {
 
   const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+  // Identidad visual única para todos los botones del flujo.
+  const primaryButtonClass =
+    "w-full bg-[#87be00] hover:bg-[#76a600] active:bg-[#6e9e00] text-white py-5 rounded-[2.5rem] font-black text-[10px] uppercase tracking-widest shadow-lg shadow-[#87be00]/20 transition-all active:scale-[0.98] disabled:bg-gray-100 disabled:text-gray-400 disabled:border disabled:border-gray-200 disabled:shadow-none disabled:cursor-not-allowed disabled:active:scale-100";
+
+  const secondaryButtonClass =
+    "w-full bg-white hover:bg-[#87be00]/10 active:bg-[#87be00]/20 text-[#6e9e00] py-5 rounded-[2.5rem] font-black text-[10px] uppercase tracking-widest border-2 border-[#87be00]/30 transition-all active:scale-[0.98] disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed disabled:active:scale-100";
+
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [step, setStep] = useState(1); 
   const [loading, setLoading] = useState(false);
@@ -222,12 +229,23 @@ const VisitFlow = () => {
     [requiredQuestions, answers]
   );
 
+  const answeredQuestionsCount = useMemo(
+    () =>
+      questions.filter((q) =>
+        hasValidAnswer(answers[q.id])
+      ).length,
+    [questions, answers]
+  );
+
   const areRequiredQuestionsComplete =
     requiredQuestions.length === answeredRequiredCount;
 
+  const isSurveyComplete =
+    questions.length > 0 &&
+    answeredQuestionsCount === questions.length;
+
   const canContinueFromScan = scannedCodes.length > 0;
-  const canContinueFromSurvey =
-    questions.length > 0 && areRequiredQuestionsComplete;
+  const canContinueFromSurvey = isSurveyComplete;
 
   const handleContinueFromScan = () => {
     if (!canContinueFromScan) {
@@ -251,6 +269,13 @@ const VisitFlow = () => {
       return;
     }
 
+    if (!isSurveyComplete) {
+      toast.error(
+        `Debes completar toda la encuesta (${answeredQuestionsCount}/${questions.length})`
+      );
+      return;
+    }
+
     setStep(5);
   };
 
@@ -264,8 +289,15 @@ const VisitFlow = () => {
     const missingRequired = requiredQuestions.some(
       (q) => !hasValidAnswer(answers[q.id])
     );
+
     if (missingRequired) {
       toast.error("Por favor responde todas las preguntas obligatorias");
+      setStep(4);
+      return;
+    }
+
+    if (!isSurveyComplete) {
+      toast.error("Debes completar toda la encuesta antes de continuar");
       setStep(4);
       return;
     }
@@ -407,7 +439,15 @@ const VisitFlow = () => {
             {selectedProduct && (
               <div className="space-y-4">
                 {renderPhotoContainer(gondolaInicialPhoto, setGondolaInicialPhoto, 2)}
-                {gondolaInicialPhoto && <button onClick={() => setStep(3)} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px] tracking-widest">Escanear Productos</button>}
+                {gondolaInicialPhoto && (
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className={primaryButtonClass}
+                  >
+                    Escanear Productos
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -444,11 +484,7 @@ const VisitFlow = () => {
               type="button"
               onClick={handleContinueFromScan}
               disabled={!canContinueFromScan}
-              className={`w-full py-5 rounded-[2.5rem] font-black text-[10px] transition-all ${
-                canContinueFromScan
-                  ? "bg-black text-white active:bg-[#87be00]"
-                  : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
-              }`}
+              className={primaryButtonClass}
             >
               Validar Encuesta
             </button>
@@ -473,12 +509,12 @@ const VisitFlow = () => {
                  <p className={`text-[9px] font-black uppercase tracking-widest ${
                    canContinueFromSurvey ? "text-[#87be00]" : "text-orange-500"
                  }`}>
-                   Preguntas obligatorias
+                   Encuesta completada
                  </p>
                  <span className={`text-[10px] font-black ${
                    canContinueFromSurvey ? "text-[#87be00]" : "text-orange-500"
                  }`}>
-                   {answeredRequiredCount}/{requiredQuestions.length}
+                   {answeredQuestionsCount}/{questions.length}
                  </span>
                </div>
              </div>
@@ -487,11 +523,7 @@ const VisitFlow = () => {
                type="button"
                onClick={handleContinueFromSurvey}
                disabled={!canContinueFromSurvey}
-               className={`w-full py-5 rounded-[2.5rem] font-black text-[10px] transition-all ${
-                 canContinueFromSurvey
-                   ? "bg-black text-white active:bg-[#87be00]"
-                   : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
-               }`}
+               className={primaryButtonClass}
              >
                Góndola Final
              </button>
@@ -515,11 +547,7 @@ const VisitFlow = () => {
                type="button"
                onClick={() => setStep(6)}
                disabled={!gondolaTerminoPhoto}
-               className={`w-full py-5 rounded-[2.5rem] font-black text-[10px] transition-all ${
-                 gondolaTerminoPhoto
-                   ? "bg-black text-white active:bg-[#87be00]"
-                   : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
-               }`}
+               className={primaryButtonClass}
              >
                Confirmar Producto
              </button>
@@ -533,7 +561,7 @@ const VisitFlow = () => {
                 type="button"
                 onClick={() => registrarGestionProducto('NUEVO')}
                 disabled={loading}
-                className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
+                className={primaryButtonClass}
               >
                 {loading ? "Registrando..." : "Sí, nuevo producto"}
               </button>
@@ -541,7 +569,7 @@ const VisitFlow = () => {
                 type="button"
                 onClick={() => registrarGestionProducto('SALIR')}
                 disabled={loading}
-                className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
+                className={secondaryButtonClass}
               >
                 {loading ? "Registrando..." : "Finalizar jornada"}
               </button>
@@ -553,7 +581,16 @@ const VisitFlow = () => {
           <div className="space-y-4">
              {renderPhotoContainer(exitPhoto, setExitPhoto, 7)}
               <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre la sala..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
-             {exitPhoto && <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px]">Confirmar y Finalizar</button>}
+             {exitPhoto && (
+               <button
+                 type="button"
+                 onClick={finalizarVisitaTotal}
+                 disabled={loading}
+                 className={primaryButtonClass}
+               >
+                 {loading ? "Finalizando..." : "Confirmar y Finalizar"}
+               </button>
+             )}
           </div>
         )}
 
@@ -561,7 +598,13 @@ const VisitFlow = () => {
         {step === 8 && (
           <div className="py-6 space-y-4">
              <FiCheckCircle className="text-[#87be00] mx-auto" size={40} />
-             <button onClick={() => navigate("/usuario/home")} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black text-xs">Volver al inicio</button>
+             <button
+               type="button"
+               onClick={() => navigate("/usuario/home")}
+               className={primaryButtonClass}
+             >
+               Volver al inicio
+             </button>
           </div>
         )}
 
