@@ -361,13 +361,14 @@ const LoginForm = () => {
       normalizedMessage.includes("correo no registrado")
     ) {
       showLoginAlert({
-        type: "error",
-        title: "Correo no registrado",
-        message:
-          "No existe una cuenta asociada al correo ingresado."
-      });
+    type: "error",
+    title: "Correo incorrecto",
+    message:
+      "El correo ingresado no está registrado. Ingresa un correo válido."
+  });
       return;
     }
+
 
     /* =========================================
        CREDENCIALES / CONTRASEÑA INCORRECTA
@@ -380,11 +381,11 @@ const LoginForm = () => {
       normalizedMessage.includes("password")
     ) {
       showLoginAlert({
-        type: "error",
-        title: "Contraseña inválida",
-        message:
-          "La contraseña ingresada no es correcta. Favor volver a intentarlo."
-      });
+    type: "error",
+    title: "Contraseña inválida",
+    message:
+      "La contraseña ingresada no es correcta. Favor volver a intentarlo."
+  });
       return;
     }
 
