@@ -202,11 +202,83 @@ const VisitFlow = () => {
     } catch (err) { isProcessingScan.current = false; }
   };
 
+  const hasValidAnswer = (value) => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === "string") return value.trim() !== "";
+    if (Array.isArray(value)) return value.length > 0;
+    return true;
+  };
+
+  const requiredQuestions = useMemo(
+    () => questions.filter((q) => Boolean(q.is_required)),
+    [questions]
+  );
+
+  const answeredRequiredCount = useMemo(
+    () =>
+      requiredQuestions.filter((q) =>
+        hasValidAnswer(answers[q.id])
+      ).length,
+    [requiredQuestions, answers]
+  );
+
+  const areRequiredQuestionsComplete =
+    requiredQuestions.length === answeredRequiredCount;
+
+  const canContinueFromScan = scannedCodes.length > 0;
+  const canContinueFromSurvey =
+    questions.length > 0 && areRequiredQuestionsComplete;
+
+  const handleContinueFromScan = () => {
+    if (!canContinueFromScan) {
+      toast.error("Debes escanear al menos un código antes de continuar");
+      return;
+    }
+
+    setStep(4);
+  };
+
+  const handleContinueFromSurvey = () => {
+    if (questions.length === 0) {
+      toast.error("La encuesta aún no está disponible. Intenta nuevamente");
+      return;
+    }
+
+    if (!areRequiredQuestionsComplete) {
+      toast.error(
+        `Debes responder todas las preguntas obligatorias (${answeredRequiredCount}/${requiredQuestions.length})`
+      );
+      return;
+    }
+
+    setStep(5);
+  };
+
   const registrarGestionProducto = async (proximoPaso) => {
-    const missingRequired = questions.some(q => q.is_required && !answers[q.id]);
+    if (scannedCodes.length === 0) {
+      toast.error("Debes escanear al menos un código");
+      setStep(3);
+      return;
+    }
+
+    const missingRequired = requiredQuestions.some(
+      (q) => !hasValidAnswer(answers[q.id])
+    );
     if (missingRequired) {
       toast.error("Por favor responde todas las preguntas obligatorias");
       setStep(4);
+      return;
+    }
+
+    if (!gondolaInicialPhoto) {
+      toast.error("Debes registrar la foto inicial de la góndola");
+      setStep(2);
+      return;
+    }
+
+    if (!gondolaTerminoPhoto) {
+      toast.error("Debes registrar la foto final de la góndola");
+      setStep(5);
       return;
     }
 
@@ -354,7 +426,32 @@ const VisitFlow = () => {
                   </div>
                 ))}
             </div>
-            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Validar Encuesta</button>
+            <div className={`rounded-2xl px-4 py-3 text-left border ${
+              canContinueFromScan
+                ? "bg-[#87be00]/10 border-[#87be00]/20"
+                : "bg-orange-50 border-orange-100"
+            }`}>
+              <p className={`text-[9px] font-black uppercase tracking-widest ${
+                canContinueFromScan ? "text-[#87be00]" : "text-orange-500"
+              }`}>
+                {canContinueFromScan
+                  ? `${scannedCodes.length} código${scannedCodes.length === 1 ? "" : "s"} registrado${scannedCodes.length === 1 ? "" : "s"}`
+                  : "Debes escanear al menos un código"}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleContinueFromScan}
+              disabled={!canContinueFromScan}
+              className={`w-full py-5 rounded-[2.5rem] font-black text-[10px] transition-all ${
+                canContinueFromScan
+                  ? "bg-black text-white active:bg-[#87be00]"
+                  : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+              }`}
+            >
+              Validar Encuesta
+            </button>
           </div>
         )}
 
@@ -367,7 +464,37 @@ const VisitFlow = () => {
                  <QuestionRenderer question={q} answer={answers[q.id]} onChange={(val) => setAnswers({...answers, [q.id]: val})} />
                </div>
              ))}
-             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Góndola Final</button>
+             <div className={`rounded-2xl px-4 py-3 border ${
+               canContinueFromSurvey
+                 ? "bg-[#87be00]/10 border-[#87be00]/20"
+                 : "bg-orange-50 border-orange-100"
+             }`}>
+               <div className="flex items-center justify-between gap-3">
+                 <p className={`text-[9px] font-black uppercase tracking-widest ${
+                   canContinueFromSurvey ? "text-[#87be00]" : "text-orange-500"
+                 }`}>
+                   Preguntas obligatorias
+                 </p>
+                 <span className={`text-[10px] font-black ${
+                   canContinueFromSurvey ? "text-[#87be00]" : "text-orange-500"
+                 }`}>
+                   {answeredRequiredCount}/{requiredQuestions.length}
+                 </span>
+               </div>
+             </div>
+
+             <button
+               type="button"
+               onClick={handleContinueFromSurvey}
+               disabled={!canContinueFromSurvey}
+               className={`w-full py-5 rounded-[2.5rem] font-black text-[10px] transition-all ${
+                 canContinueFromSurvey
+                   ? "bg-black text-white active:bg-[#87be00]"
+                   : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+               }`}
+             >
+               Góndola Final
+             </button>
            </div>
         )}
 
@@ -376,15 +503,48 @@ const VisitFlow = () => {
           <div className="space-y-4">
              {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, 5)}
              <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre este producto..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
-             <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Confirmar Producto</button>
+             {!gondolaTerminoPhoto && (
+               <div className="rounded-2xl px-4 py-3 bg-orange-50 border border-orange-100">
+                 <p className="text-[9px] font-black uppercase tracking-widest text-orange-500">
+                   Debes capturar la foto final de la góndola
+                 </p>
+               </div>
+             )}
+
+             <button
+               type="button"
+               onClick={() => setStep(6)}
+               disabled={!gondolaTerminoPhoto}
+               className={`w-full py-5 rounded-[2.5rem] font-black text-[10px] transition-all ${
+                 gondolaTerminoPhoto
+                   ? "bg-black text-white active:bg-[#87be00]"
+                   : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+               }`}
+             >
+               Confirmar Producto
+             </button>
           </div>
         )}
 
         {/* STEP 6: DECISIÓN */}
         {step === 6 && (
           <div className="space-y-4 py-6">
-              <button onClick={() => registrarGestionProducto('NUEVO')} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px]">Sí, nuevo producto</button>
-              <button onClick={() => registrarGestionProducto('SALIR')} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black text-[10px]">Finalizar jornada</button>
+              <button
+                type="button"
+                onClick={() => registrarGestionProducto('NUEVO')}
+                disabled={loading}
+                className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Registrando..." : "Sí, nuevo producto"}
+              </button>
+              <button
+                type="button"
+                onClick={() => registrarGestionProducto('SALIR')}
+                disabled={loading}
+                className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Registrando..." : "Finalizar jornada"}
+              </button>
           </div>
         )}
 
