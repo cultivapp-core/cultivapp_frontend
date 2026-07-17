@@ -209,22 +209,64 @@ const RoutePlanningMap = () => {
   }, [filteredRoutes]);
 
   useEffect(() => {
-    if (map.current) return;
+    if (map.current || !mapContainer.current) return;
+
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: [-70.6483, -33.4569],
       zoom: 14
     });
-    map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+    map.current.addControl(
+      new mapboxgl.NavigationControl(),
+      "top-right"
+    );
+
+    map.current.on("load", () => {
+      map.current?.resize();
+    });
+
+    return () => {
+      markers.current.forEach((marker) => marker.remove());
+      markers.current = [];
+      map.current?.remove();
+      map.current = null;
+    };
   }, []);
 
   useEffect(() => {
     if (map.current) {
-      const resizeTimer = setTimeout(() => map.current.resize(), 500);
+      const resizeTimer = setTimeout(() => map.current?.resize(), 500);
       return () => clearTimeout(resizeTimer);
     }
   }, [panelOpen]);
+
+  useEffect(() => {
+    if (!mapContainer.current) return;
+
+    const resizeMap = () => {
+      if (!map.current) return;
+
+      requestAnimationFrame(() => {
+        map.current?.resize();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(resizeMap);
+    resizeObserver.observe(mapContainer.current);
+    window.addEventListener("resize", resizeMap);
+    window.addEventListener("orientationchange", resizeMap);
+
+    const initialResize = setTimeout(resizeMap, 300);
+
+    return () => {
+      clearTimeout(initialResize);
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", resizeMap);
+      window.removeEventListener("orientationchange", resizeMap);
+    };
+  }, []);
 
   
 
@@ -392,8 +434,9 @@ const RoutePlanningMap = () => {
         <div className="flex-none lg:flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 min-h-0 relative">
           
           {/* MAPA */}
-          <div className="relative w-full h-[55vh] min-h-[360px max-h-[560px] lg:h-auto lg:max-h-none lg:min-h-0 lg:flex-[2] xl:flex-[3] bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden shrink-0 lg:shrink"
->
+          <div
+            className="relative w-full h-[55vh] min-h-[360px] max-h-[560px] lg:h-auto lg:max-h-none lg:min-h-0 lg:flex-[2] xl:flex-[3] bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden shrink-0 lg:shrink"
+          >
             {!loading && routes.length === 0 && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
                 <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300"><FiAlertCircle size={32} /></div>
@@ -417,21 +460,29 @@ const RoutePlanningMap = () => {
             )}
           </div>
 
-          {/* PANEL JERÁRQUICO - REDISEÑO MINIMALISTA */}
-          <div className={`
-            transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] overflow-hidden shrink-0 flex flex-col
-            ${panelOpen ? 'max-h-[50vh] lg:max-h-none lg:h-full lg:w-[350px] xl:w-[400px] opacity-100' : 'max-h-0 lg:max-h-none lg:w-0 opacity-0'}
-          `}>
-            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full overflow-hidden">
+          {/* PANEL JERÁRQUICO - RESPONSIVO */}
+          <div
+            className={`
+              transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]
+              shrink-0 flex flex-col w-full min-h-0
+              ${
+                panelOpen
+                  ? "h-[65vh] min-h-[420px] max-h-[650px] opacity-100 lg:h-full lg:min-h-0 lg:max-h-none lg:w-[350px] xl:w-[400px]"
+                  : "h-0 min-h-0 max-h-0 opacity-0 overflow-hidden lg:h-full lg:max-h-none lg:w-0"
+              }
+            `}
+          >
+            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm flex flex-col w-full h-full min-h-0 overflow-hidden">
               <div className="px-5 py-5 border-b border-gray-50 flex items-center justify-between bg-white shrink-0">
                 <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
                   <FiList size={16} className="text-[#87be00]" /> Despliegue Jerárquico
                 </p>
+                <span className="text-[9px] font-black text-gray-300">{Object.keys(groupedData).length}</span>
               </div>
 
-              <div className="overflow-y-auto flex-1 custom-scrollbar p-4 space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar p-4 space-y-4 touch-pan-y">
                 {Object.keys(groupedData).length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-gray-300">
+                  <div className="min-h-[240px] flex flex-col items-center justify-center gap-3 text-gray-300">
                     <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center"><FiMapPin size={20} /></div>
                     <p className="text-[10px] font-black uppercase tracking-widest">Sin asignaciones</p>
                   </div>
@@ -439,72 +490,93 @@ const RoutePlanningMap = () => {
                   Object.entries(groupedData).map(([supName, supData]) => {
                     const isSupExpanded = expandedSupervisors[supName];
                     const hasLocales = Object.keys(supData.localesMap).length > 0;
-                    
+                    const hasUsers = Object.keys(supData.usuariosMap).length > 0;
+
                     return (
-                      <div key={supName} className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm">
-                        
+                      <div key={supName} className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm shrink-0">
                         <button
+                          type="button"
                           onClick={() => {
                             toggleExpandSupervisor(supName);
-                            setSelectedSupervisor(prev => prev === supName ? null : supName);
+                            setSelectedSupervisor((previous) => previous === supName ? null : supName);
                           }}
-                          className={`w-full flex items-center p-4 transition-all ${selectedSupervisor === supName ? 'bg-[#87be00]/10 border-b border-[#87be00]/20' : 'bg-white hover:bg-gray-50 border-b border-transparent'}`}
+                          className={`w-full flex items-center p-4 transition-all ${selectedSupervisor === supName ? "bg-[#87be00]/10 border-b border-[#87be00]/20" : "bg-white hover:bg-gray-50 border-b border-transparent"}`}
                         >
-                          <div className="w-10 h-10 rounded-xl bg-gray-900 text-white flex items-center justify-center font-black text-sm shadow-md shrink-0">
-                            {supName.charAt(0)}
-                          </div>
+                          <div className="w-10 h-10 rounded-xl bg-gray-900 text-white flex items-center justify-center font-black text-sm shadow-md shrink-0">{supName.charAt(0)}</div>
                           <div className="flex-1 text-left px-3 min-w-0">
-                            <p className="text-[9px] font-black text-[#87be00] uppercase tracking-[0.2em] mb-0.5 flex items-center gap-1">
-                              <FiUserCheck size={12} /> Supervisor
-                            </p>
-                            <p className="text-sm font-black text-gray-900 uppercase italic truncate leading-tight">
-                              {supName}
-                            </p>
+                            <p className="text-[9px] font-black text-[#87be00] uppercase tracking-[0.2em] mb-0.5 flex items-center gap-1"><FiUserCheck size={12} /> Supervisor</p>
+                            <p className="text-sm font-black text-gray-900 uppercase italic truncate leading-tight">{supName}</p>
                           </div>
-                          <FiChevronRight size={18} className={`text-gray-300 transition-transform ${isSupExpanded ? 'rotate-90 text-[#87be00]' : ''}`} />
+                          <FiChevronRight size={18} className={`text-gray-300 transition-transform shrink-0 ${isSupExpanded ? "rotate-90 text-[#87be00]" : ""}`} />
                         </button>
 
-                        <div className={`transition-all duration-400 ease-in-out ${isSupExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                        <div className={`overflow-hidden transition-all duration-300 ${isSupExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"}`}>
                           <div className="p-2 space-y-1 bg-gray-50/50">
+                            {!hasLocales && !hasUsers && (
+                              <p className="px-3 py-4 text-[9px] font-bold uppercase text-gray-400 text-center">Supervisor sin asignaciones</p>
+                            )}
+
                             {hasLocales && Object.entries(supData.localesMap).map(([localKey, localData]) => {
                               const uniqueLocalKey = `${supName}-${localKey}`;
                               const isLocalExpanded = expandedLocales[uniqueLocalKey];
                               const allRoutes = Object.values(localData.routesByUser).flat();
-                              const ep = allRoutes.filter(r => r.status === 'IN_PROGRESS').length;
-                              
+                              const inProgress = allRoutes.filter((route) => route.status === "IN_PROGRESS").length;
+
                               return (
                                 <div key={localKey} className="pl-2">
-                                  <button onClick={() => toggleExpandLocale(uniqueLocalKey)} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors group">
+                                  <button type="button" onClick={() => toggleExpandLocale(uniqueLocalKey)} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors group">
                                     <FiMapPin size={14} className="text-[#87be00] shrink-0" />
                                     <div className="flex-1 min-w-0 text-left">
                                       <p className="text-[10px] font-black uppercase text-gray-700 truncate group-hover:text-[#87be00] transition-colors">{localData.nombre_mostrar}</p>
                                     </div>
-                                    {ep > 0 && <span className="w-2 h-2 rounded-full bg-[#87be00] animate-pulse"></span>}
-                                    <FiChevronRight size={14} className={`text-gray-300 transition-transform ${isLocalExpanded ? 'rotate-90' : ''}`} />
+                                    {inProgress > 0 && <span className="w-2 h-2 rounded-full bg-[#2563eb] animate-pulse" />}
+                                    <FiChevronRight size={14} className={`text-gray-300 transition-transform ${isLocalExpanded ? "rotate-90" : ""}`} />
                                   </button>
 
-                                  <div className={`overflow-hidden transition-all duration-300 ${isLocalExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                  <div className={`overflow-hidden transition-all duration-300 ${isLocalExpanded ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0"}`}>
                                     <div className="ml-3 pl-3 border-l-2 border-gray-200 py-1 my-1 space-y-1">
-                                      {Object.entries(localData.routesByUser).map(([userName, userRoutes]) => (
-                                        userRoutes.map((route, idx) => (
-                                          <button 
-                                            key={`${userName}-${idx}`} 
-                                            onClick={() => flyToRoute(route)} 
-                                            className={`w-full text-left p-2 rounded-md flex items-center gap-2 transition-all ${selectedRoute === route ? 'bg-white shadow-sm ring-1 ring-[#87be00]/30' : 'hover:bg-white/60'}`}
+                                      {Object.entries(localData.routesByUser).flatMap(([userName, userRoutes]) =>
+                                        userRoutes.map((route, index) => (
+                                          <button
+                                            type="button"
+                                            key={`${userName}-${route.id || index}`}
+                                            onClick={() => flyToRoute(route)}
+                                            className={`w-full text-left p-2 rounded-md flex items-center gap-2 transition-all ${selectedRoute === route ? "bg-white shadow-sm ring-1 ring-[#87be00]/30" : "hover:bg-white/60"}`}
                                           >
                                             <span className="w-1.5 h-1.5 rounded-full block shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
-                                            <div className="flex-1 min-w-0">
-                                              <p className="text-[9px] font-black uppercase text-gray-600 truncate">{userName}</p>
-                                            </div>
-                                            <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
+                                            <div className="flex-1 min-w-0"><p className="text-[9px] font-black uppercase text-gray-600 truncate">{userName}</p></div>
+                                            <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
                                           </button>
                                         ))
-                                      ))}
+                                      )}
                                     </div>
                                   </div>
                                 </div>
                               );
                             })}
+
+                            {hasUsers && Object.entries(supData.usuariosMap).map(([userName, userRoutes]) => (
+                              <div key={`${supName}-${userName}`} className="pl-2">
+                                <div className="w-full flex items-center gap-2 p-2 rounded-lg">
+                                  <FiUsers size={14} className="text-blue-500 shrink-0" />
+                                  <p className="flex-1 min-w-0 text-[10px] font-black uppercase text-gray-700 truncate">{userName}</p>
+                                </div>
+                                <div className="ml-3 pl-3 border-l-2 border-blue-100 py-1 space-y-1">
+                                  {userRoutes.map((route, index) => (
+                                    <button
+                                      type="button"
+                                      key={`${userName}-${route.id || index}`}
+                                      onClick={() => flyToRoute(route)}
+                                      className={`w-full text-left p-2 rounded-md flex items-center gap-2 transition-all ${selectedRoute === route ? "bg-white shadow-sm ring-1 ring-[#87be00]/30" : "hover:bg-white/60"}`}
+                                    >
+                                      <span className="w-1.5 h-1.5 rounded-full block shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
+                                      <div className="flex-1 min-w-0"><p className="text-[9px] font-black uppercase text-gray-600 truncate">{route.cadena || route.local_nombre || "Sin local"}</p></div>
+                                      <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>
