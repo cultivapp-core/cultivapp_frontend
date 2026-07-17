@@ -142,7 +142,6 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
   const [foto, setFoto] = useState(null);
   const [preview, setPreview] = useState(null);
   
-  // ESTADOS PARA DOCUMENTOS
   const [documentoContrato, setDocumentoContrato] = useState(null);
   const [documentoAchs, setDocumentoAchs] = useState(null);
   const [documentoOtro, setDocumentoOtro] = useState(null);
@@ -182,16 +181,10 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
         try {
           setLoadingEmpresas(true);
           const response = await api.get("/companies");
-          console.log("Objeto RESPONSE completo:", response);
-          
-          // Accedemos directamente a response.data
           const data = Array.isArray(response) ? response : (response.data || []);
-          
           if (Array.isArray(data)) {
-            console.log("Guardando en estado:", data);
             setEmpresas(data);
           } else {
-            console.error("La API no devolvió un array:", data);
             setEmpresas([]);
           }
         } catch (err) {
