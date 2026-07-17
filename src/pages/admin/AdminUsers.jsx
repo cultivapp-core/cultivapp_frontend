@@ -817,6 +817,7 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
     </motion.div>
   )
 }
+
 const DeleteAdminUserModal = ({ user, onClose, onConfirm }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
