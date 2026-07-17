@@ -201,8 +201,6 @@ const AdminUsers = () => {
       setUsers(parsedUsers)
       setCompanies(parsedCompanies)
       setStats(statsResponse)
-      feature/developer_admin
-
       const usersWithContractAlerts = parsedUsers
         .map((user) => ({
           ...user,
@@ -568,8 +566,6 @@ const AdminUsers = () => {
       {resetUser && <ResetPasswordAdminModal user={resetUser} onClose={() => setResetUser(null)} onUpdated={fetchData} />}
       {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchData} />}
       {assignUser && <AssignUsersModal targetUser={assignUser} onClose={() => setAssignUser(null)} onRefresh={fetchData} />}
-
-feature/developer_admin
       <AnimatePresence>
         {showContractAlertModal && contractAlerts.length > 0 && (
           <ContractAlertsModal
@@ -583,7 +579,6 @@ feature/developer_admin
           />
         )}
       </AnimatePresence>
-
       {userToDelete && (
         <DeleteAdminUserModal 
           user={userToDelete} 
@@ -617,7 +612,6 @@ const ProgressCard = ({ title, used, max, color, icon, bgClass }) => {
     </div>
   )
 }
-
 
 const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
   const expiredCount = users.filter(
@@ -823,7 +817,6 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
     </motion.div>
   )
 }
-
 const DeleteAdminUserModal = ({ user, onClose, onConfirm }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 

@@ -180,6 +180,12 @@ const LoginForm = () => {
         title: "Empresa no disponible",
         message:
           "La empresa asociada a tu cuenta se encuentra inactiva o suspendida."
+      },
+      contract_expired: {
+        type: "warning",
+        title: "Contrato vencido",
+        message:
+          "Tu contrato laboral se encuentra vencido. Comunícate con un administrador para regularizar tu acceso."
       }
     };
 
@@ -242,7 +248,31 @@ const LoginForm = () => {
       "";
 
     const normalizedCode = String(errorCode).toLowerCase();
+    const normalizedAuthError = String(
+      error?.authError ||
+      error?.response?.data?.authError ||
+      error?.data?.authError ||
+      ""
+    ).toLowerCase();
 
+    /* =========================================
+       CONTRATO VENCIDO
+       Debe evaluarse antes del 403 genérico.
+    ========================================= */
+    if (
+      normalizedAuthError === "contract_expired" ||
+      normalizedCode === "contract_expired" ||
+      normalizedMessage.includes("contrato vencido") ||
+      normalizedMessage.includes("contrato se encuentra vencido")
+    ) {
+      showLoginAlert({
+        type: "warning",
+        title: "Contrato vencido",
+        message:
+          "Tu contrato laboral se encuentra vencido. Comunícate con un administrador para regularizar tu acceso."
+      });
+      return;
+    }
     /* =========================================
        SESIÓN / TOKEN EXPIRADO
     ========================================= */
