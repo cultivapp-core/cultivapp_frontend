@@ -4,6 +4,7 @@ import { NotificationProvider } from "./context/NotificationContext"
 import { Toaster } from "react-hot-toast"
 import { useEffect } from "react" 
 import api from "./api/apiClient" 
+import { io } from "socket.io-client" // 🔌 Importamos el cliente oficial de Socket.io
 
 // --- HOOKS ---
 import { useOfflineSync } from "./hooks/useOfflineSync"
@@ -35,7 +36,7 @@ import SalesDashboard from "./pages/reports/SalesDashboard"
 import ReportsPage from "./pages/reports/ReportsPage" 
 
 /* ================= ADMIN CLIENTE ================= */
-import AdminLayout from "./pages/admin/AdminLayout" // Asegúrate de tener este layout creado
+import AdminLayout from "./pages/admin/AdminLayout" 
 import AdminOverview from "./pages/admin/AdminOverview"
 import AdminUsers from "./pages/admin/AdminUsers"
 import AdminLocales from "./pages/admin/AdminLocales"
@@ -49,6 +50,7 @@ import PhotoValidation from "./pages/supervisor/PhotoValidation"
 
 /* ================= SUPERVISOR ================= */
 import SupervisorDashboard from "./pages/supervisor/SupervisorDashboard"
+import SupervisorLayout from "./pages/supervisor/SupervisorLayout";
 import SupervisorPanel from "./pages/supervisor/SupervisorPanel"
 import LiveMap from "./pages/supervisor/LiveMap"
 import AlertManager from "./pages/supervisor/AlertManager"
@@ -76,15 +78,31 @@ import "./App.css"
 
 const HeartbeatMonitor = () => {
   const { user } = useAuth();
+  
   useEffect(() => {
     if (!user) return;
+
+    // 1. Inicializar canal WebSocket en tiempo real apuntando a tu API externa o local
+    const socket = io(import.meta.env.VITE_API_URL, { credentials: true });
+
+    // Enviar el ID del colaborador conectado para el Radar
+    if (user.id) {
+      socket.emit("register_user", user.id);
+    }
+
+    // 2. Mantener fallback tradicional por REST API de contingencia (Sin modificaciones)
     const sendPing = async () => {
       try { await api.post("/users/ping"); } catch (error) { console.warn("Ping fallido..."); }
     };
     sendPing();
     const intervalId = setInterval(sendPing, 60000);
-    return () => clearInterval(intervalId);
+
+    return () => {
+      clearInterval(intervalId);
+      socket.disconnect(); // Desconectar socket limpiamente al desloguearse
+    };
   }, [user]);
+
   return null; 
 };
 
@@ -117,7 +135,6 @@ function App() {
           <Toaster 
             position="top-right"
             toastOptions={{
-              // Estilo base para todos los toasts
               style: {
                 borderRadius: '1rem',
                 background: '#fff',
@@ -126,12 +143,10 @@ function App() {
                 border: '1px solid #e5e7eb',
                 padding: '16px',
               },
-              // Configuración específica para éxitos
               success: {
                 style: { border: '1px solid #87be00' },
                 iconTheme: { primary: '#87be00', secondary: '#fff' },
               },
-              // Configuración específica para errores
               error: {
                 style: { border: '1px solid #ef4444' },
                 iconTheme: { primary: '#ef4444', secondary: '#fff' },
@@ -141,7 +156,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
             <Route path="/verify/:id" element={<UserCredential />} />
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
 
@@ -178,9 +193,17 @@ function App() {
               <Route path="notifications" element={<NotificationsLayout userRole="MERCADERISTA" />} />
             </Route>
 
-            {/* SUPERVISOR */}
-            <Route path="/supervisor" element={<ProtectedRoute role="SUPERVISOR"><SupervisorDashboard /></ProtectedRoute>}>
+           {/* SUPERVISOR */}
+            <Route 
+              path="/supervisor" 
+              element={
+                <ProtectedRoute role="SUPERVISOR">
+                  <SupervisorLayout />
+                </ProtectedRoute>
+              }
+            >
               <Route index element={<SupervisorPanel />} />
+              <Route path="routes" element={<AdminRoutes />} /> 
               <Route path="mapa" element={<LiveMap />} />
               <Route path="alertas" element={<AlertManager />} />
               <Route path="visita" element={<SupervisorVisitFlow />} />

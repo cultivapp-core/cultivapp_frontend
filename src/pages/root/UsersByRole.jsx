@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
   FiPlus, FiTrash2, FiEdit2, FiKey, FiUsers, FiUserCheck, 
-  FiUserX, FiSearch, FiHome, FiMapPin, FiXSquare 
+  FiUserX, FiSearch, FiHome, FiMapPin, FiXSquare, FiX, FiAlertTriangle 
 } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-hot-toast";
@@ -26,6 +26,7 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [openEdit, setOpenEdit] = useState(false);
   const [openReset, setOpenReset] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null); // Nuevo estado para controlar el modal de eliminación
   
   // ESTADOS PARA PASAR LA DATA A LOS MODALES (Igual que en AdminUsers)
   const [assignSupervisor, setAssignSupervisor] = useState(null);
@@ -93,13 +94,20 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
     } catch (error) { console.error(error); }
   };
 
+  // Lógica de eliminación conectada al nuevo modal
   const deleteUser = async (id) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este usuario?")) return;
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/api/users/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) { toast.success("Usuario eliminado"); fetchUsers(); }
-    } catch (error) { console.error(error); }
+      if (res.ok) { 
+        toast.success("Usuario eliminado"); 
+        fetchUsers(); 
+        setUserToDelete(null);
+      }
+    } catch (error) { 
+      console.error(error); 
+      toast.error("Error al intentar eliminar el usuario");
+    }
   };
 
   const stats = {
@@ -114,91 +122,124 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 font-[Outfit] pb-10 pt-20 md:pt-0 w-full" onClick={() => setActivePopover(null)}>
+    <div className="space-y-8 animate-in fade-in duration-500 font-[Outfit] pb-12 pt-20 md:pt-4 w-full bg-slate-50/50 min-h-screen relative" onClick={() => setActivePopover(null)}>
       
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-4">
+      {/* HEADER ESTILO CULTIVA */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-6">
         <div>
-          <h2 className="text-3xl md:text-5xl font-black text-gray-800 tracking-tighter uppercase italic leading-none">{title}</h2>
-          <p className="text-[9px] font-black text-[#87be00] uppercase tracking-[0.2em] mt-3">Gestión de equipo, vigencias y permisos</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#111111] tracking-tight uppercase leading-none">{title}</h2>
+          <p className="text-[10px] font-bold text-[#5c9200] uppercase tracking-[0.25em] mt-2.5">Gestión de equipo, vigencias y permisos</p>
         </div>
-        <button onClick={() => setOpenModal(true)} className="flex items-center justify-center gap-3 bg-[#87be00] hover:bg-[#76a500] text-white w-full md:w-auto px-8 py-4 rounded-[1.5rem] font-black uppercase text-[11px] tracking-[0.2em] transition-all shadow-xl flex-shrink-0">
-          <FiPlus size={18} /> {buttonLabel}
+        <button onClick={() => setOpenModal(true)} className="flex items-center justify-center gap-2.5 bg-[#5c9200] hover:bg-[#4a7500] text-white w-full md:w-auto px-6 py-3.5 rounded-xl font-bold uppercase text-[11px] tracking-[0.15em] transition-all shadow-sm hover:shadow-md flex-shrink-0">
+          <FiPlus size={16} /> {buttonLabel}
         </button>
       </div>
 
       {/* STATS */}
-      <div className="px-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Total" value={stats.total} icon={<FiUsers />} />
-        <StatCard label="Activos" value={stats.activos} icon={<FiXSquare />} color="text-[#87be00]" />
-        <StatCard label="Inactivos" value={stats.inactivos} icon={<FiUserX />} color="text-red-500" />
+      <div className="px-6 grid grid-cols-1 sm:grid-cols-3 gap-5">
+        <StatCard label="Total Colaboradores" value={stats.total} icon={<FiUsers size={20} />} color="text-slate-700" bgIcon="bg-slate-100" />
+        <StatCard label="Usuarios Activos" value={stats.activos} icon={<FiUserCheck size={20} />} color="text-[#5c9200]" bgIcon="bg-emerald-50" />
+        <StatCard label="Usuarios Inactivos" value={stats.inactivos} icon={<FiUserX size={20} />} color="text-rose-600" bgIcon="bg-rose-50" />
       </div>
 
-      {/* SEARCH */}
-      <div className="px-4">
-        <div className="relative">
-          <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-gray-100 rounded-2xl pl-12 pr-6 py-4 text-[11px] font-black uppercase tracking-wider outline-none shadow-sm" />
+      {/* FILTROS: SELECTOR DE EMPRESA + BUSCADOR */}
+      <div className="px-6">
+        <div className="flex flex-col sm:flex-row items-stretch gap-4 max-w-2xl">
+          
+          {/* SELECTOR DE EMPRESAS (Visible solo si es ROOT según tu useEffect) */}
+          {loggedUser?.role === "ROOT" && (
+            <div className="w-full sm:w-64 flex-shrink-0">
+              <select
+                value={selectedCompany}
+                onChange={(e) => setSelectedCompany(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-[12px] font-bold text-slate-700 uppercase tracking-wider outline-none focus:border-[#5c9200] focus:ring-1 focus:ring-[#5c9200] transition-all shadow-sm cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M7%209l3%203%203-3%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[right_0.75rem_center] bg-no-repeat"
+              >
+                <option value="">Todas las empresas</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* BUSCADOR */}
+          <div className="relative flex-grow">
+            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input type="text" placeholder="Buscar por nombre o email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-[12px] font-medium text-slate-700 placeholder-slate-400 outline-none focus:border-[#5c9200] focus:ring-1 focus:ring-[#5c9200] transition-all shadow-sm" />
+          </div>
+
         </div>
       </div>
 
-      {/* VISTA ESCRITORIO (TABLA) */}
-      <div className="hidden md:block px-4">
-        <div className="bg-white rounded-[3.5rem] shadow-2xl shadow-gray-200/60 border border-gray-100 overflow-hidden">
+      {/* VISTA ESCRITORIO (TABLA ESTILO CULTIVA) */}
+      <div className="hidden md:block px-6">
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left min-w-[1100px]">
-              <thead className="bg-gray-50/70 border-b border-gray-100">
+              <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
-                  <th className="px-8 py-6 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] w-[35%]">Colaborador</th>
-                  <th className="px-8 py-6 text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] w-[25%]">Vigencia</th>
-                  {!role && <th className="px-8 py-6 text-[10px] font-black uppercase text-gray-400 w-[15%]">Org</th>}
-                  <th className="px-8 py-6 text-[10px] font-black uppercase text-gray-400 text-center w-[10%]">Estado</th>
-                  <th className="px-8 py-6 text-[10px] font-black uppercase text-gray-400 text-right w-[15%]">Acciones</th>
+                  <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] w-[35%]">Colaborador</th>
+                  <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] w-[25%]">Vigencia Contrato</th>
+                  {!role && <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] w-[15%]">Organización</th>}
+                  <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] text-center w-[10%]">Estado</th>
+                  <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] text-right w-[15%]">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredUsers.map(u => (
-                  <tr key={u.id} className="hover:bg-gray-50/50">
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4 min-w-0">
+                  <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3.5 min-w-0">
                         <UserQuickView user={u} isActive={activePopover === u.id} onToggle={() => setActivePopover(activePopover === u.id ? null : u.id)}/>
-                        <div className="flex flex-col min-w-0 pr-2 gap-1">
-                          <p className="text-[13px] font-black uppercase truncate leading-none">{u.first_name} {u.last_name}</p>
-                          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest leading-none">{u.role}</span>
-                          <span className="text-[11px] font-bold font-mono text-[#87be00] select-all truncate" title={u.id}>ID: {u.id}</span>
+                        <div className="flex flex-col min-w-0 gap-0.5">
+                          <p className="text-[13px] font-bold text-[#111111] uppercase truncate">{u.first_name} {u.last_name}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">{u.role}</span>
+                            <span className="text-[10px] font-medium font-mono text-slate-450 select-all truncate" title={u.id}>• ID: {u.id}</span>
+                          </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-8 py-6 text-[11px] font-bold">{formatDate(u.fecha_inicio_contrato)} - {formatDate(u.fecha_termino_contrato)}</td>
-                    {!role && <td className="px-8 py-6"><span className="text-[10px] font-black uppercase">{u.company_name}</span></td>}
-                    <td className="px-8 py-6 text-center"><button onClick={() => toggleUser(u.id)} className={`h-6 w-12 rounded-full mx-auto transition-colors ${u.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}/></td>
-                    <td className="px-8 py-6 text-right">
-                      <div className="flex justify-end gap-2">
+                    <td className="px-6 py-4 text-[12px] text-slate-600 font-medium">
+                      <span className="bg-slate-100 px-2 py-1 rounded-md text-slate-700">{formatDate(u.fecha_inicio_contrato)}</span>
+                      <span className="mx-1.5 text-slate-300">—</span>
+                      <span className="bg-slate-100 px-2 py-1 rounded-md text-slate-700">{formatDate(u.fecha_termino_contrato)}</span>
+                    </td>
+                    {!role && <td className="px-6 py-4"><span className="text-[11px] font-bold uppercase text-slate-600">{u.company_name}</span></td>}
+                    <td className="px-6 py-4 text-center">
+                      <button onClick={() => toggleUser(u.id)} className={`h-5 w-10 rounded-full transition-colors relative inline-flex items-center p-0.5 ${u.is_active ? "bg-[#5c9200]" : "bg-slate-200"}`}>
+                        <span className={`h-4 w-4 rounded-full bg-white transition-transform transform ${u.is_active ? "translate-x-5" : "translate-x-0"}`} />
+                      </button>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-1.5">
                         
-                        {/* 👁️ ASIGNAR LOCALES - Aparece para mercaderistas (USUARIO) */}
+                        {/* 👁️ ASIGNAR LOCALES - Mercaderistas (USUARIO) */}
                         {u.role === "USUARIO" && (
-                          <button onClick={() => setAssignSupervisor(u)} className="p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors text-gray-600" title="Asignar Locales">
-                            <FiHome size={16}/>
+                          <button onClick={() => setAssignSupervisor(u)} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors border border-slate-200" title="Asignar Locales">
+                            <FiHome size={14}/>
                           </button>
                         )}
                         
                         {/* 📍 ASIGNAR LOCALES (SUPERVISOR / VIEW) */}
                         {(u.role === 'SUPERVISOR' || u.role === 'VIEW') && (
-                          <button onClick={() => setAssignSupervisor(u)} className="p-3 bg-gray-50 hover:bg-gray-100 text-[#87be00] rounded-xl flex items-center justify-center border border-gray-100 transition-colors" title="Asignar Locales">
-                            <FiMapPin size={16}/>
+                          <button onClick={() => setAssignSupervisor(u)} className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-[#5c9200] rounded-lg flex items-center justify-center border border-emerald-100 transition-colors" title="Asignar Locales">
+                            <FiMapPin size={14}/>
                           </button>
                         )}
 
                         {/* 👥 ASIGNAR USUARIOS (SUPERVISOR / VIEW) */}
                         {(u.role === 'VIEW' || u.role === 'SUPERVISOR') && (
-                          <button onClick={() => setAssignUser(u)} className="p-3 bg-blue-50 hover:bg-blue-100 text-blue-500 rounded-xl flex items-center justify-center border border-blue-100 transition-colors" title="Asignar Usuarios">
-                            <FiUsers size={16}/>
+                          <button onClick={() => setAssignUser(u)} className="p-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center border border-blue-100 transition-colors" title="Asignar Usuarios">
+                            <FiUsers size={14}/>
                           </button>
                         )}
 
-                        <button onClick={() => { setSelectedUser(u); setOpenEdit(true); }} className="p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"><FiEdit2 size={16}/></button>
-                        <button onClick={() => { setSelectedUser(u); setOpenReset(true); }} className="p-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"><FiKey size={16}/></button>
-                        {canDeleteUser(u) && <button onClick={() => deleteUser(u.id)} className="p-3 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl transition-colors"><FiTrash2 size={16}/></button>}
+                        <button onClick={() => { setSelectedUser(u); setOpenEdit(true); }} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg transition-colors" title="Editar Contacto"><FiEdit2 size={14}/></button>
+                        <button onClick={() => { setSelectedUser(u); setOpenReset(true); }} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg transition-colors" title="Restablecer Clave"><FiKey size={14}/></button>
+                        {canDeleteUser(u) && <button onClick={() => setUserToDelete(u)} className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 rounded-lg transition-colors" title="Eliminar"><FiTrash2 size={14}/></button>}
                       </div>
                     </td>
                   </tr>
@@ -209,49 +250,54 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
         </div>
       </div>
 
-      {/* VISTA MÓVIL (TARJETAS) */}
-      <div className="md:hidden px-4 space-y-4">
+      {/* VISTA MÓVIL (TARJETAS ESTILO CULTIVA) */}
+      <div className="md:hidden px-6 space-y-4">
         {filteredUsers.map(u => (
-          <div key={u.id} className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col gap-4">
+          <div key={u.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-4">
              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 min-w-0 pr-2">
-                   <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center font-black text-sm uppercase flex-shrink-0">
+                <div className="flex items-center gap-3.5 min-w-0 pr-2">
+                   <div className="w-11 h-11 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center font-bold text-xs uppercase flex-shrink-0 border border-slate-200">
                     {(u.first_name?.charAt(0) || "") + (u.last_name?.charAt(0) || "")}
                    </div>
                    <div className="min-w-0">
-                     <p className="text-[12px] font-black uppercase truncate leading-none mb-1.5">{u.first_name} {u.last_name}</p>
-                     <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1 truncate">{u.role}</p>
-                     <p className="text-[8px] font-bold font-mono text-[#87be00] tracking-wider select-all truncate" title={u.id}>ID: {u.id}</p>
+                     <p className="text-[13px] font-bold text-[#111111] uppercase truncate leading-none mb-1">{u.first_name} {u.last_name}</p>
+                     <div className="flex items-center gap-2">
+                       <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider leading-none">{u.role}</p>
+                       <p className="text-[9px] font-medium font-mono text-slate-400 tracking-wider select-all truncate" title={u.id}>ID: {u.id}</p>
+                     </div>
                    </div>
                 </div>
-                <button onClick={() => toggleUser(u.id)} className={`w-12 h-6 rounded-full flex-shrink-0 transition-colors ${u.is_active ? "bg-[#87be00]" : "bg-gray-200"}`}/>
+                <button onClick={() => toggleUser(u.id)} className={`h-5 w-10 rounded-full transition-colors relative inline-flex items-center p-0.5 flex-shrink-0 ${u.is_active ? "bg-[#5c9200]" : "bg-slate-200"}`}>
+                  <span className={`h-4 w-4 rounded-full bg-white transition-transform transform ${u.is_active ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
              </div>
              
-             <div className="flex items-center justify-between border-t border-gray-50 pt-4 mt-2">
-                <div className="text-[10px] text-gray-400 font-extrabold">{formatDate(u.fecha_termino_contrato)}</div>
+             <div className="flex items-center justify-between border-t border-slate-100 pt-3.5 mt-1">
+                <div className="text-[10px] text-slate-500 font-bold bg-slate-50 px-2 py-1 rounded">Vence: {formatDate(u.fecha_termino_contrato)}</div>
                 
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                    {/* Botón para USUARIO */}
                    {u.role === "USUARIO" && (
-                     <button onClick={() => setAssignSupervisor(u)} className="p-3 bg-gray-50 rounded-xl text-gray-600"><FiHome size={16}/></button>
+                     <button onClick={() => setAssignSupervisor(u)} className="p-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg"><FiHome size={14}/></button>
                    )}
                    
                    {/* 📍 ASIGNAR LOCALES (SUPERVISOR / VIEW) */}
                    {(u.role === 'SUPERVISOR' || u.role === 'VIEW') && (
-                     <button onClick={() => setAssignSupervisor(u)} className="p-3 bg-gray-50 text-[#87be00] rounded-xl flex items-center justify-center border border-gray-100" title="Asignar Locales">
-                       <FiMapPin size={16}/>
+                     <button onClick={() => setAssignSupervisor(u)} className="p-2.5 bg-emerald-50 text-[#5c9200] rounded-lg flex items-center justify-center border border-emerald-100" title="Asignar Locales">
+                       <FiMapPin size={14}/>
                      </button>
                    )}
 
                    {/* 👥 ASIGNAR USUARIOS (SUPERVISOR / VIEW) */}
                    {(u.role === 'VIEW' || u.role === 'SUPERVISOR') && (
-                     <button onClick={() => setAssignUser(u)} className="p-3 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center border border-blue-100" title="Asignar Usuarios">
-                       <FiUsers size={16}/>
+                     <button onClick={() => setAssignUser(u)} className="p-2.5 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center border border-blue-100" title="Asignar Usuarios">
+                       <FiUsers size={14}/>
                      </button>
                    )}
 
-                   <button onClick={() => { setSelectedUser(u); setOpenEdit(true); }} className="p-3 bg-gray-50 rounded-xl"><FiEdit2 size={16}/></button>
-                   <button onClick={() => { setSelectedUser(u); setOpenReset(true); }} className="p-3 bg-gray-50 rounded-xl"><FiKey size={16}/></button>
+                   <button onClick={() => { setSelectedUser(u); setOpenEdit(true); }} className="p-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg"><FiEdit2 size={14}/></button>
+                   <button onClick={() => { setSelectedUser(u); setOpenReset(true); }} className="p-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg"><FiKey size={14}/></button>
+                   {canDeleteUser(u) && <button onClick={() => setUserToDelete(u)} className="p-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg"><FiTrash2 size={14}/></button>}
                 </div>
              </div>
           </div>
@@ -262,20 +308,99 @@ const UsersByRole = ({ role = null, title, buttonLabel }) => {
       {openEdit && <EditUserContactModal user={selectedUser} onClose={() => setOpenEdit(false)} onUpdated={fetchUsers} />}
       {openReset && <ResetPasswordModal user={selectedUser} onClose={() => setOpenReset(false)} />}
       
-      {/* AQUÍ SE RENDERIZAN LOS MODALES CON SU FUNCIONALIDAD */}
+      {/* RENDER DE MODALES DE ASIGNACIÓN */}
       {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchUsers} />}
       {assignUser && <AssignUsersModal targetUser={assignUser} onClose={() => setAssignUser(null)} onRefresh={fetchUsers} />}
+      
+      {/* MODAL DE ELIMINACIÓN ESTILO CULTIVA (Usa absolute para seguir el reajuste el sidebar) */}
+      {userToDelete && (
+        <DeleteUserModal 
+          user={userToDelete} 
+          onClose={() => setUserToDelete(null)} 
+          onConfirm={() => deleteUser(userToDelete.id)} 
+        />
+      )}
       
     </div>
   )
 }
 
-const StatCard = ({ label, value, icon, color = "text-gray-900" }) => (
-  <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center gap-4">
-    <div className={`w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center ${color}`}>{icon}</div>
-    <div>
-      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{label}</p>
-      <p className={`text-xl font-black ${color}`}>{value}</p>
+/* SUBCOMPONENT: MODAL DE ELIMINACIÓN PREMIUM */
+const DeleteUserModal = ({ user, onClose, onConfirm }) => {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirm = async () => {
+    setIsDeleting(true);
+    await onConfirm();
+    setIsDeleting(false);
+  };
+
+  return (
+    <div className="absolute inset-0 bg-[#111111]/70 backdrop-blur-sm flex items-center justify-center p-4 z-[110] font-[Outfit] transition-all duration-300 min-h-full">
+      <div className="bg-white w-full max-w-md rounded-2xl border border-slate-100 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 p-6 relative">
+        
+        {/* Botón Cerrar */}
+        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-all">
+          <FiX size={16} />
+        </button>
+
+        {/* Contenido Alerta */}
+        <div className="flex flex-col items-center text-center mt-3">
+          <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center mb-4">
+            <FiAlertTriangle size={24} />
+          </div>
+          
+          <h3 className="text-base font-extrabold text-[#111111] uppercase tracking-tight">
+            ¿Confirmar Eliminación?
+          </h3>
+          
+          <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+            Estás a punto de eliminar de forma permanente al colaborador <strong className="text-slate-800 uppercase font-bold">{user.first_name} {user.last_name}</strong>. Esta acción no se puede deshacer.
+          </p>
+          
+          <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 mt-3 w-full flex items-center justify-center gap-2">
+            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Rol: {user.role}</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-[10px] font-medium font-mono text-slate-500">ID: {user.id?.slice(0, 8)}...</span>
+          </div>
+        </div>
+
+        {/* Acciones */}
+        <div className="grid grid-cols-2 gap-3 mt-6">
+          <button 
+            onClick={onClose} 
+            disabled={isDeleting}
+            className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-slate-500 font-bold uppercase text-[10px] tracking-wider rounded-xl transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          
+          <button
+            onClick={handleConfirm}
+            disabled={isDeleting}
+            className="w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl font-bold uppercase tracking-wider text-[10px] transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+          >
+            {isDeleting ? (
+              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <FiTrash2 size={13} /> Eliminar
+              </>
+            )}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+const StatCard = ({ label, value, icon, color = "text-slate-800", bgIcon = "bg-slate-50" }) => (
+  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+    <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${bgIcon} ${color}`}>{icon}</div>
+    <div className="space-y-0.5">
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+      <p className={`text-2xl font-extrabold text-slate-800 leading-none`}>{value}</p>
     </div>
   </div>
 )

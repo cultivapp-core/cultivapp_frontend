@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
-import UserSidebar from "../pages/user/UserSidebar"; // Asegúrate de que el nombre del archivo coincida exactamente
+import UserSidebar from "../..UserSidebar";
+import Topbar from "../Topbar"; // ⚠️ Ajusta esta ruta de importación según dónde esté tu archivo Topbar.jsx
 
 const UserLayout = () => {
   return (
@@ -10,7 +11,15 @@ const UserLayout = () => {
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
       <main className="flex-1 h-full overflow-y-auto custom-scrollbar relative flex flex-col">
-        <Outlet />
+        
+        {/* BARRA SUPERIOR (TOPBAR) */}
+        <Topbar />
+
+        {/* CONTENIDO DE LAS PÁGINAS (OUTLET) */}
+        <div className="flex-1 flex flex-col relative">
+          <Outlet />
+        </div>
+        
       </main>
       
     </div>

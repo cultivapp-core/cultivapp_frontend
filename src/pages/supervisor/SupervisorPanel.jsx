@@ -5,8 +5,7 @@ import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom"; // ✅ Añadido para la redirección
-
+import { useNavigate } from "react-router-dom"; 
 
 /* ============================================================
    GRÁFICO DE TORTA / DONUT (SVG en tiempo real, proporcional y tooltips)
@@ -43,12 +42,6 @@ const DonutChart = ({ stats }) => {
   const fOff = eOff - eDash;
   const sOff = fOff - fDash;
 
-  console.log("Datos que recibe el componente:", stats?.locales_detalle.map(l => ({
-    cadena: l.cadena,
-    dias: l.dias_planificados,
-    horario: l.horario_plan
-})));
-
   return (
     <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-gray-50 flex items-center justify-center h-48 md:h-56 relative w-full">
       <svg className="w-40 h-40 transform -rotate-90" viewBox="0 0 40 40">
@@ -78,12 +71,28 @@ const DonutChart = ({ stats }) => {
 ============================================================ */
 const SupervisorPanel = () => {
   const { user } = useAuth();
-  const navigate = useNavigate(); // ✅ Añadido para la navegación
+  const navigate = useNavigate(); 
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
+
+  // Controla qué pastilla de mercaderista externo está desplegada
+  const [expandedExternalMerchant, setExpandedExternalMerchant] = useState(null);
+  
+  // 🚩 ESTADOS PARA EL MODAL DE JUSTIFICACIÓN DE PLANIFICACIÓN
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [selectedLocalForPlan, setSelectedLocalForPlan] = useState(null);
+  const [reason, setReason] = useState("");
+
+  const REASONS = [
+    "Mercaderista Enfermo",
+    "Local sin mercaderista",
+    "Cumplir con planificacion"
+  ];
+
   
   const queryClient = useQueryClient();
+  
 
   // 🚩 TIEMPO REAL: Conexión WebSocket con el Backend
   useEffect(() => {
@@ -103,10 +112,9 @@ const SupervisorPanel = () => {
   }, [user?.company_id, queryClient]);
 
   const { data: stats, isLoading, error, isFetching } = useQuery({
-    
     queryKey: ['dashboard-stats', user?.company_id, user?.id],
     queryFn: async () => {
-      const response = await api.get("/reports/dashboard-stats", {
+      const response = await api.get("/supervisor/dashboard-stats", {
         params: { 
           company_id: user?.company_id,
           supervisor_id: user?.id 
@@ -118,27 +126,30 @@ const SupervisorPanel = () => {
     refetchInterval: 10000,
   });
 
- const filterData = () => {
+  console.log("Dashboard Stats");
+console.log(stats);
+
+  const filterData = () => {
     let baseData = stats?.locales_detalle || [];
 
     console.log("ANTES", baseData);
     
     // 1. Filtro por Día (si está seleccionado)
- if (selectedDay) {
-  baseData = baseData.filter(l => {
-    const dias = parseDias(l.dias_planificados);
+    if (selectedDay) {
+      baseData = baseData.filter(l => {
+        const dias = parseDias(l.dias_planificados);
 
-    console.log({
-      local: l.cadena,
-      diasOriginal: l.dias_planificados,
-      diasParseados: dias,
-      selectedDay,
-      incluye: dias.includes(selectedDay)
-    });
+        console.log({
+          local: l.cadena,
+          diasOriginal: l.dias_planificados,
+          diasParseados: dias,
+          selectedDay,
+          incluye: dias.includes(selectedDay)
+        });
 
-    return dias.includes(selectedDay);
-  });
-}
+        return dias.includes(selectedDay);
+      });
+    }
     
     // 2. Filtros por estado / tipo (mantiene tu lógica actual)
     if (activeFilter === 'locales') {
@@ -158,60 +169,56 @@ const SupervisorPanel = () => {
       baseData = baseData.filter(l => l.estado === 'sin_planificacion');
     }
 
-    // 3. Búsqueda por texto (mantener al final para que filtre sobre lo ya filtrado)
+    // 3. Búsqueda por texto 
     if (searchTerm.trim() !== "") {
-      baseData = baseData.filter(local => 
-        local.direccion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        local.cadena?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        local.codigo_local?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        local.mercaderista?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const term = searchTerm.toLowerCase();
+      baseData = baseData.filter(local => {
+        // Extracción segura del nombre del mercaderista
+        const mercName = String(local.mercaderista || local.usuario || local.nombre_mercaderista || '').toLowerCase();
+        
+        return (
+          local.direccion?.toLowerCase().includes(term) ||
+          local.cadena?.toLowerCase().includes(term) ||
+          local.codigo_local?.toLowerCase().includes(term) ||
+          mercName.includes(term)
+        );
+      });
     }
 
     return baseData;
   };
 
-  const getUniqueUsers = () => {
-    const usersMap = {};
-    const baseData = stats?.locales_detalle || [];
-    baseData.forEach(l => {
-      if (l.mercaderista && l.mercaderista.trim() !== '') {
-        if (!usersMap[l.mercaderista]) {
-          usersMap[l.mercaderista] = { name: l.mercaderista, locales: [] };
-        }
-        if (!usersMap[l.mercaderista].locales.includes(l.cadena)) {
-          usersMap[l.mercaderista].locales.push(l.cadena);
-        }
-      }
-    });
-    return Object.keys(usersMap).map((name, idx) => ({
-      id: `user-${idx}`,
-      name,
-      locales: usersMap[name].locales
-    })).filter(u => u.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const parseDias = (dias) => {
+    if (!dias) return [];
+    if (Array.isArray(dias)) return dias;
+    if (typeof dias === "string") {
+      return dias
+        .split(",")
+        .map(d => d.trim())
+        .filter(Boolean);
+    }
+    return [];
   };
 
-const parseDias = (dias) => {
-  if (!dias) return [];
+  // 1. Obtenemos los locales ya filtrados
+  const filteredLocales = filterData();
 
-  if (Array.isArray(dias)) return dias;
-
-  if (typeof dias === "string") {
-    return dias
-      .split(",")
-      .map(d => d.trim())
-      .filter(Boolean);
-  }
-
-  return [];
+  // 2. Generamos uniqueUsers filtrando agresivamente strings basura
+  const getUniqueUsers = () => {
+  return (stats?.usuarios_asignados || []).map((u, idx) => ({
+    id: u.id || `user-${idx}`,
+    name: u.name || 'Usuario sin nombre',
+    locales: u.locales || []
+  }));
 };
 
-  const filteredLocales = filterData();
   const uniqueUsers = getUniqueUsers();
 
   const cards = [
     { id: 'sin_ruta', label: "Locales fuera Ruta", value: stats?.sin_asignacion || 0, color: "bg-gray-900", text: "text-gray-900", icon: <FiXCircle size={24} /> },
     { id: 'locales', label: "Locales Asignados", value: stats?.total_locales || 0, color: "bg-blue-600", text: "text-blue-600", icon: <FiMapPin size={24} /> },
+    // 🚩 AQUÍ ESTÁ LA MAGIA: Quitamos el "|| stats?.total_usuarios". 
+    // Obligamos a que muestre estrictamente el conteo (aunque sea 0).
     { id: 'usuarios', label: "Usuarios Asignados", value: stats?.total_usuarios || 0, color: "bg-indigo-600", text: "text-indigo-600", icon: <FiUsers size={24} /> },
     { id: 'pendientes', label: "Rutas Pendientes", value: stats?.no_atendido || 0, color: "bg-red-500", text: "text-red-500", icon: <FiAlertCircle size={24} /> },
     { id: 'en_curso', label: "Visitas en Curso", value: stats?.atendiendo || 0, color: "bg-yellow-400", text: "text-yellow-500", icon: <FiClock size={24} /> },
@@ -234,11 +241,11 @@ const parseDias = (dias) => {
   /**
    * WeekPlan
    * 
-   * plan           → array de letras planificadas, ej: ['L','M','X','J','V']
-   * dayOfWeek      → entero de user_routes.day_of_week  (0=Dom … 6=Sab)
+   * plan         → array de letras planificadas, ej: ['L','M','X','J','V']
+   * dayOfWeek    → entero de user_routes.day_of_week  (0=Dom … 6=Sab)
    *                    Para visitas INDIVIDUALES se deriva de visit_date.
-   * visitDate      → string ISO de user_routes.visit_date, ej: "2025-06-10"
-   * origin         → user_routes.origin: 'INDIVIDUAL' | 'RECURRING' | etc.
+   * visitDate    → string ISO de user_routes.visit_date, ej: "2025-06-10"
+   * origin       → user_routes.origin: 'INDIVIDUAL' | 'RECURRING' | etc.
    *
    * Regla de pintado ACTUALIZADA:
    *   - SOLAMENTE se pinta de verde el día exacto correspondiente a la planificación.
@@ -293,6 +300,72 @@ const parseDias = (dias) => {
     return `${hrs}h ${mins.toString().padStart(2, '0')}m`;
   };
 
+  // Pastilla reutilizable para visitas realizadas por usuarios externos.
+  // Al presionarla, despliega u oculta el nombre del mercaderista.
+  const ExternalMerchantBadge = ({ item, compact = false }) => {
+    if (item?.mercaderista_tipo !== 'EXTERNO') return null;
+
+    const externalKey = `${item.route_id || item.id}-external`;
+    const isExpanded = expandedExternalMerchant === externalKey;
+
+    return (
+      <div className={`flex flex-col ${compact ? 'items-start' : 'items-start'} gap-1.5`}>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setExpandedExternalMerchant(isExpanded ? null : externalKey);
+          }}
+          aria-expanded={isExpanded}
+          className="inline-flex items-center gap-2 bg-purple-50 text-purple-600 border border-purple-100 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-purple-100 hover:border-purple-200 transition-all shadow-sm"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0"></span>
+          Mercaderista Externo
+          <span className={`text-[8px] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+            ▼
+          </span>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              initial={{ opacity: 0, y: -4, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -4, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="bg-purple-50/60 border border-purple-100 rounded-xl px-3 py-2">
+                <p className="text-[8px] font-black text-purple-400 uppercase tracking-widest">
+                  Visita realizada por
+                </p>
+                <p className="text-[11px] font-black text-gray-900 uppercase italic tracking-tight mt-0.5">
+                  {item.mercaderista || 'Usuario externo'}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+
+  // Pastilla para usuarios del supervisor que visitan un local fuera de su cobertura.
+  // Mantiene visible el nombre del mercaderista y destaca únicamente la condición del local.
+  const ExternalLocalBadge = ({ item, compact = false }) => {
+    if (item?.tipo_cobertura !== 'LOCAL_EXTERNO') return null;
+
+    return (
+      <div className={`flex flex-col ${compact ? 'items-start' : 'items-start'} gap-1.5`}>
+        <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 border border-blue-100 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+          Local Externo
+        </span>
+      </div>
+    );
+  };
+
   if (isLoading) return (
     <div className="py-20 text-center font-[Outfit] font-black uppercase italic animate-pulse text-gray-400 tracking-widest text-sm px-4">
       Cargando Cartera de Supervisor...
@@ -303,7 +376,7 @@ const parseDias = (dias) => {
     <div className="space-y-6 md:space-y-8 font-[Outfit] pb-24 md:pb-20">
       
       {/* HEADER RESPONSIVO */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-2">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-2 pt-12 pl-8">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
             Panel de Supervisión
@@ -558,7 +631,8 @@ const parseDias = (dias) => {
                     <span className="bg-gray-100 px-2 py-1 rounded-md text-[9px] font-black text-gray-600 uppercase w-max tracking-wider">
                       {item.codigo_local || 'S/N'}
                     </span>
-                    <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none mt-1">{item.cadena}</p>
+                    <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none mt-1">
+                      {item.cadena}</p>
                     <div className="flex items-start gap-2 text-gray-500 mt-2 bg-gray-50/50 p-2 rounded-xl">
                       <FiMapPin size={12} className="shrink-0 mt-0.5" />
                       <span className="text-[10px] font-bold uppercase italic leading-tight">{item.direccion}</span>
@@ -604,9 +678,24 @@ const parseDias = (dias) => {
                           <div className="w-10 h-10 rounded-2xl bg-gray-100 overflow-hidden shrink-0">
                             <img src={`https://ui-avatars.com/api/?name=${item.mercaderista || 'User'}&background=random&bold=true`} alt="avatar" />
                           </div>
-                          <div className="pr-16">
-                            <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">{item.mercaderista || 'Mercaderista'}</p>
-                            <p className="text-[10px] font-bold text-gray-600 uppercase italic mt-1 truncate">{item.cadena || 'Local X'}</p>
+                          <div className="pr-16 min-w-0">
+                            {item.tipo_cobertura === 'MERCADERISTA_EXTERNO' ? (
+                              <ExternalMerchantBadge item={item} compact />
+                            ) : item.tipo_cobertura === 'LOCAL_EXTERNO' ? (
+                              <div className="space-y-2">
+                                <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                  {item.mercaderista || 'Mercaderista'}
+                                </p>
+                                <ExternalLocalBadge item={item} compact />
+                              </div>
+                            ) : (
+                              <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                {item.mercaderista || 'Mercaderista'}
+                              </p>
+                            )}
+                            <p className="text-[10px] font-bold text-gray-600 uppercase italic mt-1 truncate">
+                              {item.cadena || 'Local X'}
+                            </p>
                           </div>
                         </>
                       )}
@@ -650,9 +739,19 @@ const parseDias = (dias) => {
                         </>
                       )}
                     </div>
-
                     {/* ✅ MODIFICACIÓN: Redirección añadida en vista móvil */}
-                    {item.estado !== 'sin_planificacion' && (
+                    {/* 🚩 NUEVO: Si el local está sin planificación, el botón abre el modal */}
+                    {item.estado === 'sin_planificacion' ? (
+                      <button
+                        onClick={() => {
+                          setSelectedLocalForPlan(item);
+                          setIsPlanModalOpen(true);
+                        }}
+                        className="w-full bg-gray-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#87be00] transition-colors"
+                      >
+                        Crear Plan
+                      </button>
+                    ) : (
                       <button 
                         onClick={() => navigate('/supervisor/ejecucion')}
                         className="w-full bg-white border border-gray-200 text-gray-600 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-50 active:bg-gray-100 transition-colors"
@@ -762,8 +861,16 @@ const parseDias = (dias) => {
                             </span>
                           </td>
                           <td className="px-8 py-6">
-                            <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">{item.cadena}</p>
-                          </td>
+  <div className="flex items-center gap-3 flex-wrap">
+    <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+      {item.cadena}
+    </p>
+
+    {item.local_tipo === 'EXTERNO' && (
+      <ExternalLocalBadge item={item} />
+    )}
+  </div>
+</td>
                           <td className="px-8 py-6" colSpan="2">
                             <div className="flex items-center gap-2 text-gray-500">
                                 <FiMapPin size={12} className="shrink-0" />
@@ -779,6 +886,80 @@ const parseDias = (dias) => {
                                 <FiMapPin size={32} />
                             </div>
                             <p className="text-xs font-black text-gray-400 uppercase italic tracking-[0.3em]">No hay locales asignados</p>
+                        </td>
+                      </motion.tr>
+                    )}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            ) : activeFilter === 'sin_ruta' ? (
+              /* 🚩 NUEVA TABLA: LOCALES SIN PLANIFICACIÓN
+                 Columnas: Cadena - Local - Dirección - Estado / Sala - Acción (Crear Plan) */
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50/50">
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/5">Cadena</th>
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/6">Local</th>
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/3">Dirección</th>
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/6">Estado / Sala</th>
+                    <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  <AnimatePresence>
+                    {filteredLocales.length > 0 ? (
+                      filteredLocales.map((item, idx) => (
+                        <motion.tr
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ delay: idx * 0.03 }}
+                          key={item.route_id || `${item.id}-${idx}`}
+                          className="hover:bg-gray-50/50 transition-colors group cursor-default"
+                        >
+                          <td className="px-8 py-6">
+                            <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                              {item.cadena}
+                            </p>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="bg-gray-100 px-3 py-1 rounded-lg text-[10px] font-black text-gray-600 uppercase w-max tracking-wider inline-block">
+                              {item.codigo_local || 'S/N'}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-2 text-gray-500">
+                              <FiMapPin size={12} className="shrink-0" />
+                              <span className="text-[11px] font-bold uppercase italic leading-tight">
+                                {item.direccion}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="bg-red-50 text-red-600 border border-red-100 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 w-max">
+                              <FiAlertCircle /> Sin Asignar
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <button
+                              onClick={() => {
+                                setSelectedLocalForPlan(item);
+                                setIsPlanModalOpen(true);
+                              }}
+                              className="inline-block bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm"
+                            >
+                              Crear Plan
+                            </button>
+                          </td>
+                        </motion.tr>
+                      ))
+                    ) : (
+                      <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                        <td colSpan="5" className="py-24 text-center">
+                          <div className="bg-gray-50 w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 text-gray-200">
+                            <FiMapPin size={32} />
+                          </div>
+                          <p className="text-xs font-black text-gray-400 uppercase italic tracking-[0.3em]">No hay locales sin planificación</p>
                         </td>
                       </motion.tr>
                     )}
@@ -803,13 +984,12 @@ const parseDias = (dias) => {
                   <AnimatePresence>
                     {filteredLocales.length > 0 ? (
                       filteredLocales.map((item, idx) => (
-                        console.log("Nombres de propiedades disponibles en el item:", Object.keys(item)),
                         <motion.tr 
                             initial={{ opacity: 0, x: -10 }} 
                             animate={{ opacity: 1, x: 0 }} 
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ delay: idx * 0.03 }}
-                            key={`${item.id}-${idx}`} 
+                            key={item.route_id || `${item.id}-${idx}`} 
                             className="hover:bg-gray-50/50 transition-colors group cursor-default"
                         >
                           <td className="px-8 py-6">
@@ -825,9 +1005,26 @@ const parseDias = (dias) => {
                                 <div className="w-10 h-10 rounded-2xl bg-gray-100 overflow-hidden shrink-0">
                                   <img src={`https://ui-avatars.com/api/?name=${item.mercaderista || 'User'}&background=random&bold=true`} alt="avatar" />
                                 </div>
-                                <div>
-                                  <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">{item.mercaderista || 'Mercaderista'}</p>
-                                  <p className="text-[9px] font-bold text-[#87be00] mt-1 uppercase tracking-widest">Punto de Venta Activo</p>
+                                <div className="min-w-0">
+                                  {item.tipo_cobertura === 'MERCADERISTA_EXTERNO' ? (
+                                    <ExternalMerchantBadge item={item} />
+                                  ) : item.tipo_cobertura === 'LOCAL_EXTERNO' ? (
+                                    <div className="space-y-2">
+                                      <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                        {item.mercaderista || 'Mercaderista'}
+                                      </p>
+                                      <ExternalLocalBadge item={item} />
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <p className="text-sm font-black text-gray-900 uppercase italic tracking-tighter leading-none">
+                                        {item.mercaderista || 'Mercaderista'}
+                                      </p>
+                                      <p className="text-[9px] font-bold text-[#87be00] mt-1 uppercase tracking-widest">
+                                        Punto de Venta Activo
+                                      </p>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -891,7 +1088,13 @@ const parseDias = (dias) => {
                           {activeFilter !== 'sin_ruta' && (
                             <td className="px-8 py-6 text-right">
                               {item.estado === 'sin_planificacion' ? (
-                                <button className="bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm">
+                                <button
+                                  onClick={() => {
+                                    setSelectedLocalForPlan(item);
+                                    setIsPlanModalOpen(true);
+                                  }}
+                                  className="bg-gray-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#87be00] transition-colors shadow-sm"
+                                >
                                   Crear Plan
                                 </button>
                               ) : (
@@ -925,6 +1128,56 @@ const parseDias = (dias) => {
         </div>
 
       </div>
+
+      {/* Modal de Justificación */}
+      {isPlanModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-[2rem] p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
+            <h3 className="text-sm font-black uppercase tracking-widest mb-4">Motivo de Planificación</h3>
+            
+            <div className="space-y-2 mb-6">
+              {REASONS.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setReason(r)}
+                  className={`w-full text-left p-4 rounded-xl text-[11px] font-bold uppercase transition-all ${
+                    reason === r ? 'bg-[#87be00] text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setIsPlanModalOpen(false)}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors rounded-xl text-[10px] font-black uppercase"
+              >
+                Cancelar
+              </button>
+              <button 
+                disabled={!reason}
+                onClick={() => {
+                  // 🚩 CORRECCIÓN DE LA RUTA AQUÍ:
+                  navigate('/supervisor/routes', { 
+                    state: { 
+                      reason, 
+                      localId: selectedLocalForPlan?.id, 
+                      cadena: selectedLocalForPlan?.cadena 
+                    } 
+                  });
+                  setIsPlanModalOpen(false);
+                }}
+                className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-colors ${!reason ? 'bg-gray-300 cursor-not-allowed' : 'bg-black text-white hover:bg-[#87be00]'}`}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

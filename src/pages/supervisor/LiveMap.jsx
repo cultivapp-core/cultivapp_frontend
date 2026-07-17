@@ -9,12 +9,12 @@ mapboxgl.accessToken = MAPBOX_TOKEN;
 
 const POLL_INTERVAL = 15000;
 
-// 🎨 Colores de Estados de Planificación
+// 🎨 Colores de Estados de Planificación (🚩 INVERTIDOS)
 const statusToColor = (status) => {
   switch (status) {
-    case 'IN_PROGRESS': return '#87be00';
-    case 'PENDING':     return '#ef4444';
-    case 'COMPLETED':   return '#2563eb';
+    case 'IN_PROGRESS': return '#2563eb'; // Azul para En Proceso
+    case 'PENDING':     return '#ef4444'; // Rojo para Pendiente
+    case 'COMPLETED':   return '#87be00'; // Verde para Completada
     default:            return '#94a3b8';
   }
 };
@@ -28,11 +28,12 @@ const statusLabel = (status) => {
   }
 };
 
+// 🎨 Fondos y Textos de Estados (🚩 INVERTIDOS)
 const statusBg = (status) => {
   switch (status) {
-    case 'IN_PROGRESS': return 'bg-[#87be00]/10 text-[#87be00] border-[#87be00]/20';
+    case 'IN_PROGRESS': return 'bg-blue-50 text-blue-600 border-blue-100'; // Estilo Azul
     case 'PENDING':     return 'bg-red-50 text-red-500 border-red-100';
-    case 'COMPLETED':   return 'bg-blue-50 text-blue-600 border-blue-100';
+    case 'COMPLETED':   return 'bg-[#87be00]/10 text-[#87be00] border-[#87be00]/20'; // Estilo Verde
     default:            return 'bg-gray-50 text-gray-500 border-gray-100';
   }
 };
@@ -103,19 +104,15 @@ const LiveMap = () => {
   const toggleExpandLocaleUser = (key) => setExpandedLocaleUsers(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandUser       = (key) => setExpandedUsers(prev => ({ ...prev, [key]: !prev[key] }));
 
-  // 🚩 OBTENER DATOS FILTRADOS POR SUPERVISOR (Actualizado con /routes)
   const fetchData = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       else setRefreshing(true);
 
       const [planningRes, liveRes] = await Promise.all([
-        api.get("/routes/planning/supervisor"), // Llama al endpoint correcto del supervisor
-        api.get("/routes/monitoring/supervisor-live") // Llama al endpoint correcto del supervisor     
+        api.get("/routes/planning/supervisor"), 
+        api.get("/routes/monitoring/supervisor-live")      
       ]);
-      console.log("Registro completo:", JSON.stringify(planningRes?.[0], null, 2));
-      console.log("¿Tiene dirección el primer registro?", planningRes?.[0]?.direccion);
-      console.log("Rutas en vivo recibidas:", liveRes.data);
 
       setRoutes(Array.isArray(planningRes.data) ? planningRes.data : (Array.isArray(planningRes) ? planningRes : []));
       
@@ -125,12 +122,7 @@ const LiveMap = () => {
 
       setLastUpdated(new Date());
     } catch (error) {
-      console.error("❌ ERROR DETALLADO DE API:", {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        config: error.config?.url
-      });
+      console.error("❌ ERROR DETALLADO DE API:", error.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -212,7 +204,6 @@ const LiveMap = () => {
     }
   }, [panelOpen]);
 
-  // 📐 Mantiene el mapa correctamente dimensionado ante cualquier cambio de tamaño del contenedor
   useEffect(() => {
     if (!mapContainer.current) return;
     const resizeObserver = new ResizeObserver(() => {
@@ -248,24 +239,17 @@ const LiveMap = () => {
         const lng = parseFloat(route.lng);
         const lat = parseFloat(route.lat);
 
-        // ⚠️ Este wrapper es el que Mapbox mueve con su propio transform (translate) para
-        // ubicarlo en el mapa. Nunca se le debe tocar el transform manualmente o el punto
-        // "salta"/corre de su posición real.
         const el = document.createElement("div");
         el.style.cssText = `width:22px;height:22px;cursor:pointer;`;
 
-        // 🎯 El círculo visual va en un elemento hijo aparte: aquí sí podemos animar el
-        // transform (scale) libremente al hacer hover, sin afectar el posicionamiento del punto.
         const dot = document.createElement("div");
         dot.style.cssText = `width:22px;height:22px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.2);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
         el.appendChild(dot);
 
-        // 📍 El punto queda siempre visible en el mapa (no se remueve al hacer click ni al perder el hover)
         const marker = new mapboxgl.Marker(el)
           .setLngLat([lng, lat])
           .addTo(map.current);
 
-        // 🪧 Card informativo que aparece solo al pasar el mouse sobre el punto
         const popup = new mapboxgl.Popup({
           offset: 15,
           closeButton: false,
@@ -309,17 +293,19 @@ const LiveMap = () => {
         const circleGeoJSON = createGeoJSONCircle([lng, lat], 0.3);
 
         map.current.addSource(`circle-source-${index}`, { type: "geojson", data: circleGeoJSON });
+        
+        // 🚩 Geocerca de usuarios activos pasa a color azul (#2563eb)
         map.current.addLayer({
           id: `circle-fill-${index}`,
           type: "fill",
           source: `circle-source-${index}`,
-          paint: { "fill-color": "#87be00", "fill-opacity": 0.15 },
+          paint: { "fill-color": "#2563eb", "fill-opacity": 0.12 },
         });
         map.current.addLayer({
           id: `circle-outline-${index}`,
           type: "line",
           source: `circle-source-${index}`,
-          paint: { "line-color": "#87be00", "line-width": 2, "line-dasharray": [2, 2] },
+          paint: { "line-color": "#2563eb", "line-width": 2, "line-dasharray": [2, 2] },
         });
 
         circleLayersRef.current.push(index);
@@ -341,7 +327,7 @@ const LiveMap = () => {
           .setPopup(new mapboxgl.Popup({ offset: 20 }).setHTML(`
               <div style="font-family: 'Outfit'; padding: 6px;">
                   <p style="font-weight: 900; font-size: 11px; margin: 0; color: #111;">${route.first_name} ${route.last_name}</p>
-                  <p style="font-size: 9px; color: #87be00; font-weight: 700; margin: 2px 0 0 0; text-transform: uppercase;">
+                  <p style="font-size: 9px; color: #2563eb; font-weight: 700; margin: 2px 0 0 0; text-transform: uppercase;">
                     ${route.local_nombre || 'En Movimiento'}
                   </p>
               </div>
@@ -378,21 +364,23 @@ const LiveMap = () => {
       <div className="bg-white border-b border-gray-100 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-[#87be00]/10 rounded-lg text-[#87be00]"><FiNavigation size={20} /></div>
+            <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><FiNavigation size={20} /></div>
             <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Monitoreo GPS</h2>
           </div>
-          <p className="text-[9px] md:text-[10px] font-bold text-[#87be00] uppercase tracking-[0.2em] ml-12 mt-1">Planificación y seguimiento en tiempo real</p>
+          <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-12 mt-1">Planificación y seguimiento en tiempo real</p>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
+          {/* 🚩 Indicadores de color superiores corregidos */}
           <div className="flex gap-4 bg-gray-50 px-5 py-3 rounded-[1rem] border border-gray-100 w-full sm:w-auto justify-center">
             <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] shadow-sm"></span>Pendiente</span>
-            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#87be00] shadow-sm"></span>Proceso</span>
-            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Completada</span>
+            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Proceso</span>
+            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#87be00] shadow-sm"></span>Completada</span>
           </div>
 
-          <div className="flex px-5 py-3 bg-green-50 rounded-[1rem] border border-green-100 items-center gap-2 w-full sm:w-auto justify-center shrink-0">
-            <FiActivity className="text-[#87be00] shrink-0" />
-            <span className="text-[10px] font-black uppercase text-[#87be00]">
+          {/* 🚩 Indicador de Usuarios Activos pasa a azul */}
+          <div className="flex px-5 py-3 bg-blue-50 rounded-[1rem] border border-blue-100 items-center gap-2 w-full sm:w-auto justify-center shrink-0">
+            <FiActivity className="text-blue-500 shrink-0" />
+            <span className="text-[10px] font-black uppercase text-blue-600">
               {activeRoutes.length} <span className="hidden xs:inline">Usuarios</span> Activos
             </span>
           </div>
@@ -408,10 +396,8 @@ const LiveMap = () => {
         </div>
       </div>
 
-      {/* CONTENIDO PRINCIPAL: mapa + resumen arriba, despliegue siempre abajo a todo el ancho */}
       <div className="flex-1 flex flex-col p-4 md:p-8 gap-4 md:gap-6 overflow-y-auto relative min-h-0">
 
-        {/* FILA SUPERIOR: MAPA + RESUMEN RUTAS */}
         <div className="flex flex-col md:flex-row gap-4 md:gap-6 shrink-0 md:h-[480px]">
 
           {/* MAPA */}
@@ -434,25 +420,25 @@ const LiveMap = () => {
             </button>
             {loading && (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
-                <div className="w-16 h-16 border-4 border-gray-100 border-t-[#87be00] rounded-full animate-spin"></div>
+                <div className="w-16 h-16 border-4 border-gray-100 border-t-blue-500 rounded-full animate-spin"></div>
               </div>
             )}
           </div>
 
-          {/* RESUMEN RUTAS: al lado derecho del mapa */}
+          {/* RESUMEN RUTAS */}
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 p-6 flex flex-col shrink-0 w-full md:w-64 lg:w-72">
             <div className="flex items-center justify-between mb-5">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Resumen Rutas</p>
               <div className="flex items-center gap-2">
-                {refreshing && <FiRefreshCw size={12} className="text-[#87be00] animate-spin" />}
+                {refreshing && <FiRefreshCw size={12} className="text-blue-500 animate-spin" />}
                 <span className="text-3xl font-black italic text-gray-900 leading-none">{stats.total}</span>
               </div>
             </div>
             <div className="space-y-4">
               {[
                 { label: 'Pendiente',  count: stats.pending,    color: 'bg-[#ef4444]' },
-                { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#87be00]' },
-                { label: 'Completada', count: stats.completed,  color: 'bg-[#2563eb]' },
+                { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#2563eb]' }, // 🚩 Azul
+                { label: 'Completada', count: stats.completed,  color: 'bg-[#87be00]' }, // 🚩 Verde
               ].map(({ label, count, color }) => (
                 <div key={label}>
                   <div className="flex items-center justify-between mb-1">
@@ -471,7 +457,7 @@ const LiveMap = () => {
           </div>
         </div>
 
-        {/* PANEL DE DESPLIEGUE: siempre debajo del mapa, a todo el ancho */}
+        {/* PANEL DE DESPLIEGUE */}
         <div className={`
           transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] shrink-0 flex flex-col md:h-[380px]
           ${panelOpen ? 'opacity-100' : 'max-h-0 overflow-hidden opacity-0 md:h-0'}
@@ -481,7 +467,7 @@ const LiveMap = () => {
             <div className="px-6 py-5 border-b border-gray-50 flex flex-col gap-4 bg-white shrink-0">
               <div className="flex items-center justify-between">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                  <FiList size={14} className="text-[#87be00]" /> Despliegue
+                  <FiList size={14} className="text-blue-500" /> Despliegue
                 </p>
               </div>
               <div className="relative w-full">
@@ -491,7 +477,7 @@ const LiveMap = () => {
                   placeholder="Buscar local, usuario o correo..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-100 text-gray-700 text-[11px] font-bold rounded-xl pl-10 pr-10 py-3 focus:outline-none focus:ring-2 focus:ring-[#87be00]/30 focus:border-[#87be00] transition-all placeholder:font-medium placeholder:text-gray-400"
+                  className="w-full bg-gray-50 border border-gray-100 text-gray-700 text-[11px] font-bold rounded-xl pl-10 pr-10 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all placeholder:font-medium placeholder:text-gray-400"
                 />
                 {searchTerm && (
                   <button onClick={() => setSearchTerm("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors p-1">
@@ -499,11 +485,13 @@ const LiveMap = () => {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              
+              {/* 🚩 BOTONES INFERIORES: Ajustados para reflejar la inversión de colores real en la UI */}
+              <div className="grid grid-cols-4 gap-2">
                 <button onClick={() => setStatusFilter("ALL")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "ALL" ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-500"}`}>Todas</button>
                 <button onClick={() => setStatusFilter("PENDING")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "PENDING" ? "bg-red-500 text-white" : "bg-red-50 text-red-500"}`}>Pendientes</button>
-                <button onClick={() => setStatusFilter("IN_PROGRESS")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "IN_PROGRESS" ? "bg-[#87be00] text-white" : "bg-[#87be00]/10 text-[#87be00]"}`}>En Proceso</button>
-                <button onClick={() => setStatusFilter("COMPLETED")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "COMPLETED" ? "bg-blue-500 text-white" : "bg-blue-50 text-blue-500"}`}>Completadas</button>
+                <button onClick={() => setStatusFilter("IN_PROGRESS")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "IN_PROGRESS" ? "bg-blue-500 text-white" : "bg-blue-50 text-blue-500"}`}>En Proceso</button>
+                <button onClick={() => setStatusFilter("COMPLETED")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "COMPLETED" ? "bg-[#87be00] text-white" : "bg-[#87be00]/10 text-[#87be00]"}`}>Completadas</button>
               </div>
             </div>
 
@@ -520,8 +508,8 @@ const LiveMap = () => {
                   {routesLocales.length > 0 && (
                     <div className="mb-1">
                       <div className="flex items-center gap-2 px-4 py-2.5">
-                        <FiMapPin size={10} className="text-[#87be00] shrink-0" />
-                        <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#87be00]">Locales Asignados</p>
+                        <FiMapPin size={10} className="text-blue-500 shrink-0" />
+                        <p className="text-[8px] font-black uppercase tracking-[0.2em] text-blue-500">Locales Asignados</p>
                         <span className="ml-auto text-[9px] font-black text-gray-300">{Object.keys(routesByLocale).length}</span>
                       </div>
                       {Object.entries(routesByLocale).map(([localKey, localData]) => {
@@ -533,21 +521,21 @@ const LiveMap = () => {
 
                         return (
                           <div key={localKey} className="mx-2 mb-1">
-                            <button onClick={() => toggleExpandLocale(localKey)} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-[#87be00]/5 transition-all group">
-                              <div className="w-8 h-8 rounded-xl bg-[#87be00]/10 text-[#87be00] flex items-center justify-center shrink-0"><FiMapPin size={14} /></div>
+                            <button onClick={() => toggleExpandLocale(localKey)} className="w-full flex items-center gap-3 p-3.5 rounded-2xl hover:bg-blue-50/5 transition-all group">
+                              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><FiMapPin size={14} /></div>
                               <div className="flex-1 min-w-0 text-left">
-                                <p className="text-[10px] font-black uppercase italic text-gray-900 truncate leading-none mb-1 group-hover:text-[#87be00] transition-colors">{localData.cadena || 'Sin nombre'}</p>
+                                <p className="text-[10px] font-black uppercase italic text-gray-900 truncate leading-none mb-1 group-hover:text-blue-500 transition-colors">{localData.cadena || 'Sin nombre'}</p>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[7px] font-bold text-gray-300 uppercase">{localData.codigo || 'S/N'} · {localData.comuna}</span>
                                   {pendiente  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span>{pendiente}</span>}
-                                  {enProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#87be00]"><span className="w-1.5 h-1.5 rounded-full bg-[#87be00]"></span>{enProceso}</span>}
-                                  {completada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{completada}</span>}
+                                  {enProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{enProceso}</span>}
+                                  {completada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#87be00]"><span className="w-1.5 h-1.5 rounded-full bg-[#87be00]"></span>{completada}</span>}
                                 </div>
                               </div>
-                              <FiChevronRight size={14} className={`text-gray-300 group-hover:text-[#87be00] transition-all duration-300 shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
+                              <FiChevronRight size={14} className={`text-gray-300 group-hover:text-blue-500 transition-all duration-300 shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
                             </button>
                             <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                              <div className="ml-4 border-l-2 border-[#87be00]/20 pl-3 py-1 space-y-1">
+                              <div className="ml-4 border-l-2 border-blue-500/20 pl-3 py-1 space-y-1">
                                 {Object.entries(localData.routes).map(([userName, userRoutes]) => {
                                   const userKey      = `${localKey}-${userName}`;
                                   const isUserExpanded = searchTerm.trim() !== "" ? true : expandedLocaleUsers[userKey];
@@ -556,17 +544,17 @@ const LiveMap = () => {
                                       <button onClick={() => toggleExpandLocaleUser(userKey)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-all group">
                                         <div className="w-7 h-7 rounded-lg bg-gray-900 text-[#87be00] flex items-center justify-center font-black text-[10px] shrink-0">{userName?.charAt(0)}</div>
                                         <div className="flex-1 min-w-0 text-left">
-                                          <p className="text-[9px] font-black uppercase italic text-gray-800 truncate leading-none mb-0.5 group-hover:text-[#87be00] transition-colors">{userName}</p>
+                                          <p className="text-[9px] font-black uppercase italic text-gray-800 truncate leading-none mb-0.5 group-hover:text-blue-500 transition-colors">{userName}</p>
                                         </div>
-                                        <FiChevronRight size={12} className={`text-gray-300 group-hover:text-[#87be00] transition-all duration-300 shrink-0 ${isUserExpanded ? 'rotate-90' : ''}`} />
+                                        <FiChevronRight size={12} className={`text-gray-300 group-hover:text-blue-500 transition-all duration-300 shrink-0 ${isUserExpanded ? 'rotate-90' : ''}`} />
                                       </button>
                                       <div className={`overflow-hidden transition-all duration-300 ${isUserExpanded ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
                                         <div className="ml-4 border-l-2 border-gray-100 pl-3 py-1 space-y-1">
                                           {userRoutes.map((route, idx) => (
-                                            <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left px-3 py-2.5 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-[#87be00]/5 ring-1 ring-[#87be00]/20' : 'hover:bg-gray-50'}`}>
+                                            <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left px-3 py-2.5 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'}`}>
                                               <span className="w-2 h-2 rounded-full block mt-1 shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
                                               <div className="flex-1 min-w-0">
-                                                <p className="text-[9px] font-black uppercase italic truncate text-gray-700 group-hover:text-[#87be00] transition-colors leading-none mb-0.5">{route.cadena || 'Sin nombre'}</p>
+                                                <p className="text-[9px] font-black uppercase italic truncate text-gray-700 group-hover:text-blue-500 transition-colors leading-none mb-0.5">{route.cadena || 'Sin nombre'}</p>
                                                 <span className={`mt-1 inline-flex items-center text-[7px] font-black uppercase px-2 py-0.5 rounded-lg border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
                                               </div>
                                             </button>

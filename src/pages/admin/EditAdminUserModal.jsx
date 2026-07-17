@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { 
-  FiX, FiUploadCloud, FiFileText, FiCheck, FiSave, FiUser, FiShield, FiBriefcase 
+  FiX, FiUploadCloud, FiFileText, FiCheck, FiSave, FiUser, FiShield, FiBriefcase, FiCamera 
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 
@@ -39,6 +39,7 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
         supervisor_telefono: user?.supervisor_telefono || "",
       });
       setPreview(user?.foto_url ? `${api.defaults?.baseURL ?? ""}${user.foto_url}` : null);
+      setFoto(null); // Reseteamos el archivo seleccionado al abrir un usuario nuevo
     }
   }, [isOpen, user]);
 
@@ -69,6 +70,15 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
     }
     setForm({ ...form, rut: value });
     setRutError(value.length >= 8 && !validarRutChileno(value) ? "RUT inválido" : "");
+  };
+
+  // 🚩 MANEJADOR PARA CAMBIAR EL ARCHIVO DE LA FOTO
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFoto(file);
+      setPreview(URL.createObjectURL(file));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -135,15 +145,28 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
             <div className="lg:col-span-6 space-y-6">
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-5">
                 <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2"><FiUser size={14}/> 1. Identificación</h4>
+                
+                {/* 🚩 CONTENEDOR DE FOTO ACTUALIZADO CON HOVER INTERACTIVO */}
                 <div className="flex gap-5 items-center">
-                  <img src={preview || "https://via.placeholder.com/150"} className="w-20 h-20 rounded-[1.2rem] object-cover border-2 border-[#87be00]" />
+                  <div className="shrink-0 relative group cursor-pointer">
+                    <img 
+                      src={preview || "https://via.placeholder.com/150"} 
+                      className="w-20 h-20 rounded-[1.2rem] object-cover border-2 border-[#87be00] shadow-sm group-hover:opacity-80 transition-opacity" 
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-[1.2rem] opacity-0 group-hover:opacity-100 transition-opacity">
+                      <FiCamera size={18} className="text-white" />
+                    </div>
+                    <label className="absolute inset-0 w-full h-full cursor-pointer rounded-[1.2rem]">
+                      <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                    </label>
+                  </div>
                   <input type="text" value={form.first_name} placeholder="Nombres" required className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, first_name: e.target.value})} />
                 </div>
+                
                 <input type="text" value={form.last_name} placeholder="Apellidos" required className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, last_name: e.target.value})} />
                 <input type="text" value={form.rut} placeholder="RUT" required className={`w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none ${rutError ? 'border-red-400' : 'border-gray-200'}`} onChange={handleRutChange} />
                 <input type="email" value={form.email} placeholder="Correo Electrónico" required className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, email: e.target.value})} />
                 
-                {/* 🚩 NUEVO CAMPO DE TELÉFONO */}
                 <input 
                   type="tel" 
                   value={form.phone} 

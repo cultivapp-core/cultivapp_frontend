@@ -1,12 +1,12 @@
 import { Outlet } from "react-router-dom";
-import UserSidebar from "../pages/user/UserSidebar"; // Asegúrate de que el nombre del archivo coincida exactamente
+import SupervisorSidebar from "./SuperviorSidebar"; 
 
-const UserLayout = () => {
+const SupervisorLayout = () => {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-gray-50/50 font-[Outfit]">
       
-      {/* SIDEBAR DE MERCADERISTA AUTOMÁTICO */}
-      <UserSidebar />
+      {/* SIDEBAR DE SUPERVISOR AUTOMÁTICO */}
+      <SupervisorSidebar />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
       <main className="flex-1 h-full overflow-y-auto custom-scrollbar relative flex flex-col">
@@ -17,4 +17,4 @@ const UserLayout = () => {
   );
 };
 
-export default UserLayout;
+export default SupervisorLayout;
