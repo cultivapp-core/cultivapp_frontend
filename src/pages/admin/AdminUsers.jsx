@@ -201,8 +201,6 @@ const AdminUsers = () => {
       setUsers(parsedUsers)
       setCompanies(parsedCompanies)
       setStats(statsResponse)
-<<<<<<< HEAD
-
       const usersWithContractAlerts = parsedUsers
         .map((user) => ({
           ...user,
@@ -226,8 +224,6 @@ const AdminUsers = () => {
         contractAlertShownRef.current = true
         setShowContractAlertModal(true)
       }
-=======
->>>>>>> origin/develop
     } catch (error) {
       console.error("GLOBAL FETCH ERROR:", error)
       toast.error("Error al sincronizar el catálogo multi-empresa")
@@ -570,8 +566,6 @@ const AdminUsers = () => {
       {resetUser && <ResetPasswordAdminModal user={resetUser} onClose={() => setResetUser(null)} onUpdated={fetchData} />}
       {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchData} />}
       {assignUser && <AssignUsersModal targetUser={assignUser} onClose={() => setAssignUser(null)} onRefresh={fetchData} />}
-
-<<<<<<< HEAD
       <AnimatePresence>
         {showContractAlertModal && contractAlerts.length > 0 && (
           <ContractAlertsModal
@@ -585,9 +579,6 @@ const AdminUsers = () => {
           />
         )}
       </AnimatePresence>
-
-=======
->>>>>>> origin/develop
       {userToDelete && (
         <DeleteAdminUserModal 
           user={userToDelete} 
@@ -621,8 +612,6 @@ const ProgressCard = ({ title, used, max, color, icon, bgClass }) => {
     </div>
   )
 }
-
-<<<<<<< HEAD
 
 const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
   const expiredCount = users.filter(
@@ -828,9 +817,6 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
     </motion.div>
   )
 }
-
-=======
->>>>>>> origin/develop
 const DeleteAdminUserModal = ({ user, onClose, onConfirm }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
