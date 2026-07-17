@@ -339,8 +339,8 @@ const RoutePlanningMap = () => {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
           <div className="flex gap-4 bg-gray-50 px-5 py-3 rounded-[1rem] border border-gray-100 w-full sm:w-auto justify-center">
             <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] shadow-sm"></span>Pendiente</span>
-            <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#87be00] shadow-sm"></span>Proceso</span>
-            <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Lista</span>
+            <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Proceso</span>
+            <span className="text-[10px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#87be00] shadow-sm"></span>Completada</span>
           </div>
           {lastUpdated && (
             <div className="flex items-center justify-center gap-2 bg-gray-900 px-5 py-3 rounded-[1rem] shadow-xl w-full sm:w-auto">
@@ -369,8 +369,8 @@ const RoutePlanningMap = () => {
           <div className="flex items-center gap-5 md:gap-8 flex-1 min-w-0">
             {[
               { label: 'Pendiente',  count: stats.pending,    color: 'bg-[#ef4444]' },
-              { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#87be00]' },
-              { label: 'Completada', count: stats.completed,  color: 'bg-[#2563eb]' },
+              { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#2563eb]' },
+              { label: 'Completada', count: stats.completed,  color: 'bg-[#87be00]' },
             ].map(({ label, count, color }) => (
               <div key={label} className="min-w-[88px] shrink-0">
                 <div className="flex items-center gap-2 mb-1.5">
