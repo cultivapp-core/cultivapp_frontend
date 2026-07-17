@@ -46,6 +46,13 @@ const VisitFlow = () => {
 
   const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+  // Identidad visual única para todos los botones del flujo.
+  const primaryButtonClass =
+    "w-full bg-[#87be00] hover:bg-[#76a600] active:bg-[#6e9e00] text-white py-5 rounded-[2.5rem] font-black text-[10px] uppercase tracking-widest shadow-lg shadow-[#87be00]/20 transition-all active:scale-[0.98] disabled:bg-gray-100 disabled:text-gray-400 disabled:border disabled:border-gray-200 disabled:shadow-none disabled:cursor-not-allowed disabled:active:scale-100";
+
+  const secondaryButtonClass =
+    "w-full bg-white hover:bg-[#87be00]/10 active:bg-[#87be00]/20 text-[#6e9e00] py-5 rounded-[2.5rem] font-black text-[10px] uppercase tracking-widest border-2 border-[#87be00]/30 transition-all active:scale-[0.98] disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed disabled:active:scale-100";
+
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [step, setStep] = useState(1); 
   const [loading, setLoading] = useState(false);
@@ -202,11 +209,108 @@ const VisitFlow = () => {
     } catch (err) { isProcessingScan.current = false; }
   };
 
+  const hasValidAnswer = (value) => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === "string") return value.trim() !== "";
+    if (Array.isArray(value)) return value.length > 0;
+    return true;
+  };
+
+  const requiredQuestions = useMemo(
+    () => questions.filter((q) => Boolean(q.is_required)),
+    [questions]
+  );
+
+  const answeredRequiredCount = useMemo(
+    () =>
+      requiredQuestions.filter((q) =>
+        hasValidAnswer(answers[q.id])
+      ).length,
+    [requiredQuestions, answers]
+  );
+
+  const answeredQuestionsCount = useMemo(
+    () =>
+      questions.filter((q) =>
+        hasValidAnswer(answers[q.id])
+      ).length,
+    [questions, answers]
+  );
+
+  const areRequiredQuestionsComplete =
+    requiredQuestions.length === answeredRequiredCount;
+
+  const isSurveyComplete =
+    questions.length > 0 &&
+    answeredQuestionsCount === questions.length;
+
+  const canContinueFromScan = scannedCodes.length > 0;
+  const canContinueFromSurvey = isSurveyComplete;
+
+  const handleContinueFromScan = () => {
+    if (!canContinueFromScan) {
+      toast.error("Debes escanear al menos un código antes de continuar");
+      return;
+    }
+
+    setStep(4);
+  };
+
+  const handleContinueFromSurvey = () => {
+    if (questions.length === 0) {
+      toast.error("La encuesta aún no está disponible. Intenta nuevamente");
+      return;
+    }
+
+    if (!areRequiredQuestionsComplete) {
+      toast.error(
+        `Debes responder todas las preguntas obligatorias (${answeredRequiredCount}/${requiredQuestions.length})`
+      );
+      return;
+    }
+
+    if (!isSurveyComplete) {
+      toast.error(
+        `Debes completar toda la encuesta (${answeredQuestionsCount}/${questions.length})`
+      );
+      return;
+    }
+
+    setStep(5);
+  };
+
   const registrarGestionProducto = async (proximoPaso) => {
-    const missingRequired = questions.some(q => q.is_required && !answers[q.id]);
+    if (scannedCodes.length === 0) {
+      toast.error("Debes escanear al menos un código");
+      setStep(3);
+      return;
+    }
+
+    const missingRequired = requiredQuestions.some(
+      (q) => !hasValidAnswer(answers[q.id])
+    );
+
     if (missingRequired) {
       toast.error("Por favor responde todas las preguntas obligatorias");
       setStep(4);
+      return;
+    }
+
+    if (!isSurveyComplete) {
+      toast.error("Debes completar toda la encuesta antes de continuar");
+      setStep(4);
+      return;
+    }
+
+    if (!gondolaInicialPhoto) {
+      toast.error("Debes registrar la foto inicial de la góndola");
+      setStep(2);
+      return;
+    }
+
+    if (!gondolaTerminoPhoto) {
+      toast.error("Debes registrar la foto final de la góndola");
+      setStep(5);
       return;
     }
 
@@ -335,7 +439,15 @@ const VisitFlow = () => {
             {selectedProduct && (
               <div className="space-y-4">
                 {renderPhotoContainer(gondolaInicialPhoto, setGondolaInicialPhoto, 2)}
-                {gondolaInicialPhoto && <button onClick={() => setStep(3)} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px] tracking-widest">Escanear Productos</button>}
+                {gondolaInicialPhoto && (
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className={primaryButtonClass}
+                  >
+                    Escanear Productos
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -354,7 +466,28 @@ const VisitFlow = () => {
                   </div>
                 ))}
             </div>
-            <button onClick={() => setStep(4)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Validar Encuesta</button>
+            <div className={`rounded-2xl px-4 py-3 text-left border ${
+              canContinueFromScan
+                ? "bg-[#87be00]/10 border-[#87be00]/20"
+                : "bg-orange-50 border-orange-100"
+            }`}>
+              <p className={`text-[9px] font-black uppercase tracking-widest ${
+                canContinueFromScan ? "text-[#87be00]" : "text-orange-500"
+              }`}>
+                {canContinueFromScan
+                  ? `${scannedCodes.length} código${scannedCodes.length === 1 ? "" : "s"} registrado${scannedCodes.length === 1 ? "" : "s"}`
+                  : "Debes escanear al menos un código"}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleContinueFromScan}
+              disabled={!canContinueFromScan}
+              className={primaryButtonClass}
+            >
+              Validar Encuesta
+            </button>
           </div>
         )}
 
@@ -367,7 +500,33 @@ const VisitFlow = () => {
                  <QuestionRenderer question={q} answer={answers[q.id]} onChange={(val) => setAnswers({...answers, [q.id]: val})} />
                </div>
              ))}
-             <button onClick={() => setStep(5)} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Góndola Final</button>
+             <div className={`rounded-2xl px-4 py-3 border ${
+               canContinueFromSurvey
+                 ? "bg-[#87be00]/10 border-[#87be00]/20"
+                 : "bg-orange-50 border-orange-100"
+             }`}>
+               <div className="flex items-center justify-between gap-3">
+                 <p className={`text-[9px] font-black uppercase tracking-widest ${
+                   canContinueFromSurvey ? "text-[#87be00]" : "text-orange-500"
+                 }`}>
+                   Encuesta completada
+                 </p>
+                 <span className={`text-[10px] font-black ${
+                   canContinueFromSurvey ? "text-[#87be00]" : "text-orange-500"
+                 }`}>
+                   {answeredQuestionsCount}/{questions.length}
+                 </span>
+               </div>
+             </div>
+
+             <button
+               type="button"
+               onClick={handleContinueFromSurvey}
+               disabled={!canContinueFromSurvey}
+               className={primaryButtonClass}
+             >
+               Góndola Final
+             </button>
            </div>
         )}
 
@@ -376,15 +535,44 @@ const VisitFlow = () => {
           <div className="space-y-4">
              {renderPhotoContainer(gondolaTerminoPhoto, setGondolaTerminoPhoto, 5)}
              <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre este producto..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
-             <button onClick={() => setStep(6)} disabled={!gondolaTerminoPhoto} className="w-full bg-black text-white py-5 rounded-[2.5rem] font-black text-[10px]">Confirmar Producto</button>
+             {!gondolaTerminoPhoto && (
+               <div className="rounded-2xl px-4 py-3 bg-orange-50 border border-orange-100">
+                 <p className="text-[9px] font-black uppercase tracking-widest text-orange-500">
+                   Debes capturar la foto final de la góndola
+                 </p>
+               </div>
+             )}
+
+             <button
+               type="button"
+               onClick={() => setStep(6)}
+               disabled={!gondolaTerminoPhoto}
+               className={primaryButtonClass}
+             >
+               Confirmar Producto
+             </button>
           </div>
         )}
 
         {/* STEP 6: DECISIÓN */}
         {step === 6 && (
           <div className="space-y-4 py-6">
-              <button onClick={() => registrarGestionProducto('NUEVO')} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px]">Sí, nuevo producto</button>
-              <button onClick={() => registrarGestionProducto('SALIR')} className="w-full bg-gray-900 text-white py-5 rounded-[2.5rem] font-black text-[10px]">Finalizar jornada</button>
+              <button
+                type="button"
+                onClick={() => registrarGestionProducto('NUEVO')}
+                disabled={loading}
+                className={primaryButtonClass}
+              >
+                {loading ? "Registrando..." : "Sí, nuevo producto"}
+              </button>
+              <button
+                type="button"
+                onClick={() => registrarGestionProducto('SALIR')}
+                disabled={loading}
+                className={secondaryButtonClass}
+              >
+                {loading ? "Registrando..." : "Finalizar jornada"}
+              </button>
           </div>
         )}
 
@@ -393,7 +581,16 @@ const VisitFlow = () => {
           <div className="space-y-4">
              {renderPhotoContainer(exitPhoto, setExitPhoto, 7)}
               <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Observaciones adicionales sobre la sala..." className="w-full h-24 p-5 bg-gray-50 rounded-[2rem] border-none text-sm outline-none resize-none shadow-inner" />
-             {exitPhoto && <button onClick={finalizarVisitaTotal} className="w-full bg-[#87be00] text-white py-5 rounded-[2.5rem] font-black text-[10px]">Confirmar y Finalizar</button>}
+             {exitPhoto && (
+               <button
+                 type="button"
+                 onClick={finalizarVisitaTotal}
+                 disabled={loading}
+                 className={primaryButtonClass}
+               >
+                 {loading ? "Finalizando..." : "Confirmar y Finalizar"}
+               </button>
+             )}
           </div>
         )}
 
@@ -401,7 +598,13 @@ const VisitFlow = () => {
         {step === 8 && (
           <div className="py-6 space-y-4">
              <FiCheckCircle className="text-[#87be00] mx-auto" size={40} />
-             <button onClick={() => navigate("/usuario/home")} className="w-full bg-[#87be00] text-white py-6 rounded-[2.5rem] font-black text-xs">Volver al inicio</button>
+             <button
+               type="button"
+               onClick={() => navigate("/usuario/home")}
+               className={primaryButtonClass}
+             >
+               Volver al inicio
+             </button>
           </div>
         )}
 

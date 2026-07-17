@@ -137,8 +137,16 @@ const request = async (endpoint, options = {}) => {
 
   const isFormData = options.body instanceof FormData
 
+  const method = String(
+    options.method || "GET"
+  ).toUpperCase();
+
+  const isLoginRequest =
+    cleanEndpoint === "/auth/login" ||
+    cleanEndpoint.startsWith("/auth/login?");
+
   const config = {
-    method: options.method || "GET",
+    method,
     ...options,
 
     headers: {

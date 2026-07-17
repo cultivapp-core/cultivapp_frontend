@@ -1,76 +1,86 @@
-import { useState, useEffect } from "react"
-import { useNavigate, Link, useLocation } from "react-router-dom"
-import { motion } from "framer-motion"
-import { useAuth } from "../context/AuthContext"
-import toast from "react-hot-toast"
-import api from "../api/apiClient"
+import { useState, useEffect } from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "../context/AuthContext";
+import toast from "react-hot-toast";
+import api from "../api/apiClient";
+
+const LoginAlertModal = ({ isOpen, type = "error", title, message, onClose }) => {
+  const styles = {
+    error: {
+      iconBg: "bg-red-50",
+      iconText: "text-red-500",
+      button: "bg-red-500 hover:bg-red-600",
+      ring: "ring-red-100",
+      icon: "!"
+    },
+    warning: {
+      iconBg: "bg-amber-50",
+      iconText: "text-amber-500",
+      button: "bg-amber-500 hover:bg-amber-600",
+      ring: "ring-amber-100",
+      icon: "!"
+    },
+    info: {
+      iconBg: "bg-blue-50",
+      iconText: "text-blue-500",
+      button: "bg-blue-600 hover:bg-blue-700",
+      ring: "ring-blue-100",
+      icon: "i"
+    },
+    success: {
+      iconBg: "bg-green-50",
+      iconText: "text-[#87be00]",
+      button: "bg-[#87be00] hover:bg-[#76a600]",
+      ring: "ring-green-100",
+      icon: "✓"
+    }
+  };
 
 /* =========================================================
    ALERTAS DE AUTENTICACIÓN
-========================================================= */
-const authAlerts = {
-  multiple_session: {
-    type: "error",
-    title: "Sesión cerrada",
-    message:
-      "Tu sesión se cerró porque ingresaste en otro dispositivo.",
-    icon: "📱"
-  },
-
-  contract_expired: {
-    type: "warning",
-    title: "Contrato vencido",
-    message:
-      "Tu contrato laboral se encuentra vencido. Comunícate con un administrador para regularizar tu acceso.",
-    icon: "⚠️"
-  }
-}
-
-const LoginForm = () => {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-
-  const { login } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-
-  /* =========================================================
-     MOSTRAR ALERTAS DE AUTENTICACIÓN DESDE LA URL
-  ========================================================= */
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    const errorType = params.get("error")
-    const alert = authAlerts[errorType]
-
-    if (!alert) return
-
-    const toastOptions = {
-      icon: alert.icon,
-      duration: 6000
     }
 
-    if (alert.type === "warning") {
-      toast(alert.message, toastOptions)
-    } else {
-      toast.error(alert.message, toastOptions)
+    return true;
+  };
+
+  const getErrorMessage = (error) =>
+    error?.response?.data?.message ||
+    error?.data?.message ||
+    error?.message ||
+    "No fue posible iniciar sesión. Inténtalo nuevamente.";
+
+  const handleLoginError = (error) => {
+    const message = getErrorMessage(error);
+    const normalizedMessage = message.toLowerCase();
+    const status = error?.response?.status || error?.status;
+    const errorCode =
+      error?.response?.data?.code ||
+      error?.data?.code ||
+      "";
+
+    const normalizedCode = String(errorCode).toLowerCase();
+
+    /* =========================================
+       SESIÓN / TOKEN EXPIRADO
+    ========================================= */
+    if (
+      normalizedCode === "token_expired" ||
+      normalizedCode === "session_expired" ||
+      normalizedMessage.includes("token expirado") ||
+      normalizedMessage.includes("token expired") ||
+      normalizedMessage.includes("jwt expired") ||
+      normalizedMessage.includes("sesión expirada") ||
+      normalizedMessage.includes("session expired")
+    ) {
+      showLoginAlert({
+        type: "warning",
+        title: "Sesión expirada",
+        message:
+          "Tu sesión expiró por seguridad. Ingresa nuevamente para continuar."
+      });
+      return;
     }
-
-    // Elimina los parámetros para evitar repetir la alerta al recargar.
-    navigate("/", { replace: true })
-  }, [location.search, navigate])
-
-  const handleSubmit = async (e) => {
-    e?.preventDefault()
-
-    const normalizedEmail = email.trim()
-
-    if (!normalizedEmail || !password) {
-      toast.error("Debes completar todos los campos")
-      return
-    }
-
-    setLoading(true)
 
     try {
       const data = await api.post("auth/login", {

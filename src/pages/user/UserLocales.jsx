@@ -12,25 +12,78 @@ const UserLocales = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   const fetchMyLocales = async () => {
-    try {
-      setLoading(true);
-      const data = await api.get("/locales/my-assigned");
-      setLocales(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("Error locales:", error);
-      toast.error("No se pudieron cargar tus locales");
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+
+    const response = await api.get("/locales/my-assigned");
+
+    console.log("📍 Respuesta locales asignados:", response);
+
+    const rows =
+      Array.isArray(response)
+        ? response
+        : Array.isArray(response?.locales)
+          ? response.locales
+          : Array.isArray(response?.data)
+            ? response.data
+            : Array.isArray(response?.data?.locales)
+              ? response.data.locales
+              : [];
+
+    console.log("📍 Locales procesados:", rows);
+
+    setLocales(rows);
+  } catch (error) {
+    console.error("❌ Error cargando locales:", {
+      status: error?.status,
+      message: error?.message,
+      data: error?.data,
+      fullError: error
+    });
+
+    setLocales([]);
+
+    toast.error(
+      error?.message ||
+      "No se pudieron cargar tus locales"
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => { fetchMyLocales(); }, []);
 
-  const filteredLocales = locales.filter(l =>
-    l.cadena?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.direccion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.codigo_local?.toLowerCase().includes(searchTerm.toLowerCase())
+ const normalizedSearch = searchTerm
+  .trim()
+  .toLowerCase();
+
+const filteredLocales = locales.filter((local) => {
+  if (!normalizedSearch) return true;
+
+  const cadena = String(
+    local?.cadena || ""
+  ).toLowerCase();
+
+  const direccion = String(
+    local?.direccion || ""
+  ).toLowerCase();
+
+  const codigo = String(
+    local?.codigo_local || ""
+  ).toLowerCase();
+
+  const comuna = String(
+    local?.comuna_name || local?.comuna || ""
+  ).toLowerCase();
+
+  return (
+    cadena.includes(normalizedSearch) ||
+    direccion.includes(normalizedSearch) ||
+    codigo.includes(normalizedSearch) ||
+    comuna.includes(normalizedSearch)
   );
+});
 
   if (loading) return (
     <div className="p-20 text-center flex flex-col items-center justify-center space-y-4">
@@ -87,7 +140,11 @@ const UserLocales = () => {
         ) : (
           filteredLocales.map((local, index) => (
             <div
-              key={local.id}
+              key={
+  local.route_id ||
+  local.id ||
+  `${local.codigo_local}-${index}`
+}
               className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden"
             >
               {/* Barra superior de estado */}
