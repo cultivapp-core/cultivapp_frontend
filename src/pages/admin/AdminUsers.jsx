@@ -30,6 +30,81 @@ import AssignUsersModal from "./AssignUsersModal"
 import UserQuickView from "../../components/UserQuickView"
 import { motion, AnimatePresence } from "framer-motion"
 
+
+const parseContractDate = (value) => {
+  if (!value) return null
+
+  const datePart = String(value).slice(0, 10)
+  const [year, month, day] = datePart.split("-").map(Number)
+
+  if (!year || !month || !day) return null
+
+  return new Date(year, month - 1, day)
+}
+
+const getContractStatus = (fechaTerminoContrato) => {
+  const endDate = parseContractDate(fechaTerminoContrato)
+
+  if (!endDate) {
+    return {
+      status: "without_date",
+      daysRemaining: null,
+      priority: 4
+    }
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  endDate.setHours(0, 0, 0, 0)
+
+  const millisecondsPerDay = 1000 * 60 * 60 * 24
+  const daysRemaining = Math.round(
+    (endDate.getTime() - today.getTime()) / millisecondsPerDay
+  )
+
+  if (daysRemaining < 0) {
+    return {
+      status: "expired",
+      daysRemaining,
+      priority: 1
+    }
+  }
+
+  if (daysRemaining <= 2) {
+    return {
+      status: "critical",
+      daysRemaining,
+      priority: 2
+    }
+  }
+
+  if (daysRemaining <= 5) {
+    return {
+      status: "warning",
+      daysRemaining,
+      priority: 3
+    }
+  }
+
+  return {
+    status: "active",
+    daysRemaining,
+    priority: 4
+  }
+}
+
+const formatContractDate = (value) => {
+  const date = parseContractDate(value)
+
+  if (!date) return "Sin fecha"
+
+  return date.toLocaleDateString("es-CL", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  })
+}
+
 const AdminUsers = () => {
   const [users, setUsers] = useState([])
   const [stats, setStats] = useState(null)
@@ -49,7 +124,11 @@ const AdminUsers = () => {
   const [searchTerm, setSearchTerm] = useState("")
   const [activePopover, setActivePopover] = useState(null)
 
+  const [contractAlerts, setContractAlerts] = useState([])
+  const [showContractAlertModal, setShowContractAlertModal] = useState(false)
+
   const fileInputRef = useRef(null)
+  const contractAlertShownRef = useRef(false)
   const userLocal = JSON.parse(localStorage.getItem("user"))
 
   // 🚩 DETERMINAR SI TIENE ACCESO TOTAL (ROOT O CULTIVA)
@@ -122,6 +201,30 @@ const AdminUsers = () => {
       setUsers(parsedUsers)
       setCompanies(parsedCompanies)
       setStats(statsResponse)
+
+      const usersWithContractAlerts = parsedUsers
+        .map((user) => ({
+          ...user,
+          contractStatus: getContractStatus(user.fecha_termino_contrato)
+        }))
+        .filter(({ contractStatus }) =>
+          ["expired", "critical", "warning"].includes(contractStatus.status)
+        )
+        .sort(
+          (a, b) =>
+            a.contractStatus.priority - b.contractStatus.priority ||
+            a.contractStatus.daysRemaining - b.contractStatus.daysRemaining
+        )
+
+      setContractAlerts(usersWithContractAlerts)
+
+      if (
+        usersWithContractAlerts.length > 0 &&
+        !contractAlertShownRef.current
+      ) {
+        contractAlertShownRef.current = true
+        setShowContractAlertModal(true)
+      }
     } catch (error) {
       console.error("GLOBAL FETCH ERROR:", error)
       toast.error("Error al sincronizar el catálogo multi-empresa")
@@ -465,6 +568,20 @@ const AdminUsers = () => {
       {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchData} />}
       {assignUser && <AssignUsersModal targetUser={assignUser} onClose={() => setAssignUser(null)} onRefresh={fetchData} />}
 
+      <AnimatePresence>
+        {showContractAlertModal && contractAlerts.length > 0 && (
+          <ContractAlertsModal
+            users={contractAlerts}
+            companies={companies}
+            onClose={() => setShowContractAlertModal(false)}
+            onEdit={(user) => {
+              setShowContractAlertModal(false)
+              setEditUser(user)
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {userToDelete && (
         <DeleteAdminUserModal 
           user={userToDelete} 
@@ -496,6 +613,212 @@ const ProgressCard = ({ title, used, max, color, icon, bgClass }) => {
         </div>
       </div>
     </div>
+  )
+}
+
+
+const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
+  const expiredCount = users.filter(
+    (user) => user.contractStatus?.status === "expired"
+  ).length
+
+  const criticalCount = users.filter(
+    (user) => user.contractStatus?.status === "critical"
+  ).length
+
+  const warningCount = users.filter(
+    (user) => user.contractStatus?.status === "warning"
+  ).length
+
+  const getStatusConfig = (contractStatus) => {
+    switch (contractStatus?.status) {
+      case "expired":
+        return {
+          label: "Contrato vencido",
+          description: `Venció hace ${Math.abs(contractStatus.daysRemaining)} ${
+            Math.abs(contractStatus.daysRemaining) === 1 ? "día" : "días"
+          }`,
+          iconClass: "bg-rose-100 text-rose-600",
+          badgeClass: "bg-rose-50 text-rose-700 border-rose-200",
+          rowClass: "border-rose-100 bg-rose-50/30"
+        }
+
+      case "critical":
+        return {
+          label: "Vencimiento crítico",
+          description:
+            contractStatus.daysRemaining === 0
+              ? "Vence hoy"
+              : `Vence en ${contractStatus.daysRemaining} ${
+                  contractStatus.daysRemaining === 1 ? "día" : "días"
+                }`,
+          iconClass: "bg-orange-100 text-orange-600",
+          badgeClass: "bg-orange-50 text-orange-700 border-orange-200",
+          rowClass: "border-orange-100 bg-orange-50/30"
+        }
+
+      case "warning":
+        return {
+          label: "Próximo a vencer",
+          description: `Vence en ${contractStatus.daysRemaining} días`,
+          iconClass: "bg-amber-100 text-amber-600",
+          badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
+          rowClass: "border-amber-100 bg-amber-50/20"
+        }
+
+      default:
+        return {
+          label: "Vigente",
+          description: "",
+          iconClass: "bg-emerald-100 text-emerald-600",
+          badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+          rowClass: "border-emerald-100 bg-emerald-50/20"
+        }
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 font-[Outfit]"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 20 }}
+        transition={{ duration: 0.2 }}
+        className="bg-white w-full max-w-3xl max-h-[88vh] rounded-3xl shadow-2xl overflow-hidden border border-slate-100"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="p-6 md:p-7 border-b border-slate-100 bg-slate-50/70">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <FiAlertTriangle size={24} />
+              </div>
+
+              <div>
+                <h2 className="text-lg md:text-xl font-extrabold text-slate-900 uppercase tracking-tight">
+                  Alertas de contratos
+                </h2>
+
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Se encontraron colaboradores con contratos vencidos o próximos a vencer.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 bg-white text-slate-400 hover:text-slate-700 rounded-xl border border-slate-200 transition-colors"
+            >
+              <FiX size={18} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 md:gap-3 mt-5">
+            <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-center">
+              <p className="text-xl font-extrabold text-rose-600">{expiredCount}</p>
+              <p className="text-[8px] md:text-[9px] font-bold text-rose-500 uppercase tracking-wider">
+                Vencidos
+              </p>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
+              <p className="text-xl font-extrabold text-orange-600">{criticalCount}</p>
+              <p className="text-[8px] md:text-[9px] font-bold text-orange-500 uppercase tracking-wider">
+                Hasta 2 días
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
+              <p className="text-xl font-extrabold text-amber-600">{warningCount}</p>
+              <p className="text-[8px] md:text-[9px] font-bold text-amber-500 uppercase tracking-wider">
+                Hasta 5 días
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 md:p-6 overflow-y-auto max-h-[55vh] space-y-3 custom-scrollbar">
+          {users.map((user) => {
+            const config = getStatusConfig(user.contractStatus)
+
+            const companyName =
+              companies.find(
+                (company) => String(company.id) === String(user.company_id)
+              )?.name || "Sin empresa"
+
+            return (
+              <div
+                key={user.id}
+                className={`border rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 ${config.rowClass}`}
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${config.iconClass}`}>
+                    <FiAlertTriangle size={18} />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-extrabold text-slate-900 uppercase truncate">
+                      {user.first_name} {user.last_name}
+                    </p>
+
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                      {user.email}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className={`px-2 py-1 rounded-lg border text-[8px] font-extrabold uppercase tracking-wider ${config.badgeClass}`}>
+                        {config.label}
+                      </span>
+
+                      <span className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-[8px] font-bold text-slate-500 uppercase">
+                        {companyName}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between md:justify-end gap-4 md:text-right">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-slate-700">
+                      {config.description}
+                    </p>
+
+                    <p className="text-[9px] text-slate-400 mt-1">
+                      Término: {formatContractDate(user.fecha_termino_contrato)}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onEdit(user)}
+                    className="shrink-0 px-4 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-[9px] font-extrabold uppercase tracking-wider transition-colors"
+                  >
+                    Regularizar
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="p-4 md:p-5 border-t border-slate-100 bg-slate-50 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-6 py-3 bg-[#87be00] hover:bg-[#76a500] text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-colors"
+          >
+            Entendido
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
