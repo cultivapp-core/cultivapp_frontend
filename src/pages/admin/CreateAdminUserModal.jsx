@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
   FiX, 
   FiCamera, 
@@ -13,6 +14,108 @@ import {
   FiGlobe
 } from "react-icons/fi";
 import api from "../../api/apiClient";
+
+
+const UserCreatedSuccessModal = ({
+  isOpen,
+  userName,
+  userRole,
+  onConfirm
+}) => {
+  const roleLabels = {
+    USUARIO: "Mercaderista",
+    SUPERVISOR: "Supervisor",
+    VIEW: "Viewer"
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") onConfirm();
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "";
+    };
+  }, [isOpen, onConfirm]);
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 font-[Outfit]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-created-title"
+            aria-describedby="user-created-message"
+            initial={{ opacity: 0, scale: 0.92, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 20 }}
+            transition={{ duration: 0.22 }}
+            className="w-full max-w-sm rounded-[2rem] bg-white p-6 shadow-2xl border border-gray-100"
+          >
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#87be00]/10 text-[#87be00] ring-8 ring-[#87be00]/5 flex items-center justify-center mb-6">
+                <FiCheck size={34} strokeWidth={3} />
+              </div>
+
+              <p className="text-[9px] font-black uppercase tracking-[0.25em] text-gray-400 mb-2">
+                Cultivapp
+              </p>
+
+              <h2
+                id="user-created-title"
+                className="text-xl font-black uppercase italic tracking-tight text-gray-900"
+              >
+                Usuario creado
+              </h2>
+
+              <p
+                id="user-created-message"
+                className="mt-3 text-sm font-medium leading-relaxed text-gray-500"
+              >
+                El colaborador fue registrado correctamente en la plataforma.
+              </p>
+
+              <div className="w-full mt-5 rounded-2xl bg-gray-50 border border-gray-100 px-4 py-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+                  Nuevo colaborador
+                </p>
+
+                <p className="mt-1 text-sm font-black uppercase italic tracking-tight text-gray-900">
+                  {userName || "Usuario registrado"}
+                </p>
+
+                <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-[#87be00]">
+                  {roleLabels[userRole] || userRole || "Perfil registrado"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                autoFocus
+                onClick={onConfirm}
+                className="mt-7 w-full rounded-2xl bg-[#87be00] hover:bg-[#76a600] py-3.5 text-[10px] font-black uppercase tracking-widest text-white transition-colors shadow-lg shadow-[#87be00]/20"
+              >
+                Entendido
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
   const userAdmin = JSON.parse(localStorage.getItem("user"));
@@ -52,6 +155,12 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
   const [error, setError] = useState("");
   const [rutError, setRutError] = useState("");
 
+  const [successModal, setSuccessModal] = useState({
+    isOpen: false,
+    userName: "",
+    userRole: ""
+  });
+
   useEffect(() => {
     if (isOpen) {
       setForm(initialForm);
@@ -61,7 +170,12 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
       setDocumentoAchs(null);
       setDocumentoOtro(null);
       setError("");
-      setRutError(""); 
+      setRutError("");
+      setSuccessModal({
+        isOpen: false,
+        userName: "",
+        userRole: ""
+      }); 
       
       // Cargar empresas al abrir con protección
      const fetchEmpresas = async () => {
@@ -140,6 +254,17 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
     }
   };
 
+  const handleSuccessConfirm = () => {
+    setSuccessModal({
+      isOpen: false,
+      userName: "",
+      userRole: ""
+    });
+
+    onCreated?.();
+    onClose?.();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validarRutChileno(form.rut)) {
@@ -152,7 +277,16 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
 
     try {
       const formData = new FormData();
-      Object.keys(form).forEach((key) => formData.append(key, form[key]));
+      Object.keys(form).forEach((key) => {
+        if (
+          form.role !== "USUARIO" &&
+          (key === "supervisor_nombre" || key === "supervisor_telefono")
+        ) {
+          formData.append(key, "");
+        } else {
+          formData.append(key, form[key]);
+        }
+      });
       
       if (!form.company_id) throw new Error("Debe seleccionar una empresa");
       
@@ -163,8 +297,13 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
 
       await api.post("/users", formData);
 
-      onCreated();
-      onClose();
+      const fullName = `${form.first_name || ""} ${form.last_name || ""}`.trim();
+
+      setSuccessModal({
+        isOpen: true,
+        userName: fullName || "Usuario registrado",
+        userRole: form.role
+      });
     } catch (err) {
       setError(err.response?.data?.message || err.message);
     } finally {
@@ -188,10 +327,12 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
     </div>
   );
 
-  if (!isOpen) return null;
+  if (!isOpen && !successModal.isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-[Outfit]">
+    <>
+      {isOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-[Outfit]">
       <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in duration-200">
         
         <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
@@ -283,7 +424,22 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                     <input type="password" value={form.password} placeholder="Contraseña" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                       onChange={e => setForm({...form, password: e.target.value})} />
                     <select required value={form.role} className="w-full bg-white border border-[#87be00]/30 text-[#87be00] font-bold rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all cursor-pointer"
-                      onChange={e => setForm({...form, role: e.target.value})}>
+                      onChange={(e) => {
+                        const selectedRole = e.target.value;
+
+                        setForm((prev) => ({
+                          ...prev,
+                          role: selectedRole,
+                          supervisor_nombre:
+                            selectedRole === "USUARIO"
+                              ? prev.supervisor_nombre
+                              : "",
+                          supervisor_telefono:
+                            selectedRole === "USUARIO"
+                              ? prev.supervisor_telefono
+                              : ""
+                        }));
+                      }}>
                       <option value="" disabled>Perfil de Sistema</option>
                       <option value="USUARIO">Mercaderista</option>
                       <option value="SUPERVISOR">Supervisor</option>
@@ -346,17 +502,42 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                   )}
                 </div>
 
-                <div className="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                  <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5 mb-3">
-                    <FiShield size={12}/> Supervisor Directo
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="text" value={form.supervisor_nombre} placeholder="Nombre completo" className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
-                        onChange={e => setForm({...form, supervisor_nombre: e.target.value})} />
-                    <input type="text" value={form.supervisor_telefono} placeholder="Teléfono" className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
-                        onChange={e => setForm({...form, supervisor_telefono: e.target.value})} />
+                {/* SUPERVISOR DIRECTO: SOLO PARA MERCADERISTA */}
+                {form.role === "USUARIO" && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 animate-in fade-in duration-200">
+                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5 mb-3">
+                      <FiShield size={12}/> Supervisor Directo
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input
+                        type="text"
+                        value={form.supervisor_nombre}
+                        placeholder="Nombre completo"
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            supervisor_nombre: e.target.value
+                          })
+                        }
+                      />
+
+                      <input
+                        type="text"
+                        value={form.supervisor_telefono}
+                        placeholder="Teléfono"
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            supervisor_telefono: e.target.value
+                          })
+                        }
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-3">
@@ -379,7 +560,16 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
           </div>
         </form>
       </div>
-    </div>
+        </div>
+      )}
+
+      <UserCreatedSuccessModal
+        isOpen={successModal.isOpen}
+        userName={successModal.userName}
+        userRole={successModal.userRole}
+        onConfirm={handleSuccessConfirm}
+      />
+    </>
   );
 };
 

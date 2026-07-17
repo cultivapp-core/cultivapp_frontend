@@ -23,7 +23,7 @@ import {
   FiBriefcase
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { getWeeksOfMonthCalendar } from "../../utils/helper";
 
 /**
@@ -91,6 +91,193 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
   );
 };
 
+
+const ContractExpirationModal = ({
+  isOpen,
+  alerts,
+  onClose
+}) => {
+  if (!isOpen) return null;
+
+  const redAlerts = alerts.filter(
+    (item) => item.level === "RED"
+  );
+
+  const yellowAlerts = alerts.filter(
+    (item) => item.level === "YELLOW"
+  );
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[300] flex items-center justify-center bg-black/55 backdrop-blur-sm p-4 font-[Outfit]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        <motion.div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="contract-alert-title"
+          initial={{ opacity: 0, scale: 0.94, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.94, y: 20 }}
+          transition={{ duration: 0.22 }}
+          className="w-full max-w-2xl max-h-[88vh] overflow-hidden rounded-[2rem] bg-white shadow-2xl border border-gray-100"
+        >
+          <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                redAlerts.length > 0
+                  ? "bg-red-50 text-red-500"
+                  : "bg-amber-50 text-amber-500"
+              }`}>
+                <FiAlertCircle size={24} />
+              </div>
+
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-gray-400">
+                  Cultivapp
+                </p>
+
+                <h2
+                  id="contract-alert-title"
+                  className="text-xl font-black uppercase italic tracking-tight text-gray-900"
+                >
+                  Contratos próximos a vencer
+                </h2>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
+              aria-label="Cerrar alerta"
+            >
+              <FiX size={20} />
+            </button>
+          </div>
+
+          <div className="p-6 overflow-y-auto max-h-[62vh] space-y-5">
+            {redAlerts.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-[11px] font-black uppercase tracking-widest text-red-500">
+                      Atención urgente
+                    </h3>
+
+                    <p className="text-xs font-medium text-gray-500 mt-1">
+                      Contratos que vencen dentro de 2 días.
+                    </p>
+                  </div>
+
+                  <span className="min-w-8 h-8 px-2 rounded-xl bg-red-50 text-red-500 border border-red-100 flex items-center justify-center text-xs font-black">
+                    {redAlerts.length}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {redAlerts.map((item) => (
+                    <div
+                      key={`red-${item.id}`}
+                      className="rounded-2xl border border-red-100 bg-red-50/70 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-black uppercase italic tracking-tight text-gray-900 truncate">
+                          {item.name}
+                        </p>
+
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mt-1">
+                          {item.roleLabel}
+                        </p>
+                      </div>
+
+                      <div className="sm:text-right shrink-0">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-red-500">
+                          {item.daysRemaining === 0
+                            ? "Vence hoy"
+                            : item.daysRemaining === 1
+                              ? "Vence mañana"
+                              : `Vence en ${item.daysRemaining} días`}
+                        </p>
+
+                        <p className="text-[10px] font-bold text-gray-500 mt-1">
+                          {item.formattedEndDate}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {yellowAlerts.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
+                      Aviso preventivo
+                    </h3>
+
+                    <p className="text-xs font-medium text-gray-500 mt-1">
+                      Contratos que vencen entre 3 y 5 días.
+                    </p>
+                  </div>
+
+                  <span className="min-w-8 h-8 px-2 rounded-xl bg-amber-50 text-amber-500 border border-amber-100 flex items-center justify-center text-xs font-black">
+                    {yellowAlerts.length}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {yellowAlerts.map((item) => (
+                    <div
+                      key={`yellow-${item.id}`}
+                      className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-black uppercase italic tracking-tight text-gray-900 truncate">
+                          {item.name}
+                        </p>
+
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mt-1">
+                          {item.roleLabel}
+                        </p>
+                      </div>
+
+                      <div className="sm:text-right shrink-0">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">
+                          Vence en {item.daysRemaining} días
+                        </p>
+
+                        <p className="text-[10px] font-bold text-gray-500 mt-1">
+                          {item.formattedEndDate}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+
+          <div className="px-6 py-5 border-t border-gray-100 bg-gray-50/60">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full bg-[#87be00] hover:bg-[#76a600] text-white py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#87be00]/20 transition-all"
+            >
+              Entendido
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
 const AdminRoutes = () => {
   const { user } = useAuth();
   const [routes, setRoutes] = useState([]);
@@ -100,6 +287,9 @@ const AdminRoutes = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading]           = useState(true);
+
+  const [contractAlerts, setContractAlerts] = useState([]);
+  const [isContractAlertOpen, setIsContractAlertOpen] = useState(false);
 
   const CULTIVA_COMPANY_ID = "0e342e01-d213-4353-b210-39a12ac335cf";
 
@@ -146,6 +336,123 @@ const AdminRoutes = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const getLocalDateKey = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const contractExpirationAlerts = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const roleLabels = {
+      USUARIO: "Mercaderista",
+      USER: "Mercaderista",
+      SUPERVISOR: "Supervisor",
+      VIEW: "Viewer",
+      ADMIN_CLIENTE: "Administrador Cliente",
+      ROOT: "Root"
+    };
+
+    return (users || [])
+      .map((userItem) => {
+        const rawEndDate =
+          userItem.fecha_termino_contrato ||
+          userItem.contract_end_date ||
+          userItem.end_contract_date ||
+          userItem.fecha_fin_contrato;
+
+        if (!rawEndDate) return null;
+
+        const endDate = new Date(
+          String(rawEndDate).slice(0, 10) + "T12:00:00"
+        );
+
+        if (Number.isNaN(endDate.getTime())) return null;
+
+        endDate.setHours(0, 0, 0, 0);
+
+        const diffMs = endDate.getTime() - today.getTime();
+        const daysRemaining = Math.ceil(
+          diffMs / (1000 * 60 * 60 * 24)
+        );
+
+        if (daysRemaining < 0 || daysRemaining > 5) {
+          return null;
+        }
+
+        const firstName =
+          userItem.first_name ||
+          userItem.nombre ||
+          "";
+
+        const lastName =
+          userItem.last_name ||
+          userItem.apellido ||
+          "";
+
+        const name =
+          `${firstName} ${lastName}`.trim() ||
+          userItem.email ||
+          "Usuario sin nombre";
+
+        return {
+          id: userItem.id,
+          name,
+          role: userItem.role,
+          roleLabel:
+            roleLabels[userItem.role] ||
+            userItem.role ||
+            "Colaborador",
+          daysRemaining,
+          level:
+            daysRemaining <= 2
+              ? "RED"
+              : "YELLOW",
+          endDateKey: getLocalDateKey(endDate),
+          formattedEndDate:
+            endDate.toLocaleDateString("es-CL", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric"
+            })
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.daysRemaining !== b.daysRemaining) {
+          return a.daysRemaining - b.daysRemaining;
+        }
+
+        return a.name.localeCompare(b.name, "es");
+      });
+  }, [users]);
+
+  useEffect(() => {
+    setContractAlerts(contractExpirationAlerts);
+
+    if (contractExpirationAlerts.length === 0) {
+      setIsContractAlertOpen(false);
+      return;
+    }
+
+    /*
+     * Se muestra una vez por sesión y por día.
+     * El usuario puede volver a verla recargando la aplicación
+     * o iniciando una nueva sesión del navegador.
+     */
+    const todayKey = getLocalDateKey(new Date());
+    const storageKey = `cultivapp_contract_alert_${todayKey}`;
+    const wasShown = sessionStorage.getItem(storageKey);
+
+    if (!wasShown) {
+      setIsContractAlertOpen(true);
+      sessionStorage.setItem(storageKey, "true");
+    }
+  }, [contractExpirationAlerts]);
 
   const handleDeleteRoute = async (group) => {
     const routeIds = group.route_ids || [group.id];
@@ -718,6 +1025,12 @@ const AdminRoutes = () => {
           })
         )}
       </div>
+
+      <ContractExpirationModal
+        isOpen={isContractAlertOpen}
+        alerts={contractAlerts}
+        onClose={() => setIsContractAlertOpen(false)}
+      />
 
       <ManageRoutesModal 
         isOpen={isModalOpen} 
