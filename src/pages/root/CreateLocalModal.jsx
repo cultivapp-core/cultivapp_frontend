@@ -201,7 +201,7 @@ const CreateLocalModal = ({
                 />
              </div>
 
-             {/*<div className="space-y-1">
+             <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Empresa</label>
                 <select
                   name="company_id"
@@ -214,7 +214,7 @@ const CreateLocalModal = ({
                   <option value="">Seleccionar</option>
                   {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-             </div>*/}
+             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

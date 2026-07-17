@@ -85,6 +85,14 @@ const Locales = () => {
 
       {/* FILTROS */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
+        <select 
+    value={selectedCompany} 
+    onChange={(e) => setSelectedCompany(e.target.value)} 
+    className="bg-gray-50 border-none rounded-xl px-4 py-3 text-[10px] font-bold outline-none uppercase"
+  >
+    <option value="">Todas las empresas</option>
+    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+  </select>
         <input type="text" placeholder="Código o dirección..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="md:col-span-1 bg-gray-50 border-none rounded-xl px-4 py-3 text-[10px] font-bold outline-none uppercase" />
         <select value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)} className="bg-gray-50 border-none rounded-xl px-4 py-3 text-[10px] font-bold outline-none uppercase"><option value="">Región</option>{regionsList.map(r=><option key={r} value={r}>{r}</option>)}</select>
         <select value={selectedComuna} onChange={(e) => setSelectedComuna(e.target.value)} className="bg-gray-50 border-none rounded-xl px-4 py-3 text-[10px] font-bold outline-none uppercase"><option value="">Comuna</option>{comunasList.map(c=><option key={c} value={c}>{c}</option>)}</select>

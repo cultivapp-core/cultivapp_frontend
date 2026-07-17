@@ -201,6 +201,7 @@ const AdminUsers = () => {
       setUsers(parsedUsers)
       setCompanies(parsedCompanies)
       setStats(statsResponse)
+      feature/developer_admin
 
       const usersWithContractAlerts = parsedUsers
         .map((user) => ({
@@ -568,6 +569,7 @@ const AdminUsers = () => {
       {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchData} />}
       {assignUser && <AssignUsersModal targetUser={assignUser} onClose={() => setAssignUser(null)} onRefresh={fetchData} />}
 
+feature/developer_admin
       <AnimatePresence>
         {showContractAlertModal && contractAlerts.length > 0 && (
           <ContractAlertsModal

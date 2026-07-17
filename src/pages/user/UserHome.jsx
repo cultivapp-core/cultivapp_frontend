@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom"; 
-import { FiMapPin, FiPlay, FiClock, FiSend, FiCheckCircle } from "react-icons/fi";
+import { FiMapPin, FiPlay, FiClock, FiSend, FiCheckCircle, FiLoader } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
+import { getWeeksOfMonthCalendar } from "../../utils/helper"; // Importamos el helper oficial
 
 const UserHome = () => {
   const { user } = useAuth();
@@ -14,34 +15,99 @@ const UserHome = () => {
   const [actionLoading, setActionLoading] = useState(null); 
   const [selectedDate, setSelectedDate] = useState(new Date());
 
+  // Normaliza una fecha local a YYYY-MM-DD sin desplazarla por UTC.
+  const toLocalDateKey = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const safeSelectedDate =
+  selectedDate instanceof Date && !Number.isNaN(selectedDate.getTime())
+    ? selectedDate
+    : new Date();
+
+const todayKey = toLocalDateKey(new Date());
+const selectedDateKey = toLocalDateKey(safeSelectedDate);
+
+const isSelectedDateToday = selectedDateKey === todayKey;
+const isSelectedDatePast = selectedDateKey < todayKey;
+const isSelectedDateFuture = selectedDateKey > todayKey;
+
+  // 🚩 LÓGICA DE FILTRADO UNIFICADA (Idéntica a la del calendario de agenda)
+  const getWeekNumber = (date) => {
+    const weeks = getWeeksOfMonthCalendar(date);
+    const targetTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const foundWeek = weeks.find(w => {
+      const start = new Date(w.start).setHours(0, 0, 0, 0);
+      const end = new Date(w.end).setHours(23, 59, 59, 999);
+      return targetTime >= start && targetTime <= end;
+    });
+    return foundWeek ? foundWeek.id : 1;
+  };
+
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem("token");
     if (!token || !user) return;
     try {
       setLoading(true);
-      const dateStr = selectedDate.toLocaleDateString('en-CA');
-      // 🚩 La API debe devolver 'visit_number' en este endpoint
-      const data = await api.get(`/routes/my-tasks?date=${dateStr}`);
-      setAllTasks(Array.isArray(data) ? data : []);
+      const data = await api.get(`/routes/user/${user.id}`);
+      setAllTasks(Array.isArray(data) ? data : (data?.data || []));
     } catch (error) {
       if (error.status !== 401) toast.error("Error al cargar agenda");
     } finally {
       setLoading(false);
     }
-  }, [user, selectedDate]);
+  }, [user]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // 🚩 FILTRO MEJORADO: Ahora valida Semana + Mes + Día
   useEffect(() => {
-    const dateStr = selectedDate.toLocaleDateString('en-CA'); 
     const filtered = allTasks.filter(t => {
-        const taskDate = t.visit_date ? new Date(t.visit_date).toLocaleDateString('en-CA') : null;
-        return taskDate === dateStr || (t.is_recurring && t.day_of_week === (selectedDate.getDay() || 7));
+      // 1. Caso Tarea única (visit_date)
+      if (t.visit_date) {
+        const taskDate = new Date(t.visit_date);
+        return (
+  !Number.isNaN(taskDate.getTime()) &&
+  taskDate.toDateString() === safeSelectedDate.toDateString()
+);
+      }
+
+      // 2. Caso Tarea Recurrente (TURNO)
+      if (t.is_recurring) {
+        // CANDADO DE MES (Opcional): Si existe created_at, lo usamos para filtrar, si no, lo ignoramos para no romper el filtro
+        if (t.created_at) {
+          const createdDate = new Date(t.created_at);
+          const isSameMonth = safeSelectedDate.getMonth() === createdDate.getMonth() && 
+                              safeSelectedDate.getFullYear() === createdDate.getFullYear();
+          if (!isSameMonth) return false;
+        }
+
+        // VALIDACIÓN DE SEMANA Y DÍA
+
+        const currentWeek = getWeekNumber(safeSelectedDate);
+const currentDay = safeSelectedDate.getDay();
+       
+        
+        return Number(t.week_number) === currentWeek && Number(t.day_of_week) === currentDay;
+      }
+      return false;
     });
     setDisplayTasks(filtered);
   }, [selectedDate, allTasks]);
 
   const handleStartVisit = async (taskId) => {
+    // Candado visual. El backend también debe validar esta misma regla.
+    if (!isSelectedDateToday) {
+      return toast.error(
+        isSelectedDatePast
+          ? "No puedes iniciar una visita pasada"
+          : "La visita solo se puede iniciar el día programado"
+      );
+    }
+
     if (!navigator.geolocation) return toast.error("GPS no disponible");
     setActionLoading(taskId); 
     const toastId = toast.loading("Validando GPS...");
@@ -65,7 +131,7 @@ const UserHome = () => {
 
   const getWeekDays = () => {
     const days = [];
-    const baseDate = new Date(selectedDate);
+    const baseDate = new Date(safeSelectedDate);
     const day = baseDate.getDay();
     const diff = baseDate.getDate() - day + (day === 0 ? -6 : 1); 
     const monday = new Date(baseDate.setDate(diff));
@@ -93,17 +159,16 @@ const UserHome = () => {
           <h1 className="text-xl font-black text-gray-900 leading-none">Mi Agenda</h1>
         </div>
         <div className="text-right">
-          <p className="text-[10px] font-bold text-gray-400 uppercase">{selectedDate.toLocaleDateString('es-CL', { month: 'short' })}</p>
-          <p className="text-lg font-black text-gray-800 leading-none">{selectedDate.getFullYear()}</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase">{safeSelectedDate.toLocaleDateString('es-CL', { month: 'short' })}</p>
+          <p className="text-lg font-black text-gray-800 leading-none">{safeSelectedDate.getFullYear()}</p>
         </div>
       </header>
 
       <main className="p-4 space-y-6 max-w-md mx-auto">
-        {/* CALENDARIO */}
         <section className="bg-white p-3 rounded-3xl shadow-sm border border-gray-50">
           <div className="grid grid-cols-7 gap-1">
             {getWeekDays().map((date, idx) => {
-              const isSelected = date.toLocaleDateString() === selectedDate.toLocaleDateString();
+              const isSelected = toLocalDateKey(date) === selectedDateKey;
               return (
                 <button key={idx} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center py-3 rounded-2xl transition-all ${isSelected ? 'bg-black text-white shadow-lg' : 'bg-transparent text-gray-400'}`}>
                   <span className="text-[8px] font-bold uppercase mb-1">{date.toLocaleDateString('es-CL', { weekday: 'short' }).substring(0,2)}</span>
@@ -114,7 +179,6 @@ const UserHome = () => {
           </div>
         </section>
 
-        {/* LISTADO */}
         <section className="space-y-4">
           {displayTasks.length === 0 ? (
             <div className="text-center py-20 text-gray-300 uppercase text-[10px] font-bold tracking-widest">No hay visitas</div>
@@ -123,6 +187,15 @@ const UserHome = () => {
               const isPending = task.status === 'PENDING' || task.status === 'PENDIENTE';
               const isInProgress = task.status === 'IN_PROGRESS' || task.status === 'EN_PROCESO';
               const isCompleted = task.status === 'COMPLETED' || task.status === 'FINALIZADO';
+
+              const canStartVisit = isPending && isSelectedDateToday;
+              const isStarting = actionLoading === task.id;
+
+              const unavailableLabel = isSelectedDatePast
+                ? "Visita pasada"
+                : isSelectedDateFuture
+                  ? "Disponible el día programado"
+                  : "No disponible";
 
               return (
                 <div key={task.id} className={`bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 ${isCompleted ? 'opacity-70' : ''}`}>
@@ -137,7 +210,6 @@ const UserHome = () => {
                       
                       <h2 className="text-lg font-black text-gray-800 uppercase leading-none truncate">{task.cadena}</h2>
                       
-                      {/* 🚩 VISUALIZACIÓN DEL NÚMERO DE VISITA (ESTILO BLUE BADGE) */}
                       <div className="mt-2 mb-1">
                         <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 italic tracking-tighter">
                           N° de Visita: {task.visit_number || 'S/N'}
@@ -155,8 +227,32 @@ const UserHome = () => {
                         <FiCheckCircle size={16}/> Reporte Finalizado
                       </div>
                     ) : isPending ? (
-                      <button onClick={() => handleStartVisit(task.id)} className="flex-1 bg-black text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 active:bg-[#87be00]">
-                        <FiPlay size={16}/> Iniciar
+                      <button
+                        type="button"
+                        onClick={() => handleStartVisit(task.id)}
+                        disabled={!canStartVisit || isStarting}
+                        className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                          canStartVisit
+                            ? "bg-black text-white active:bg-[#87be00]"
+                            : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+                        }`}
+                      >
+                        {isStarting ? (
+                          <>
+                            <FiLoader size={16} className="animate-spin" />
+                            Validando
+                          </>
+                        ) : canStartVisit ? (
+                          <>
+                            <FiPlay size={16} />
+                            Iniciar
+                          </>
+                        ) : (
+                          <>
+                            <FiClock size={16} />
+                            {unavailableLabel}
+                          </>
+                        )}
                       </button>
                     ) : (
                       <button onClick={() => navigate(`/usuario/reporte/${task.id}`)} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">

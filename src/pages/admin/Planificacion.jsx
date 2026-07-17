@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom"; // 🚩 Añadido para capturar el redireccionamiento
 import api from "../../api/apiClient";
 import ManageRoutesModal from "../../components/ManageRoutesModal";
 import toast from "react-hot-toast";
@@ -140,6 +141,25 @@ const Planificacion = () => {
   const [filterDate, setFilterDate]     = useState("");
 
   const fileInputRef = useRef(null);
+  
+  // 🚩 Hooks de react-router-dom para capturar el state enviado desde el supervisor
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // 🚩 EFECTO: Auto-abrir modal si venimos redirigidos del SupervisorPanel
+  useEffect(() => {
+    if (location.state && location.state.localId) {
+      setSelectedRoute({
+        local_id: location.state.localId,
+        cadena: location.state.cadena,
+        justificacion_supervisor: location.state.reason // Pasamos la razón al modal
+      });
+      setIsModalOpen(true);
+
+      // Limpiamos el state para evitar que se reabra accidentalmente si el usuario recarga la página
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.state, navigate, location.pathname]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -271,8 +291,6 @@ const Planificacion = () => {
 
       if (!matchText) return;
 
-      // 🚩 FIX CRÍTICO: Obligamos a que la llave sea únicamente el local_id.
-      // Así se compactan todas las filas del mismo local en un solo componente visual.
       const key = `group-${r.schedule_group_id || r.id}`;
       const weekNum = r.week_number || 1;
 

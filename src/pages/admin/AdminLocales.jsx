@@ -7,7 +7,7 @@ import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 import CreateLocalModal from "../root/CreateLocalModal";
 import UploadLocalesModal from "../root/UploadLocalesModal";
-import EditLocalModal from "../root/EditUserContactModal";
+import EditLocalModal from "../root/EditLocalModal"; // 🚩 CORREGIDO: Ahora importa el modal correcto de locales
 import LocalesMap from "../../components/LocalesMap";
 import { motion } from "framer-motion";
 
@@ -164,9 +164,9 @@ const AdminLocales = () => {
         ))}
       </div>
 
-      <CreateLocalModal isOpen={openCreate} onClose={() => setOpenCreate(false)} onCreated={fetchLocalesAndCompanies} companies={companies} /> {/* <-- MODIFICADO: Pasamos companies */}
-      <UploadLocalesModal isOpen={openUpload} onClose={() => setOpenUpload(false)} onUploaded={fetchLocalesAndCompanies} companies={companies} /> {/* <-- MODIFICADO: Pasamos companies */}
-      {selectedLocal && <EditLocalModal isOpen={openEdit} onClose={() => { setOpenEdit(false); setSelectedLocal(null); }} onUpdated={fetchLocalesAndCompanies} local={selectedLocal} companies={companies} />} {/* <-- MODIFICADO: Pasamos companies */}
+      <CreateLocalModal isOpen={openCreate} onClose={() => setOpenCreate(false)} onCreated={fetchLocalesAndCompanies} companies={companies} />
+      <UploadLocalesModal isOpen={openUpload} onClose={() => setOpenUpload(false)} onUploaded={fetchLocalesAndCompanies} companies={companies} />
+      {selectedLocal && <EditLocalModal isOpen={openEdit} onClose={() => { setOpenEdit(false); setSelectedLocal(null); }} onUpdated={fetchLocalesAndCompanies} local={selectedLocal} companies={companies} />}
     </div>
   );
 };

@@ -16,89 +16,168 @@ const getToken = () => {
 
 const request = async (endpoint, options = {}) => {
   const token = getToken();
-  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith("/")
+    ? endpoint
+    : `/${endpoint}`;
+
   const finalUrl = `${API_URL}${cleanEndpoint}`;
-  
   const isFD = options.body instanceof FormData;
 
+  const method = String(
+    options.method || "GET"
+  ).toUpperCase();
+
+  const isLoginRequest =
+    cleanEndpoint === "/auth/login" ||
+    cleanEndpoint.startsWith("/auth/login?");
+
   const config = {
-    method: options.method || "GET",
+    method,
     ...options,
     headers: {
-      ...(!isFD && { "Content-Type": "application/json" }),
-      ...(token ? { "Authorization": `Bearer ${token}` } : {}), 
-      ...options.headers,
-    },
+      ...(!isFD && {
+        "Content-Type": "application/json"
+      }),
+      ...(token
+        ? {
+            Authorization: `Bearer ${token}`
+          }
+        : {}),
+      ...options.headers
+    }
   };
-
-  // 🚩 LOG DE DIAGNÓSTICO TEMPORAL — quitar después de resolver el bug
- {/* console.log("🌐 [apiClient] DISPARANDO FETCH:", {
-    method: config.method,
-    url: finalUrl,
-    hasToken: !!token,
-    bodyPreview: typeof config.body === "string" ? config.body.slice(0, 300) : config.body,
-  }); */}
 
   try {
     const response = await fetch(finalUrl, config);
 
-    // 🚩 LOG DE DIAGNÓSTICO TEMPORAL
-   {/* console.log("🌐 [apiClient] RESPUESTA RECIBIDA:", {
-      url: finalUrl,
-      status: response.status,
-      ok: response.ok,
-    });*/}
+    /*
+     * Primero leemos la respuesta.
+     * Así podemos distinguir:
+     *
+     * - Cuenta deshabilitada
+     * - Credenciales incorrectas
+     * - Empresa inactiva
+     * - Token realmente expirado
+     */
+    const contentType =
+      response.headers.get("content-type");
 
-    // 🚩 MANEJO DE SESIÓN EXPIRADA (SUAVIZADO)
-    if (response.status === 401) {
+    const data =
+      contentType &&
+      contentType.includes("application/json")
+        ? await response.json()
+        : await response.text();
+
+    const responseMessage = String(
+      data?.message || data || ""
+    );
+
+    const normalizedMessage =
+      responseMessage.toLowerCase();
+
+    const responseCode = String(
+      data?.code || ""
+    ).toLowerCase();
+
+    const isExpiredSession =
+      responseCode === "token_expired" ||
+      responseCode === "session_expired" ||
+      normalizedMessage.includes("jwt expired") ||
+      normalizedMessage.includes("token expirado") ||
+      normalizedMessage.includes("token expired") ||
+      normalizedMessage.includes("sesión expirada") ||
+      normalizedMessage.includes("session expired");
+
+    /*
+     * IMPORTANTE:
+     *
+     * No tratamos el 401 del login como sesión expirada.
+     * El LoginForm necesita recibir el mensaje real del backend.
+     */
+    if (
+      response.status === 401 &&
+      !isLoginRequest &&
+      token &&
+      isExpiredSession
+    ) {
       localStorage.removeItem("token");
-      localStorage.removeItem("user"); 
-      
-      window.dispatchEvent(new Event("session_expired"));
+      localStorage.removeItem("user");
+
+      window.dispatchEvent(
+        new Event("session_expired")
+      );
 
       if (window.location.pathname !== "/") {
-        setTimeout(() => {
-          window.location.href = "/?error=session_expired";
-        }, 1500);
+        window.location.href =
+          "/?error=session_expired";
       }
-      throw { status: 401, message: "Sesión expirada" };
+
+      throw {
+        status: 401,
+        code:
+          data?.code ||
+          "SESSION_EXPIRED",
+        message:
+          responseMessage ||
+          "Sesión expirada",
+        data
+      };
     }
 
-    const contentType = response.headers.get("content-type");
-    let data = (contentType && contentType.includes("application/json")) 
-               ? await response.json() 
-               : await response.text();
-
-    if (!response.ok) throw { status: response.status, message: data?.message || data };
+    /*
+     * Cualquier otro error conserva el mensaje
+     * y el código entregados por el backend.
+     */
+    if (!response.ok) {
+      throw {
+        status: response.status,
+        code: data?.code,
+        message:
+          responseMessage ||
+          `Error HTTP ${response.status}`,
+        data
+      };
+    }
 
     return data;
-
   } catch (error) {
-    // 🚩 LOG DE DIAGNÓSTICO TEMPORAL
-   {/* console.error("🌐 [apiClient] ERROR EN FETCH/REQUEST:", {
-      url: finalUrl,
-      method: config.method,
-      errorName: error?.name,
-      errorMessage: error?.message,
-      errorStatus: error?.status,
-      fullError: error,
-    });*/}
+    const isNetworkError =
+      error?.name === "TypeError" ||
+      error?.message?.includes(
+        "Failed to fetch"
+      );
 
-    const isNetworkError = error.name === "TypeError" || error.message?.includes("Failed to fetch");
-    const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(options.method);
+    const isMutation = [
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE"
+    ].includes(method);
 
-    const isTerrainRoute = 
-      endpoint.includes("/reports/") || 
-      endpoint.includes("/scans") || 
+    const isTerrainRoute =
+      endpoint.includes("/reports/") ||
+      endpoint.includes("/scans") ||
       endpoint.includes("/finish") ||
       endpoint.includes("/photo") ||
       endpoint.includes("/task");
 
-    if (isNetworkError && isMutation && isTerrainRoute) {
-      console.warn("🌐 [apiClient] Guardando en OfflineManager por error de red en ruta de terreno:", endpoint);
-      return await OfflineManager.save(cleanEndpoint, options.method, options.body);
+    if (
+      isNetworkError &&
+      isMutation &&
+      isTerrainRoute
+    ) {
+      console.warn(
+        "🌐 [apiClient] Guardando en OfflineManager por error de red en ruta de terreno:",
+        endpoint
+      );
+
+      return await OfflineManager.save(
+        cleanEndpoint,
+        method,
+        options.body
+      );
     }
-    
+
     throw error;
   }
 };

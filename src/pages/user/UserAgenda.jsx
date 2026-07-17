@@ -6,10 +6,13 @@ import { useAuth } from "../../context/AuthContext";
 import { format, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+// 🚩 CORRECCIÓN CRÍTICA 1: Importar la misma lógica de semanas que usa el Modal de creación
+import { getWeeksOfMonthCalendar } from "../../utils/helper";
+
 import 'react-calendar/dist/Calendar.css';
 
 // ─────────────────────────────────────────────
-// HELPERS
+// HELPERS CORREGIDOS
 // ─────────────────────────────────────────────
 
 const parseLocalDate = (dateStr) => {
@@ -18,31 +21,43 @@ const parseLocalDate = (dateStr) => {
   return new Date(year, month - 1, day);
 };
 
+// 🚩 CORRECCIÓN CRÍTICA 2: Usar exactamente el mismo helper del Administrador para que "hablen el mismo idioma"
 const getWeekNumber = (date) => {
-  const isoDay = date.getDay() === 0 ? 7 : date.getDay();
-  const currentMonday = new Date(date);
-  currentMonday.setDate(date.getDate() - isoDay + 1);
+  const weeks = getWeeksOfMonthCalendar(date);
+  const targetTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 
-  const month = currentMonday.getMonth();
-  const year = currentMonday.getFullYear();
-  let firstMonday = new Date(year, month, 1, 12, 0, 0);
-  let fmIsoDay = firstMonday.getDay() === 0 ? 7 : firstMonday.getDay();
-  if (fmIsoDay !== 1) firstMonday.setDate(1 + (8 - fmIsoDay));
+  const foundWeek = weeks.find(w => {
+    const start = new Date(w.start).setHours(0, 0, 0, 0);
+    const end = new Date(w.end).setHours(23, 59, 59, 999);
+    return targetTime >= start && targetTime <= end;
+  });
 
-  const diffWeeks = Math.floor(
-    (currentMonday.getTime() - firstMonday.getTime()) / (1000 * 60 * 60 * 24 * 7)
-  );
-  return diffWeeks < 0 ? 4 : Math.min(diffWeeks + 1, 4);
+  return foundWeek ? foundWeek.id : 1;
 };
 
 const taskMatchesDate = (task, date) => {
+  // 1. Prioridad: Validación por fecha explícita de visita única
   if (task.visit_date) {
     const taskDate = parseLocalDate(task.visit_date);
     if (taskDate && isSameDay(taskDate, date)) return true;
   }
+  
+  // 2. Validación por Malla Recurrente Multi-semana
   if (task.is_recurring) {
-    const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay();
+    
+    // 🚩 CANDADO DE MES: Asegurarnos de que la ruta recurrente SOLO pertenezca al mes en que se planificó
+    if (task.created_at) {
+      const createdDate = new Date(task.created_at);
+      // Si el mes o el año del día que está dibujando el calendario NO coincide con el de creación, lo ocultamos
+      if (date.getMonth() !== createdDate.getMonth() || date.getFullYear() !== createdDate.getFullYear()) {
+        return false; 
+      }
+    }
+
+    // 🚩 CORRECCIÓN CRÍTICA 3: En el Modal el domingo es 0, no 7. getDay() de JS retorna 0 para domingo.
+    const dayOfWeek = date.getDay(); 
     const weekNumber = getWeekNumber(date);
+    
     if (Number(task.day_of_week) === dayOfWeek && Number(task.week_number) === weekNumber) {
       return true;
     }
@@ -51,7 +66,7 @@ const taskMatchesDate = (task, date) => {
 };
 
 // ─────────────────────────────────────────────
-// COMPONENTE
+// COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────
 
 const UserAgenda = () => {
@@ -76,10 +91,12 @@ const UserAgenda = () => {
 
   useEffect(() => { fetchAllUserRoutes(); }, [fetchAllUserRoutes]);
 
+  // Filtrado reactivo en tiempo real para el día activo en la UI
   const displayTasks = useMemo(() => {
     return allTasks.filter(t => taskMatchesDate(t, selectedDate));
   }, [selectedDate, allTasks]);
 
+  // Contenido visual interno de las celdas del calendario
   const tileContent = useCallback(({ date, view }) => {
     if (view !== 'month') return null;
     const dayTasks = allTasks.filter(t => taskMatchesDate(t, date));
@@ -149,7 +166,7 @@ const UserAgenda = () => {
             </div>
             <div className="text-right relative z-10">
               <span className="text-[10px] bg-[#87be00] text-white px-3 py-1 rounded-full font-black uppercase">
-                {displayTasks.length} Rutas
+                {displayTasks.length} {displayTasks.length === 1 ? 'Ruta' : 'Rutas'}
               </span>
             </div>
             <FiCalendar className="absolute -right-4 -bottom-4 text-white/5" size={120} />
@@ -165,7 +182,6 @@ const UserAgenda = () => {
               </div>
             ) : (
               displayTasks.map((task) => (
-                // ✅ Sin onClick, sin cursor-pointer, sin hover interactivo — solo lectura
                 <div
                   key={task.id}
                   className="bg-white p-4 md:p-6 rounded-[2rem] border border-gray-100 flex justify-between items-center shadow-sm"
@@ -198,7 +214,7 @@ const UserAgenda = () => {
                       </p>
                     </div>
                   </div>
-                  {/* Badge de estado — reemplaza el botón de navegación */}
+                  
                   <div className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase shrink-0 ${
                     task.status === 'COMPLETED'
                       ? 'bg-[#87be00]/10 text-[#87be00]'
@@ -254,7 +270,7 @@ const UserAgenda = () => {
         }
         .react-calendar__tile--active .text-\[7px\] {
           display: none !important;
-        }
+          }
         .react-calendar__tile--now {
           background: #f8fafc !important;
           color: #87be00 !important;
