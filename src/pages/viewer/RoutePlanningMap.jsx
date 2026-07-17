@@ -226,6 +226,8 @@ const RoutePlanningMap = () => {
     }
   }, [panelOpen]);
 
+  
+
   // 📍 RENDERIZADO DE MARCADORES EN EL MAPA CON HOVER CORREGIDO
   useEffect(() => {
     if (!map.current) return;
@@ -326,7 +328,7 @@ const RoutePlanningMap = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/50">
+    <div className="w-full min-h-screen lg:h-full flex flex-col font-[Outfit] bg-gray-50/50">
       {/* HEADER */}
       <div className="bg-white border-b border-gray-100 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
         <div>
@@ -354,7 +356,7 @@ const RoutePlanningMap = () => {
       </div>
 
       {/* CONTENIDO PRINCIPAL */}
-      <div className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 gap-4 md:gap-6 overflow-hidden relative">
+      <div className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 gap-4 md:gap-6 overflow-y-auto lg:overflow-hidden relative min-h-0">
 
         {/* RESUMEN RUTAS */}
         <div className="bg-white rounded-[1.5rem] border border-gray-100 shadow-sm p-4 md:p-5 flex items-center gap-4 md:gap-8 overflow-x-auto shrink-0">
@@ -387,17 +389,18 @@ const RoutePlanningMap = () => {
         </div>
 
         {/* ZONA DIVIDIDA: MAPA Y PANEL LADO A LADO EN DESKTOP */}
-        <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 min-h-0 relative">
+        <div className="flex-none lg:flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 min-h-0 relative">
           
           {/* MAPA */}
-          <div className="flex-1 lg:flex-[2] xl:flex-[3] min-h-[350px] lg:min-h-0 bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden flex flex-col">
+          <div className="relative w-full h-[55vh] min-h-[360px max-h-[560px] lg:h-auto lg:max-h-none lg:min-h-0 lg:flex-[2] xl:flex-[3] bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden shrink-0 lg:shrink"
+>
             {!loading && routes.length === 0 && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
                 <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300"><FiAlertCircle size={32} /></div>
                 <p className="font-black uppercase text-xs tracking-widest">No hay rutas encontradas</p>
               </div>
             )}
-            <div ref={mapContainer} className="flex-1 w-full h-full" />
+            <div ref={mapContainer}  className="absolute inset-0 w-full h-full" />
             
             <button
               onClick={() => setPanelOpen(!panelOpen)}
