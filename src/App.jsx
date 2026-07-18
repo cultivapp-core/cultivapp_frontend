@@ -4,7 +4,8 @@ import { NotificationProvider } from "./context/NotificationContext"
 import { Toaster } from "react-hot-toast"
 import { useEffect } from "react" 
 import api from "./api/apiClient" 
-import { io } from "socket.io-client" // 🔌 Importamos el cliente oficial de Socket.io
+import { presenceSocket } from "./services/presenceSocket"
+import { getDeviceInfo } from "./utils/deviceInfo"
 
 // --- HOOKS ---
 import { useOfflineSync } from "./hooks/useOfflineSync"
@@ -78,32 +79,107 @@ import "./App.css"
 
 const HeartbeatMonitor = () => {
   const { user } = useAuth();
-  
+
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
-    // 1. Inicializar canal WebSocket en tiempo real apuntando a tu API externa o local
-    const socket = io(import.meta.env.VITE_API_URL, { credentials: true });
+    const socket = presenceSocket;
 
-    // Enviar el ID del colaborador conectado para el Radar
-    if (user.id) {
-      socket.emit("register_user", user.id);
+    const registerPresence = () => {
+      if (!socket.connected) return;
+
+      socket.emit("register_user", {
+        user_id: user.id,
+        ...getDeviceInfo()
+      });
+    };
+
+    const sendPresencePing = () => {
+      if (!socket.connected) return;
+
+      socket.emit("presence_ping", {
+        user_id: user.id,
+        ...getDeviceInfo()
+      });
+    };
+
+    const sendHttpPing = async () => {
+      try {
+        await api.post("/users/ping");
+      } catch {
+        console.warn("Ping HTTP fallido");
+      }
+    };
+
+    const restorePresence = () => {
+      if (document.visibilityState !== "visible") return;
+
+      if (!socket.connected) {
+        socket.connect();
+        return;
+      }
+
+      registerPresence();
+      sendPresencePing();
+      sendHttpPing();
+    };
+
+    const handleOnline = () => {
+      if (!socket.connected) {
+        socket.connect();
+        return;
+      }
+
+      registerPresence();
+      sendPresencePing();
+      sendHttpPing();
+    };
+
+    socket.on("connect", registerPresence);
+    socket.io.on("reconnect", registerPresence);
+
+    document.addEventListener("visibilitychange", restorePresence);
+    window.addEventListener("focus", restorePresence);
+    window.addEventListener("pageshow", restorePresence);
+    window.addEventListener("online", handleOnline);
+
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      registerPresence();
     }
 
-    // 2. Mantener fallback tradicional por REST API de contingencia (Sin modificaciones)
-    const sendPing = async () => {
-      try { await api.post("/users/ping"); } catch (error) { console.warn("Ping fallido..."); }
-    };
-    sendPing();
-    const intervalId = setInterval(sendPing, 60000);
+    sendHttpPing();
+
+    const presenceInterval = window.setInterval(() => {
+      if (
+        document.visibilityState === "visible" &&
+        socket.connected
+      ) {
+        sendPresencePing();
+      }
+    }, 15000);
+
+    const httpPingInterval = window.setInterval(
+      sendHttpPing,
+      60000
+    );
 
     return () => {
-      clearInterval(intervalId);
-      socket.disconnect(); // Desconectar socket limpiamente al desloguearse
-    };
-  }, [user]);
+      window.clearInterval(presenceInterval);
+      window.clearInterval(httpPingInterval);
 
-  return null; 
+      document.removeEventListener("visibilitychange", restorePresence);
+      window.removeEventListener("focus", restorePresence);
+      window.removeEventListener("pageshow", restorePresence);
+      window.removeEventListener("online", handleOnline);
+
+      socket.off("connect", registerPresence);
+      socket.io.off("reconnect", registerPresence);
+    };
+  }, [user?.id]);
+
+  return null;
 };
 
 const OfflineMonitor = () => {
