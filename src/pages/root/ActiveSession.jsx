@@ -18,71 +18,76 @@ import { motion, AnimatePresence } from "framer-motion";
 import { io } from "socket.io-client";
 
 const SOCKET_URL = import.meta.env.VITE_API_URL;
-const REFRESH_INTERVAL = 20000;
+const REFRESH_INTERVAL = 10000;
 
-
-const getClientDevice = () => {
-  const userAgent = navigator.userAgent || "";
-  const platform = navigator.platform || "";
-  const maxTouchPoints = navigator.maxTouchPoints || 0;
-
-  const isIPad =
-    /iPad/i.test(userAgent) ||
-    (platform === "MacIntel" && maxTouchPoints > 1);
-
-  const isTablet =
-    isIPad ||
-    /Tablet|PlayBook|Silk/i.test(userAgent) ||
-    (/Android/i.test(userAgent) && !/Mobile/i.test(userAgent));
-
-  const isMobile =
-    !isTablet &&
-    /Android|iPhone|iPod|Windows Phone|Mobile/i.test(userAgent);
-
-  let deviceType = "DESKTOP";
-
-  if (isTablet) {
-    deviceType = "TABLET";
-  } else if (isMobile) {
-    deviceType = "MOBILE";
-  }
-
-  return {
-    device_type: deviceType,
-    user_agent: userAgent,
-    platform,
-    screen_width: window.screen?.width || null,
-    screen_height: window.screen?.height || null
-  };
-};
 
 const normalizeDeviceType = (user) => {
+  const sessions = Array.isArray(user?.sessions)
+    ? [...user.sessions]
+    : [];
+
+  sessions.sort((a, b) => {
+    const dateA = new Date(
+      a?.last_seen_at ||
+      a?.connected_at ||
+      0
+    ).getTime();
+
+    const dateB = new Date(
+      b?.last_seen_at ||
+      b?.connected_at ||
+      0
+    ).getTime();
+
+    return dateB - dateA;
+  });
+
+  const primarySession =
+    sessions.find(
+      (session) => session?.is_online
+    ) ||
+    sessions[0] ||
+    null;
+
   const value = String(
+    primarySession?.device_type ||
     user?.device_type ||
     user?.session_device_type ||
+    user?.devices?.[0] ||
     ""
-  ).toUpperCase();
+  )
+    .trim()
+    .toUpperCase();
 
   if (value === "MOBILE") return "MOBILE";
   if (value === "TABLET") return "TABLET";
   if (value === "DESKTOP") return "DESKTOP";
 
-  const userAgent = String(user?.user_agent || "");
+  const userAgent = String(
+    primarySession?.user_agent ||
+    user?.user_agent ||
+    ""
+  );
 
   if (
     /iPad|Tablet|PlayBook|Silk/i.test(userAgent) ||
-    (/Android/i.test(userAgent) && !/Mobile/i.test(userAgent))
+    (
+      /Android/i.test(userAgent) &&
+      !/Mobile/i.test(userAgent)
+    )
   ) {
     return "TABLET";
   }
 
   if (
-    /Android|iPhone|iPod|Windows Phone|Mobile/i.test(userAgent)
+    /Android|iPhone|iPod|Windows Phone|Mobile/i.test(
+      userAgent
+    )
   ) {
     return "MOBILE";
   }
 
-  return "DESKTOP";
+  return null;
 };
 
 const getDeviceConfig = (user) => {
@@ -93,7 +98,8 @@ const getDeviceConfig = (user) => {
       type,
       label: "Móvil",
       icon: FiSmartphone,
-      classes: "bg-blue-50 text-blue-600 border-blue-100"
+      classes:
+        "bg-blue-50 text-blue-600 border-blue-100"
     };
   }
 
@@ -102,15 +108,27 @@ const getDeviceConfig = (user) => {
       type,
       label: "Tablet",
       icon: FiTablet,
-      classes: "bg-violet-50 text-violet-600 border-violet-100"
+      classes:
+        "bg-violet-50 text-violet-600 border-violet-100"
+    };
+  }
+
+  if (type === "DESKTOP") {
+    return {
+      type,
+      label: "Desktop",
+      icon: FiMonitor,
+      classes:
+        "bg-slate-100 text-slate-600 border-slate-200"
     };
   }
 
   return {
-    type: "DESKTOP",
-    label: "Desktop",
-    icon: FiMonitor,
-    classes: "bg-slate-100 text-slate-600 border-slate-200"
+    type: null,
+    label: "Sin identificar",
+    icon: FiUser,
+    classes:
+      "bg-amber-50 text-amber-600 border-amber-100"
   };
 };
 
@@ -157,19 +175,6 @@ const ActiveSessions = () => {
   useEffect(() => {
     mountedRef.current = true;
 
-    const getLocalUser = () => {
-      try {
-        return JSON.parse(
-          localStorage.getItem("user") || "null"
-        );
-      } catch {
-        return null;
-      }
-    };
-
-    const currentUser = getLocalUser();
-    const clientDevice = getClientDevice();
-
     const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
@@ -180,103 +185,57 @@ const ActiveSessions = () => {
       timeout: 20000
     });
 
-    const registerCurrentUser = () => {
-      if (!currentUser?.id || !socket.connected) return;
-
-      /*
-       * Se mantiene compatibilidad con backends que esperan
-       * únicamente el ID como payload.
-       */
-      socket.emit("register_user", {
-        user_id: currentUser.id,
-        ...clientDevice
-      });
-    };
-
-    const sendPresencePing = () => {
-      if (!currentUser?.id || !socket.connected) return;
-
-      socket.emit("presence_ping", {
-        user_id: currentUser.id,
-        ...clientDevice
-      });
-    };
-
-    const handleConnect = () => {
-      registerCurrentUser();
-      sendPresencePing();
-      fetchSessions();
-    };
-
-    const handleReconnect = () => {
-      registerCurrentUser();
-      sendPresencePing();
-      fetchSessions();
-    };
-
     const handleRadarUpdate = () => {
       fetchSessions();
     };
 
-    const restorePresence = () => {
-      if (document.visibilityState !== "visible") return;
-
-      if (!socket.connected) {
-        socket.connect();
-      } else {
-        registerCurrentUser();
-        sendPresencePing();
+    const refreshWhenVisible = () => {
+      if (
+        document.visibilityState === "visible"
+      ) {
+        fetchSessions();
       }
+    };
 
+    const handleFocus = () => {
       fetchSessions();
     };
 
     const handleOnline = () => {
-      if (!socket.connected) {
-        socket.connect();
-      }
-
-      registerCurrentUser();
-      sendPresencePing();
-      fetchSessions();
-    };
-
-    const handleOffline = () => {
-      /*
-       * No se elimina al usuario de la UI inmediatamente.
-       * El backend debe decidir el estado real según last_seen.
-       */
       fetchSessions();
     };
 
     fetchSessions();
 
-    socket.on("connect", handleConnect);
-    socket.io.on("reconnect", handleReconnect);
-    socket.on("radar_update", handleRadarUpdate);
+    socket.on(
+      "radar_update",
+      handleRadarUpdate
+    );
 
     document.addEventListener(
       "visibilitychange",
-      restorePresence
+      refreshWhenVisible
     );
 
-    window.addEventListener("focus", restorePresence);
-    window.addEventListener("pageshow", restorePresence);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+    window.addEventListener(
+      "focus",
+      handleFocus
+    );
 
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        if (!socket.connected) {
-          socket.connect();
-        } else {
-          registerCurrentUser();
-          sendPresencePing();
-        }
-      }
+    window.addEventListener(
+      "pageshow",
+      handleFocus
+    );
 
-      fetchSessions();
-    }, REFRESH_INTERVAL);
+    window.addEventListener(
+      "online",
+      handleOnline
+    );
+
+    const interval = window.setInterval(
+      fetchSessions,
+      REFRESH_INTERVAL
+    );
 
     return () => {
       mountedRef.current = false;
@@ -285,17 +244,28 @@ const ActiveSessions = () => {
 
       document.removeEventListener(
         "visibilitychange",
-        restorePresence
+        refreshWhenVisible
       );
 
-      window.removeEventListener("focus", restorePresence);
-      window.removeEventListener("pageshow", restorePresence);
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener(
+        "focus",
+        handleFocus
+      );
 
-      socket.off("connect", handleConnect);
-      socket.io.off("reconnect", handleReconnect);
-      socket.off("radar_update", handleRadarUpdate);
+      window.removeEventListener(
+        "pageshow",
+        handleFocus
+      );
+
+      window.removeEventListener(
+        "online",
+        handleOnline
+      );
+
+      socket.off(
+        "radar_update",
+        handleRadarUpdate
+      );
 
       socket.disconnect();
     };
@@ -586,7 +556,9 @@ const ActiveSessions = () => {
                           ? "text-blue-600"
                           : device.type === "TABLET"
                             ? "text-violet-600"
-                            : "text-slate-500"
+                            : device.type === "DESKTOP"
+                              ? "text-slate-500"
+                              : "text-amber-600"
                       }`}
                     >
                       <DeviceIcon size={9} />

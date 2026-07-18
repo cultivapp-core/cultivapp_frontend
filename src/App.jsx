@@ -88,9 +88,18 @@ const HeartbeatMonitor = () => {
     const registerPresence = () => {
       if (!socket.connected) return;
 
+      const deviceInfo = getDeviceInfo();
+
+      console.log("📡 Registrando presencia global:", {
+        user_id: user.id,
+        socket_id: socket.id,
+        api_url: import.meta.env.VITE_API_URL,
+        ...deviceInfo
+      });
+
       socket.emit("register_user", {
         user_id: user.id,
-        ...getDeviceInfo()
+        ...deviceInfo
       });
     };
 
@@ -106,13 +115,57 @@ const HeartbeatMonitor = () => {
     const sendHttpPing = async () => {
       try {
         await api.post("/users/ping");
-      } catch {
-        console.warn("Ping HTTP fallido");
+      } catch (error) {
+        console.warn(
+          "⚠️ Ping HTTP fallido:",
+          error?.message || error
+        );
       }
     };
 
+    const handleConnect = () => {
+      console.log(
+        "🟢 Socket de presencia conectado:",
+        socket.id
+      );
+
+      registerPresence();
+      sendPresencePing();
+      sendHttpPing();
+    };
+
+    const handleReconnect = () => {
+      console.log(
+        "🔄 Socket de presencia reconectado:",
+        socket.id
+      );
+
+      registerPresence();
+      sendPresencePing();
+      sendHttpPing();
+    };
+
+    const handleConnectError = (error) => {
+      console.error(
+        "❌ Error conectando Socket.IO:",
+        {
+          message: error?.message,
+          apiUrl: import.meta.env.VITE_API_URL
+        }
+      );
+    };
+
+    const handleDisconnect = (reason) => {
+      console.warn(
+        "🟠 Socket de presencia desconectado:",
+        reason
+      );
+    };
+
     const restorePresence = () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible") {
+        return;
+      }
 
       if (!socket.connected) {
         socket.connect();
@@ -135,29 +188,52 @@ const HeartbeatMonitor = () => {
       sendHttpPing();
     };
 
-    socket.on("connect", registerPresence);
-    socket.io.on("reconnect", registerPresence);
+    socket.on("connect", handleConnect);
+    socket.on("connect_error", handleConnectError);
+    socket.on("disconnect", handleDisconnect);
+    socket.io.on("reconnect", handleReconnect);
 
-    document.addEventListener("visibilitychange", restorePresence);
-    window.addEventListener("focus", restorePresence);
-    window.addEventListener("pageshow", restorePresence);
-    window.addEventListener("online", handleOnline);
+    document.addEventListener(
+      "visibilitychange",
+      restorePresence
+    );
+
+    window.addEventListener(
+      "focus",
+      restorePresence
+    );
+
+    window.addEventListener(
+      "pageshow",
+      restorePresence
+    );
+
+    window.addEventListener(
+      "online",
+      handleOnline
+    );
+
+    console.log("🧪 HeartbeatMonitor montado:", {
+      userId: user.id,
+      apiUrl: import.meta.env.VITE_API_URL,
+      device: getDeviceInfo()
+    });
 
     if (!socket.connected) {
       socket.connect();
     } else {
-      registerPresence();
+      handleConnect();
     }
 
-    sendHttpPing();
-
     const presenceInterval = window.setInterval(() => {
-      if (
-        document.visibilityState === "visible" &&
-        socket.connected
-      ) {
-        sendPresencePing();
+      if (!navigator.onLine) return;
+
+      if (!socket.connected) {
+        socket.connect();
+        return;
       }
+
+      sendPresencePing();
     }, 15000);
 
     const httpPingInterval = window.setInterval(
@@ -169,13 +245,39 @@ const HeartbeatMonitor = () => {
       window.clearInterval(presenceInterval);
       window.clearInterval(httpPingInterval);
 
-      document.removeEventListener("visibilitychange", restorePresence);
-      window.removeEventListener("focus", restorePresence);
-      window.removeEventListener("pageshow", restorePresence);
-      window.removeEventListener("online", handleOnline);
+      document.removeEventListener(
+        "visibilitychange",
+        restorePresence
+      );
 
-      socket.off("connect", registerPresence);
-      socket.io.off("reconnect", registerPresence);
+      window.removeEventListener(
+        "focus",
+        restorePresence
+      );
+
+      window.removeEventListener(
+        "pageshow",
+        restorePresence
+      );
+
+      window.removeEventListener(
+        "online",
+        handleOnline
+      );
+
+      socket.off("connect", handleConnect);
+      socket.off(
+        "connect_error",
+        handleConnectError
+      );
+      socket.off("disconnect", handleDisconnect);
+      socket.io.off("reconnect", handleReconnect);
+
+      /*
+       * No desconectamos aquí porque este cleanup también puede
+       * ejecutarse durante navegación interna o recargas.
+       * El cierre real se gestiona desde logout() en AuthContext.
+       */
     };
   }, [user?.id]);
 
