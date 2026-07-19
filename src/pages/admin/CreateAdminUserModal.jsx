@@ -5,17 +5,17 @@ import {
   FiUploadCloud, 
   FiFileText, 
   FiCheck, 
-  FiPhone, 
   FiUser, 
   FiUserPlus, 
   FiShield,
-  FiBriefcase,
-  FiGlobe
+  FiBriefcase
 } from "react-icons/fi";
 import api from "../../api/apiClient";
+import { Button, IconButton } from "../../components/ui";
 
 const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
-  const userAdmin = JSON.parse(localStorage.getItem("user"));
+  const storedUser = localStorage.getItem("user");
+  const userAdmin = storedUser ? JSON.parse(storedUser) : null;
 
   const initialForm = {
     first_name: "",
@@ -174,9 +174,14 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
         <p className="text-[10px] font-black uppercase text-gray-500 tracking-widest leading-none">{title}</p>
         <p className="text-xs font-bold text-gray-800 truncate mt-1">{file ? file.name : "Sin adjuntar"}</p>
       </div>
-      <label className="cursor-pointer bg-white border border-gray-200 px-4 py-2 rounded-xl text-[10px] font-black text-gray-600 hover:bg-gray-50 hover:text-[#87be00] shadow-sm transition-colors shrink-0">
-        {file ? "Cambiar" : "Subir"}
-        <input type="file" className="hidden" accept=".pdf" onChange={onChangeHandler} />
+      <label className="cursor-pointer bg-white border border-gray-200 px-4 py-2 rounded-xl text-[10px] font-black text-gray-600 hover:bg-gray-50 hover:text-[#87be00] shadow-sm transition-colors shrink-0 focus-within:ring-2 focus-within:ring-[#87be00] focus-within:ring-offset-2">
+        {file ? "Cambiar archivo" : "Adjuntar archivo"}
+        <input
+          type="file"
+          className="hidden"
+          accept=".pdf"
+          onChange={onChangeHandler}
+        />
       </label>
     </div>
   );
@@ -193,13 +198,17 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
               <FiUserPlus size={24} strokeWidth={2.5}/>
             </div>
             <div>
-              <h3 className="text-2xl font-black text-gray-800 tracking-tight">Nuevo Colaborador</h3>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-0.5">Ficha de Ingreso</p>
+              <h3 className="text-2xl font-black text-gray-800 tracking-tight">Crear usuario</h3>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-0.5">Ficha de ingreso</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 rounded-full transition-colors">
-            <FiX size={24} />
-          </button>
+          <IconButton
+            label="Cerrar creación de usuario"
+            size="lg"
+            onClick={onClose}
+          >
+            <FiX size={22} />
+          </IconButton>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 overflow-y-auto bg-gray-50/30">
@@ -210,13 +219,13 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
             <div className="lg:col-span-6 space-y-6">
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-5">
                 <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2 mb-4">
-                  <FiUser size={14}/> 1. Identificación y Acceso
+                  <FiUser size={14}/> 1. Identificación y acceso
                 </h4>
 
                 <div className="flex gap-5 items-center">
                   <div className="shrink-0 relative group cursor-pointer">
                     {preview ? (
-                      <img src={preview} className="w-20 h-20 rounded-[1.2rem] object-cover border-2 border-[#87be00] shadow-md" />
+                      <img src={preview} alt="Vista previa del usuario" className="w-20 h-20 rounded-[1.2rem] object-cover border-2 border-[#87be00] shadow-md" />
                     ) : (
                       <div className="w-20 h-20 rounded-[1.2rem] bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center group-hover:border-[#87be00] transition-colors">
                         <FiCamera size={24} className="text-gray-400 group-hover:text-[#87be00]"/>
@@ -240,7 +249,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                     <input 
                       type="text" 
                       value={form.rut} 
-                      placeholder="RUT (Ej: 12.345.678-9)" 
+                      placeholder="RUT (ej.: 12.345.678-9)" 
                       required 
                       className={`w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${rutError ? 'border-red-400 focus:ring-2 focus:ring-red-400 focus:bg-red-50/20' : 'border-gray-200 focus:ring-2 focus:ring-[#87be00] focus:border-transparent'}`}
                       onChange={handleRutChange} 
@@ -252,7 +261,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                 </div>
 
                 <div className="space-y-3">
-                  <input type="email" value={form.email} placeholder="Correo Electrónico" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
+                  <input type="email" value={form.email} placeholder="Correo electrónico" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                     onChange={e => setForm({...form, email: e.target.value})} />
                   
                   {/* SELECTOR DE EMPRESA CON PROTECCIÓN DE ARREGLO */}
@@ -263,7 +272,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                     onChange={e => setForm({...form, company_id: e.target.value})}
                   >
                     <option value="" disabled>
-                      {loadingEmpresas ? "Cargando empresas..." : "Seleccione Empresa Asignada"}
+                      {loadingEmpresas ? "Cargando empresas..." : "Selecciona una empresa"}
                     </option>
                     {(empresas || []).map((emp) => (
                       <option key={emp.id} value={emp.id}>
@@ -277,10 +286,10 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                       onChange={e => setForm({...form, password: e.target.value})} />
                     <select required value={form.role} className="w-full bg-white border border-[#87be00]/30 text-[#87be00] font-bold rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all cursor-pointer"
                       onChange={e => setForm({...form, role: e.target.value})}>
-                      <option value="" disabled>Perfil de Sistema</option>
+                      <option value="" disabled>Perfil del sistema</option>
                       <option value="USUARIO">Mercaderista</option>
                       <option value="SUPERVISOR">Supervisor</option>
-                      <option value="VIEW">Viewer</option>
+                      <option value="VIEW">Visualizador</option>
                     </select>
                   </div>
                 </div>
@@ -290,10 +299,10 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
             <div className="lg:col-span-6 space-y-6">
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
                 <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2 mb-2">
-                  <FiBriefcase size={14}/> 2. Datos Laborales
+                  <FiBriefcase size={14}/> 2. Datos laborales
                 </h4>
 
-                <input type="text" value={form.position} placeholder="Cargo Laboral (Ej: Mercaderista)" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
+                <input type="text" value={form.position} placeholder="Cargo laboral (ej.: Mercaderista)" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                   onChange={e => setForm({...form, position: e.target.value})} />
                 
                 <input type="text" value={form.trabajando_para} placeholder="Trabajando para..." required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
@@ -314,7 +323,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                       }));
                     }}
                   >
-                    <option value="" disabled>Seleccione Tipo de Contrato</option>
+                    <option value="" disabled>Selecciona el tipo de contrato</option>
                     <option value="Indefinido">Indefinido</option>
                     <option value="Plazo Fijo">Plazo Fijo</option>
                     <option value="EST">Servicios Transitorios (EST)</option>
@@ -324,7 +333,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
 
                   {/* 🚩 CLASE DINÁMICA: Si es indefinido toma col-span-2 para ocupar todo el ancho */}
                   <div className={`flex flex-col bg-gray-50 border border-gray-200 rounded-xl p-2 px-3 ${form.tipo_contrato === "Indefinido" ? "col-span-2" : ""}`}>
-                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Inicio Contrato</label>
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Inicio del contrato</label>
                     <input type="date" required value={form.fecha_inicio_contrato} className="bg-transparent text-sm outline-none mt-1 text-gray-700 font-medium cursor-text"
                       onChange={e => setForm({...form, fecha_inicio_contrato: e.target.value})} />
                   </div>
@@ -332,43 +341,87 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                   {/* 🚩 RENDERIZADO CONDICIONAL: Oculta el campo de fin si es contrato Indefinido */}
                   {form.tipo_contrato !== "Indefinido" && (
                     <div className="flex flex-col bg-gray-50 border border-gray-200 rounded-xl p-2 px-3">
-                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Fin (Opcional)</label>
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Término (opcional)</label>
                       <input type="date" value={form.fecha_termino_contrato} className="bg-transparent text-sm outline-none mt-1 text-gray-700 font-medium cursor-text"
                         onChange={e => setForm({...form, fecha_termino_contrato: e.target.value})} />
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                  <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5 mb-3">
-                    <FiShield size={12}/> Supervisor Directo
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="text" value={form.supervisor_nombre} placeholder="Nombre completo" className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
-                        onChange={e => setForm({...form, supervisor_nombre: e.target.value})} />
-                    <input type="text" value={form.supervisor_telefono} placeholder="Teléfono" className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
-                        onChange={e => setForm({...form, supervisor_telefono: e.target.value})} />
-                  </div>
-                </div>
+                {form.role === "USUARIO" && (
+  <div className="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+    <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5 mb-3">
+      <FiShield size={12} />
+      Supervisor directo
+    </p>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <input
+        type="text"
+        value={form.supervisor_nombre}
+        placeholder="Nombre completo"
+        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
+        onChange={(e) => {
+  const selectedRole = e.target.value;
+
+  setForm((prev) => ({
+    ...prev,
+    role: selectedRole,
+    supervisor_nombre:
+      selectedRole === "USUARIO"
+        ? prev.supervisor_nombre
+        : "",
+    supervisor_telefono:
+      selectedRole === "USUARIO"
+        ? prev.supervisor_telefono
+        : "",
+  }));
+}}
+      />
+
+      <input
+        type="text"
+        value={form.supervisor_telefono}
+        placeholder="Teléfono"
+        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
+        onChange={(e) =>
+          setForm({
+            ...form,
+            supervisor_telefono: e.target.value,
+          })
+        }
+      />
+    </div>
+  </div>
+)}
               </div>
 
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-3">
                 <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2 mb-2">
-                  <FiUploadCloud size={14}/> 3. Documentación Extra
+                  <FiUploadCloud size={14}/> 3. Documentación adicional
                 </h4>
                 
-                <DocumentUploader title="Contrato Laboral" file={documentoContrato} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoContrato(f); }} />
-                <DocumentUploader title="Mutualidad / ACHS" file={documentoAchs} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoAchs(f); }} />
-                <DocumentUploader title="Otro Documento" file={documentoOtro} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoOtro(f); }} />
+                <DocumentUploader title="Contrato laboral" file={documentoContrato} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoContrato(f); }} />
+                <DocumentUploader title="Mutualidad o ACHS" file={documentoAchs} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoAchs(f); }} />
+                <DocumentUploader title="Otro documento" file={documentoOtro} onChangeHandler={e => { const f = e.target.files[0]; if(f) setDocumentoOtro(f); }} />
               </div>
 
             </div>
           </div>
 
           <div className="mt-8">
-            <button type="submit" disabled={loading || rutError !== ""} className="w-full bg-[#87be00] hover:bg-[#76a500] text-white py-4 rounded-[1.5rem] text-sm font-black uppercase tracking-[0.2em] shadow-xl shadow-[#87be00]/20 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2">
-              {loading ? "Procesando..." : <><FiCheck size={18}/> Confirmar y Generar Ficha</>}
-            </button>
+            <Button
+              type="submit"
+              size="lg"
+              fullWidth
+              loading={loading}
+              loadingText="Creando usuario..."
+              leftIcon={<FiCheck size={18} />}
+              disabled={rutError !== ""}
+              className="rounded-[1.5rem] py-4 text-sm tracking-[0.2em] shadow-xl shadow-[#87be00]/20"
+            >
+              Crear usuario
+            </Button>
           </div>
         </form>
       </div>
