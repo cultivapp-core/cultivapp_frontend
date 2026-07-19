@@ -3,6 +3,7 @@ import {
   FiX, FiUploadCloud, FiFileText, FiCheck, FiSave, FiUser, FiShield, FiBriefcase, FiCamera 
 } from "react-icons/fi";
 import api from "../../api/apiClient";
+import { Button, IconButton } from "../../components/ui";
 
 const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
   const [form, setForm] = useState({
@@ -38,8 +39,17 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
         supervisor_nombre: user?.supervisor_nombre || "",
         supervisor_telefono: user?.supervisor_telefono || "",
       });
-      setPreview(user?.foto_url ? `${api.defaults?.baseURL ?? ""}${user.foto_url}` : null);
+      setPreview(
+        user?.foto_url
+          ? `${api.defaults?.baseURL ?? ""}${user.foto_url}`
+          : null,
+      );
       setFoto(null); // Reseteamos el archivo seleccionado al abrir un usuario nuevo
+      setDocumentoContrato(null);
+      setDocumentoAchs(null);
+      setDocumentoOtro(null);
+      setError("");
+      setRutError("");
     }
   }, [isOpen, user]);
 
@@ -114,9 +124,14 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
         <p className="text-[10px] font-black uppercase text-gray-500 tracking-widest">{title}</p>
         <p className="text-xs font-bold text-gray-800 truncate">{file ? file.name : "Sin cambios"}</p>
       </div>
-      <label className="cursor-pointer bg-white border border-gray-200 px-4 py-2 rounded-xl text-[10px] font-black text-gray-600 hover:text-[#87be00]">
-        {file ? "Cambiar" : "Subir"}
-        <input type="file" className="hidden" accept=".pdf" onChange={onChangeHandler} />
+      <label className="cursor-pointer bg-white border border-gray-200 px-4 py-2 rounded-xl text-[10px] font-black text-gray-600 hover:text-[#87be00] focus-within:ring-2 focus-within:ring-[#87be00] focus-within:ring-offset-2">
+        {file ? "Cambiar archivo" : "Adjuntar archivo"}
+        <input
+          type="file"
+          className="hidden"
+          accept=".pdf"
+          onChange={onChangeHandler}
+        />
       </label>
     </div>
   );
@@ -130,11 +145,17 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
           <div className="flex items-center gap-4">
             <div className="p-3 bg-[#87be00]/10 text-[#87be00] rounded-2xl"><FiSave size={24}/></div>
             <div>
-              <h3 className="text-2xl font-black text-gray-800 tracking-tight">Editar Colaborador</h3>
+              <h3 className="text-2xl font-black text-gray-800 tracking-tight">Editar usuario</h3>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">ID: {user?.id?.slice(0, 8)}...</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2.5 text-gray-400 hover:bg-gray-100 rounded-full"><FiX size={24} /></button>
+          <IconButton
+            label="Cerrar edición de usuario"
+            size="lg"
+            onClick={onClose}
+          >
+            <FiX size={22} />
+          </IconButton>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 overflow-y-auto bg-gray-50/30">
@@ -149,9 +170,10 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
                 {/* 🚩 CONTENEDOR DE FOTO ACTUALIZADO CON HOVER INTERACTIVO */}
                 <div className="flex gap-5 items-center">
                   <div className="shrink-0 relative group cursor-pointer">
-                    <img 
-                      src={preview || "https://via.placeholder.com/150"} 
-                      className="w-20 h-20 rounded-[1.2rem] object-cover border-2 border-[#87be00] shadow-sm group-hover:opacity-80 transition-opacity" 
+                    <img
+                      src={preview || "https://via.placeholder.com/150"}
+                      alt="Fotografía del usuario"
+                      className="w-20 h-20 rounded-[1.2rem] object-cover border-2 border-[#87be00] shadow-sm group-hover:opacity-80 transition-opacity"
                     />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-[1.2rem] opacity-0 group-hover:opacity-100 transition-opacity">
                       <FiCamera size={18} className="text-white" />
@@ -165,33 +187,33 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
                 
                 <input type="text" value={form.last_name} placeholder="Apellidos" required className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, last_name: e.target.value})} />
                 <input type="text" value={form.rut} placeholder="RUT" required className={`w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none ${rutError ? 'border-red-400' : 'border-gray-200'}`} onChange={handleRutChange} />
-                <input type="email" value={form.email} placeholder="Correo Electrónico" required className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, email: e.target.value})} />
+                <input type="email" value={form.email} placeholder="Correo electrónico" required className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, email: e.target.value})} />
                 
                 <input 
                   type="tel" 
                   value={form.phone} 
-                  placeholder="Teléfono (Ej: +569...)" 
+                  placeholder="Teléfono (ej.: +569...)" 
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none" 
                   onChange={e => setForm({...form, phone: e.target.value})} 
                 />
               </div>
               
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-3">
-                <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2"><FiUploadCloud size={14}/> 3. Documentación</h4>
-                <DocumentUploader title="Contrato" file={documentoContrato} onChangeHandler={e => setDocumentoContrato(e.target.files[0])} />
-                <DocumentUploader title="Mutualidad/ACHS" file={documentoAchs} onChangeHandler={e => setDocumentoAchs(e.target.files[0])} />
-                <DocumentUploader title="Otro Doc" file={documentoOtro} onChangeHandler={e => setDocumentoOtro(e.target.files[0])} />
+                <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2"><FiUploadCloud size={14}/> 3. Documentación adicional</h4>
+                <DocumentUploader title="Contrato laboral" file={documentoContrato} onChangeHandler={e => setDocumentoContrato(e.target.files[0])} />
+                <DocumentUploader title="Mutualidad o ACHS" file={documentoAchs} onChangeHandler={e => setDocumentoAchs(e.target.files[0])} />
+                <DocumentUploader title="Otro documento" file={documentoOtro} onChangeHandler={e => setDocumentoOtro(e.target.files[0])} />
               </div>
             </div>
 
             {/* Columna Derecha */}
             <div className="lg:col-span-6 space-y-6">
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
-                <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2"><FiBriefcase size={14}/> 2. Datos Laborales</h4>
+                <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2"><FiBriefcase size={14}/> 2. Datos laborales</h4>
                 <input type="text" value={form.position} placeholder="Cargo" className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, position: e.target.value})} />
                 <input type="text" value={form.trabajando_para} placeholder="Trabajando para..." className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, trabajando_para: e.target.value})} />
                 <select value={form.tipo_contrato} className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, tipo_contrato: e.target.value})}>
-                   <option value="">Tipo Contrato</option>
+                   <option value="">Tipo de contrato laboral</option>
                    <option value="Indefinido">Indefinido</option><option value="Plazo Fijo">Plazo Fijo</option>
                    <option value="EST">EST</option><option value="OT">OT</option><option value="Propio">Propio</option>
                 </select>
@@ -201,16 +223,54 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
-                <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2"><FiShield size={14}/> 4. Datos del Supervisor</h4>
-                <input type="text" value={form.supervisor_nombre} placeholder="Nombre del Supervisor" className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, supervisor_nombre: e.target.value})} />
-                <input type="text" value={form.supervisor_telefono} placeholder="Teléfono del Supervisor" className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, supervisor_telefono: e.target.value})} />
-              </div>
+              {form.role === "USUARIO" && (
+                <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
+                  <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2">
+                    <FiShield size={14} />
+                    4. Supervisor directo
+                  </h4>
+
+                  <input
+                    type="text"
+                    value={form.supervisor_nombre}
+                    placeholder="Nombre del supervisor"
+                    className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none"
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        supervisor_nombre: e.target.value,
+                      })
+                    }
+                  />
+
+                  <input
+                    type="text"
+                    value={form.supervisor_telefono}
+                    placeholder="Teléfono del supervisor"
+                    className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none"
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        supervisor_telefono: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              )}
             </div>
           </div>
-          <button type="submit" disabled={loading} className="w-full mt-8 bg-[#87be00] text-white py-4 rounded-[1.5rem] font-black uppercase tracking-widest shadow-xl hover:bg-[#76a500]">
-            {loading ? "Guardando..." : "Actualizar Colaborador"}
-          </button>
+          <Button
+            type="submit"
+            size="lg"
+            fullWidth
+            loading={loading}
+            loadingText="Guardando cambios..."
+            leftIcon={<FiSave size={18} />}
+            disabled={rutError !== ""}
+            className="mt-8 rounded-[1.5rem] py-4 tracking-widest shadow-xl"
+          >
+            Guardar cambios
+          </Button>
         </form>
       </div>
     </div>
