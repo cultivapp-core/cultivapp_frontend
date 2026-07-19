@@ -4,15 +4,12 @@ import {
   FiRotateCw,
   FiEdit,
   FiTrash,
-  FiActivity,
   FiUsers,
   FiEye,
   FiShield,
   FiMapPin,
   FiFileText,
   FiUploadCloud,
-  FiMoreVertical,
-  FiCheckCircle,
   FiPhone,
   FiSearch,
   FiX,
@@ -21,6 +18,12 @@ import {
 } from "react-icons/fi"
 import { toast } from "react-hot-toast"
 import api from "../../api/apiClient"
+import {
+  Button,
+  IconButton,
+  Switch,
+} from "../../components/ui"
+import { getRoleLabel } from "../../components/constants/uiLabels"
 
 import CreateAdminUserModal from "../admin/CreateAdminUserModal"
 import EditAdminUserModal from "./EditAdminUserModal"
@@ -129,7 +132,8 @@ const AdminUsers = () => {
 
   const fileInputRef = useRef(null)
   const contractAlertShownRef = useRef(false)
-  const userLocal = JSON.parse(localStorage.getItem("user"))
+  const storedUser = localStorage.getItem("user")
+  const userLocal = storedUser ? JSON.parse(storedUser) : null
 
   // 🚩 DETERMINAR SI TIENE ACCESO TOTAL (ROOT O CULTIVA)
   const isOwnerAdmin = userLocal?.role === "ADMIN_CLIENTE";
@@ -142,7 +146,7 @@ const AdminUsers = () => {
       return false
     }
 
-    const term = searchTerm.toLowerCase()
+    const term = searchTerm.toLowerCase().trim()
     const fullName = `${user.first_name} ${user.last_name}`.toLowerCase()
     const email = user.email?.toLowerCase() || ""
     const rut = user.rut?.toLowerCase() || ""
@@ -272,7 +276,7 @@ const AdminUsers = () => {
       toast.success("Estado de acceso actualizado")
       fetchData()
     } catch (error) {
-      toast.error("Error al mutar estado del operador")
+      toast.error("No se pudo cambiar el estado del usuario")
     }
   }
 
@@ -287,14 +291,14 @@ const AdminUsers = () => {
       fetchData()
       setUserToDelete(null)
     } catch (error) {
-      toast.error("Error al remover el registro")
+      toast.error("No se pudo eliminar el usuario")
     }
   }
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-20 gap-4 font-[Outfit]">
       <div className="w-9 h-9 border-2 border-[#87be00] border-t-transparent rounded-full animate-spin" />
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Sincronizando equipo multi-empresa...</p>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Cargando usuarios...</p>
     </div>
   )
 
@@ -310,28 +314,39 @@ const AdminUsers = () => {
             Usuarios
           </h1>
           <p className="text-[10px] font-bold text-[#87be00] uppercase tracking-[0.25em] mt-2.5">
-            {tieneAccesoGlobal ? "Panel de Control Multi-Empresa Global" : `Panel de Control - ${userLocal?.company_name || 'Mi Empresa'}`}
+            {tieneAccesoGlobal ? "Panel de control multiempresa" : `Panel de control · ${userLocal?.company_name || "Mi empresa"}`}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
+          <Button
+            variant="outline"
+            size="lg"
+            leftIcon={<FiUploadCloud size={15} />}
+            loading={bulkLoading}
+            loadingText="Importando..."
             onClick={() => fileInputRef.current?.click()}
-            disabled={bulkLoading}
-            className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-[#111111] text-[#87be00] px-5 py-3.5 rounded-xl font-bold uppercase text-[10px] tracking-wider transition-all shadow-sm disabled:opacity-40"
+            className="flex-1 lg:flex-none"
           >
-            {bulkLoading ? <FiRotateCw className="animate-spin" size={14} /> : <FiUploadCloud size={14} />}
-            <span className="truncate">Carga Masiva</span>
-          </button>
-          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
+            Importar usuarios
+          </Button>
 
-          <button
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept=".xlsx, .xls, .csv"
+            onChange={handleBulkUpload}
+          />
+
+          <Button
+            size="lg"
+            leftIcon={<FiUserPlus size={15} />}
             onClick={() => setOpenModal(true)}
-            className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-[#87be00] hover:bg-[#76a500] text-white px-6 py-3.5 rounded-xl font-bold uppercase text-[10px] tracking-wider transition-all shadow-sm"
+            className="flex-1 lg:flex-none"
           >
-            <FiUserPlus size={15} />
-            <span className="truncate">Crear Usuario</span>
-          </button>
+            Crear usuario
+          </Button>
         </div>
       </div>
 
@@ -339,7 +354,7 @@ const AdminUsers = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 px-6">
         <ProgressCard title="Supervisores" used={licencias.supervisors} max={licencias.maxSup} color="bg-[#87be00]" bgClass="bg-emerald-50 text-[#87be00]" icon={<FiShield size={18}/>} />
         <ProgressCard title="Mercaderistas" used={licencias.users} max={licencias.maxUsr} color="bg-blue-500" bgClass="bg-blue-50 text-blue-500" icon={<FiUsers size={18}/>} />
-        <ProgressCard title="Solo Vista" used={licencias.view} max={licencias.maxVw} color="bg-slate-800" bgClass="bg-slate-100 text-slate-700" icon={<FiEye size={18}/>} />
+        <ProgressCard title="Visualizadores" used={licencias.view} max={licencias.maxVw} color="bg-slate-800" bgClass="bg-slate-100 text-slate-700" icon={<FiEye size={18}/>} />
       </div>
 
       {/* CONTROLES VISTA MÓVIL */}
@@ -353,7 +368,7 @@ const AdminUsers = () => {
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
                 className="w-full bg-white border border-slate-200 px-4 py-3.5 rounded-xl text-[12px] font-bold text-slate-700 outline-none focus:border-[#87be00] focus:ring-1 focus:ring-[#87be00] transition-all shadow-sm appearance-none cursor-pointer"
               >
-                <option value="">Todas las Empresas del Sistema</option>
+                <option value="">Todas las empresas del sistema</option>
                 {companies.map(c => (
                   <option key={c.id} value={c.id}>{c.name?.toUpperCase()}</option>
                 ))}
@@ -373,7 +388,8 @@ const AdminUsers = () => {
           </div>
         </div>
 
-        {filteredUsers.map((user, idx) => (
+        {filteredUsers.length > 0 ? (
+          filteredUsers.map((user, idx) => (
           <motion.div
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}
             key={user.id}
@@ -388,23 +404,25 @@ const AdminUsers = () => {
                   <p className="text-[13px] font-bold text-[#111111] uppercase tracking-tight truncate">{user.first_name} {user.last_name}</p>
                   <div className="flex flex-wrap gap-1.5 mt-1">
                     <span className="text-[8px] font-extrabold text-[#87be00] uppercase bg-[#87be00]/10 px-2 py-0.5 rounded border border-[#87be00]/5 whitespace-nowrap">
-                      {user.role}
+                      {getRoleLabel(user.role)}
                     </span>
                     <span className="text-[8px] font-extrabold text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded border border-blue-100 whitespace-nowrap">
-                      {companies.find(c => String(c.id) === String(user.company_id))?.name || "Global / Sin Asignar"}
+                      {companies.find(c => String(c.id) === String(user.company_id))?.name || "Sin empresa asignada"}
                     </span>
                   </div>
                 </div>
               </div>
-              <button
+              <Switch
+                checked={user.is_active}
                 disabled={user.id === userLocal.id}
-                onClick={() => toggleUser(user)}
-                className={`h-5 w-10 rounded-full transition-colors relative inline-flex items-center p-0.5 shrink-0 ${
-                  user.is_active ? "bg-[#87be00]" : "bg-slate-200"
-                } ${user.id === userLocal.id ? "opacity-40 cursor-not-allowed" : ""}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user.is_active ? "translate-x-5" : "translate-x-0"}`} />
-              </button>
+                size="sm"
+                label={
+                  user.is_active
+                    ? `Desactivar a ${user.first_name} ${user.last_name}`
+                    : `Activar a ${user.first_name} ${user.last_name}`
+                }
+                onChange={() => toggleUser(user)}
+              />
             </div>
 
             <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500 truncate bg-slate-50 p-2.5 rounded-xl border border-slate-100">
@@ -412,26 +430,74 @@ const AdminUsers = () => {
             </div>
 
             <div className="grid grid-cols-5 gap-1.5 pt-1">
-              {(user.role === 'SUPERVISOR' || user.role === 'VIEW') && (
-                <button onClick={() => setAssignSupervisor(user)} className="py-2.5 bg-emerald-50 text-[#87be00] rounded-lg flex items-center justify-center border border-emerald-100" title="Asignar Locales">
-                  <FiMapPin size={14}/>
-                </button>
+              {(user.role === "SUPERVISOR" || user.role === "VIEW") && (
+                <IconButton
+                  label={`Asignar locales a ${user.first_name} ${user.last_name}`}
+                  variant="primary"
+                  onClick={() => setAssignSupervisor(user)}
+                  className="w-full"
+                >
+                  <FiMapPin size={14} />
+                </IconButton>
               )}
-              {(user.role === 'VIEW' || user.role === 'SUPERVISOR') && (
-                <button onClick={() => setAssignUser(user)} className="py-2.5 bg-blue-50 text-blue-500 rounded-lg flex items-center justify-center border border-blue-100" title="Asignar Usuarios">
-                  <FiUsers size={14}/>
-                </button>
+
+              {(user.role === "VIEW" || user.role === "SUPERVISOR") && (
+                <IconButton
+                  label={`Asignar usuarios a ${user.first_name} ${user.last_name}`}
+                  variant="info"
+                  onClick={() => setAssignUser(user)}
+                  className="w-full"
+                >
+                  <FiUsers size={14} />
+                </IconButton>
               )}
-              <button onClick={() => setEditUser(user)} className="py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg flex items-center justify-center"><FiEdit size={14}/></button>
-              <button onClick={() => setResetUser(user)} className="py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg flex items-center justify-center"><FiRotateCw size={14}/></button>
+
+              <IconButton
+                label={`Editar usuario ${user.first_name} ${user.last_name}`}
+                onClick={() => setEditUser(user)}
+                className="w-full"
+              >
+                <FiEdit size={14} />
+              </IconButton>
+
+              <IconButton
+                label={`Restablecer contraseña de ${user.first_name} ${user.last_name}`}
+                variant="info"
+                onClick={() => setResetUser(user)}
+                className="w-full"
+              >
+                <FiRotateCw size={14} />
+              </IconButton>
+
               {user.role !== "ADMIN_CLIENTE" && user.id !== userLocal.id ? (
-                <button onClick={() => setUserToDelete(user)} className="py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg flex items-center justify-center"><FiTrash size={14}/></button>
+                <IconButton
+                  label={`Eliminar usuario ${user.first_name} ${user.last_name}`}
+                  variant="danger"
+                  onClick={() => setUserToDelete(user)}
+                  className="w-full"
+                >
+                  <FiTrash size={14} />
+                </IconButton>
               ) : (
-                <div className="py-2.5 bg-slate-100/50 text-slate-300 border border-slate-200/40 rounded-lg flex items-center justify-center cursor-not-allowed"><FiTrash size={14}/></div>
+                <IconButton
+                  label="Eliminar usuario no disponible"
+                  variant="danger"
+                  disabled
+                  className="w-full"
+                >
+                  <FiTrash size={14} />
+                </IconButton>
               )}
             </div>
           </motion.div>
-        ))}
+          ))
+        ) : (
+          <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center shadow-sm">
+            <p className="text-sm font-bold text-slate-400">
+              No se encontraron usuarios.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* VISTA DESKTOP */}
@@ -446,7 +512,7 @@ const AdminUsers = () => {
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
                 className="w-full bg-white border border-slate-200 pl-4 pr-10 py-3 rounded-xl text-[12px] font-bold text-slate-700 outline-none focus:border-[#87be00] focus:ring-1 focus:ring-[#87be00] transition-all shadow-sm appearance-none cursor-pointer"
               >
-                <option value="">Todas las Empresas de la Red</option>
+                <option value="">Todas las empresas de la red</option>
                 {companies.map(c => (
                   <option key={c.id} value={c.id}>{c.name?.toUpperCase()}</option>
                 ))}
@@ -483,7 +549,8 @@ const AdminUsers = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filteredUsers.map(user => (
+              {filteredUsers.length > 0 ? (
+                filteredUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-slate-50/60 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-4">
@@ -501,12 +568,12 @@ const AdminUsers = () => {
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className="bg-[#87be00]/10 text-[#87be00] px-3 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wider border border-[#87be00]/5 whitespace-nowrap inline-block">
-                      {user.role}
+                      {getRoleLabel(user.role)}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wider border border-blue-100 whitespace-nowrap inline-block">
-                      {companies.find(c => String(c.id) === String(user.company_id))?.name || "Sin Empresa / Global"}
+                      {companies.find(c => String(c.id) === String(user.company_id))?.name || "Sin empresa asignada"}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -520,15 +587,17 @@ const AdminUsers = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <button 
+                    <Switch
+                      checked={user.is_active}
                       disabled={user.id === userLocal.id}
-                      onClick={() => toggleUser(user)} 
-                      className={`h-5 w-10 rounded-full transition-colors relative inline-flex items-center p-0.5 ${
-                        user.is_active ? "bg-[#87be00]" : "bg-slate-200"
-                      } ${user.id === userLocal.id ? "opacity-40 cursor-not-allowed" : ""}`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user.is_active ? "translate-x-5" : "translate-x-0"}`} />
-                    </button>
+                      size="sm"
+                      label={
+                        user.is_active
+                          ? `Desactivar a ${user.first_name} ${user.last_name}`
+                          : `Activar a ${user.first_name} ${user.last_name}`
+                      }
+                      onChange={() => toggleUser(user)}
+                    />
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-1.5 text-slate-400">
@@ -555,7 +624,17 @@ const AdminUsers = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-6 py-12 text-center text-sm font-bold text-slate-400"
+                  >
+                    No se encontraron usuarios.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -707,13 +786,12 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
               </div>
             </div>
 
-            <button
-              type="button"
+            <IconButton
+              label="Cerrar alertas de contratos"
               onClick={onClose}
-              className="p-2 bg-white text-slate-400 hover:text-slate-700 rounded-xl border border-slate-200 transition-colors"
             >
               <FiX size={18} />
-            </button>
+            </IconButton>
           </div>
 
           <div className="grid grid-cols-3 gap-2 md:gap-3 mt-5">
@@ -791,13 +869,14 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
+                  <Button
+                    variant="dark"
+                    size="sm"
                     onClick={() => onEdit(user)}
-                    className="shrink-0 px-4 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-[9px] font-extrabold uppercase tracking-wider transition-colors"
+                    className="shrink-0"
                   >
-                    Regularizar
-                  </button>
+                    Regularizar contrato
+                  </Button>
                 </div>
               </div>
             )
@@ -805,13 +884,9 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
         </div>
 
         <div className="p-4 md:p-5 border-t border-slate-100 bg-slate-50 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-6 py-3 bg-[#87be00] hover:bg-[#76a500] text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-colors"
-          >
+          <Button onClick={onClose}>
             Entendido
-          </button>
+          </Button>
         </div>
       </motion.div>
     </motion.div>
@@ -822,18 +897,26 @@ const DeleteAdminUserModal = ({ user, onClose, onConfirm }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleConfirm = async () => {
-    setIsDeleting(true);
-    await onConfirm();
-    setIsDeleting(false);
-  };
+    try {
+      setIsDeleting(true)
+      await onConfirm()
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   return (
     <div className="absolute inset-0 bg-[#111111]/70 backdrop-blur-sm flex items-center justify-center p-4 z-[110] font-[Outfit] transition-all duration-300 min-h-full">
       <div className="bg-white w-full max-w-md rounded-2xl border border-slate-100 shadow-2xl p-6 relative animate-in fade-in zoom-in duration-200">
         
-        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-all">
+        <IconButton
+          label="Cerrar confirmación de eliminación"
+          size="sm"
+          onClick={onClose}
+          className="absolute top-4 right-4"
+        >
           <FiX size={16} />
-        </button>
+        </IconButton>
 
         <div className="flex flex-col items-center text-center mt-3">
           <div className="w-11 h-11 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center mb-4">
@@ -841,7 +924,7 @@ const DeleteAdminUserModal = ({ user, onClose, onConfirm }) => {
           </div>
           
           <h3 className="text-base font-extrabold text-[#111111] uppercase tracking-tight">
-            ¿Confirmar Eliminación?
+            Eliminar usuario
           </h3>
           
           <p className="text-xs text-slate-500 mt-2 leading-relaxed">
@@ -849,7 +932,7 @@ const DeleteAdminUserModal = ({ user, onClose, onConfirm }) => {
           </p>
           
           <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 mt-3.5 w-full flex items-center justify-center gap-2">
-            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Rol: {user.role}</span>
+            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Rol: {getRoleLabel(user.role)}</span>
             <span className="text-slate-300">•</span>
             <span className="text-[10px] font-medium font-mono text-slate-500">ID: {user.id?.slice(0, 8)}...</span>
           </div>
