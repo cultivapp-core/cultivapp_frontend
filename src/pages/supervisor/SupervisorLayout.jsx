@@ -1,18 +1,42 @@
+import { useState } from "react";
 import { Outlet } from "react-router-dom";
-import SupervisorSidebar from "./SuperviorSidebar"; 
+import SupervisorSidebar from "./SuperviorSidebar";
 
 const SupervisorLayout = () => {
-  return (
-    <div className="flex h-screen w-full overflow-hidden bg-gray-50/50 font-[Outfit]">
-      
-      {/* SIDEBAR DE SUPERVISOR AUTOMÁTICO */}
-      <SupervisorSidebar />
+  const [isCollapsed, setIsCollapsed] =
+    useState(() => {
+      return (
+        localStorage.getItem(
+          "supervisorSidebarCollapsed",
+        ) === "true"
+      );
+    });
 
-      {/* ÁREA DE CONTENIDO PRINCIPAL */}
-      <main className="flex-1 h-full overflow-y-auto custom-scrollbar relative flex flex-col">
-        <Outlet />
+  const toggleSidebar = () => {
+    setIsCollapsed((current) => {
+      const next = !current;
+
+      localStorage.setItem(
+        "supervisorSidebarCollapsed",
+        String(next),
+      );
+
+      return next;
+    });
+  };
+
+  return (
+    <div className="flex h-screen w-full overflow-hidden bg-gray-50 font-[Outfit]">
+      <SupervisorSidebar
+        isCollapsed={isCollapsed}
+        onToggleCollapse={toggleSidebar}
+      />
+
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="custom-scrollbar h-full flex-1 overflow-y-auto overflow-x-hidden">
+          <Outlet />
+        </div>
       </main>
-      
     </div>
   );
 };

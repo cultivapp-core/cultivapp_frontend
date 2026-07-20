@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Outlet } from "react-router-dom"
 import { FiMenu, FiX } from "react-icons/fi"
-import SupervisorSidebar from "../supervisor/SuperviorSidebar"
+import SupervisorSidebar from "./SuperviorSidebar"
 import Notifications from "../../components/Notifications"
 import { useAuth } from "../../context/AuthContext"
 

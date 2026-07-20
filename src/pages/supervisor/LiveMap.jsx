@@ -7,6 +7,15 @@ import { FiNavigation, FiAlertCircle, FiMapPin, FiChevronRight, FiList, FiRefres
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
+const escapeHtml = (value) => {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+};
+
 const POLL_INTERVAL = 15000;
 
 // 🎨 Colores de Estados de Planificación (🚩 INVERTIDOS)
@@ -89,6 +98,7 @@ const LiveMap = () => {
   
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -106,6 +116,7 @@ const LiveMap = () => {
 
   const fetchData = useCallback(async (silent = false) => {
     try {
+      setError(null);
       if (!silent) setLoading(true);
       else setRefreshing(true);
 
@@ -121,8 +132,13 @@ const LiveMap = () => {
       setActiveRoutes(active);
 
       setLastUpdated(new Date());
-    } catch (error) {
-      console.error("❌ ERROR DETALLADO DE API:", error.message);
+    } catch (fetchError) {
+      console.error("❌ ERROR DETALLADO DE API:", fetchError.message);
+      setError(
+        fetchError?.response?.data?.message ||
+          fetchError?.message ||
+          "No fue posible cargar el monitoreo",
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -187,14 +203,33 @@ const LiveMap = () => {
   }, [routesUsuarios]);
 
   useEffect(() => {
-    if (map.current) return;
+    if (map.current || !mapContainer.current) return undefined;
+
+    if (!MAPBOX_TOKEN) {
+      setError("No está configurado VITE_MAPBOX_TOKEN");
+      setLoading(false);
+      return undefined;
+    }
+
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/light-v11",
       center: [-70.6483, -33.4569],
-      zoom: 13
+      zoom: 13,
     });
-    map.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+
+    map.current.addControl(
+      new mapboxgl.NavigationControl({ showCompass: false }),
+      "top-right",
+    );
+
+    return () => {
+      routeMarkers.current.forEach((marker) => marker.remove());
+      routePopups.current.forEach((popup) => popup.remove());
+      liveMarkers.current.forEach((marker) => marker.remove());
+      map.current?.remove();
+      map.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -234,10 +269,12 @@ const LiveMap = () => {
       let hasCoords = false;
 
       filteredRoutes.forEach((route) => {
-        if (!route.lat || !route.lng) return;
+        const lng = Number.parseFloat(route.lng);
+        const lat = Number.parseFloat(route.lat);
+
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+
         hasCoords = true;
-        const lng = parseFloat(route.lng);
-        const lat = parseFloat(route.lat);
 
         const el = document.createElement("div");
         el.style.cssText = `width:22px;height:22px;cursor:pointer;`;
@@ -256,11 +293,11 @@ const LiveMap = () => {
           closeOnClick: false,
         }).setHTML(`
           <div style="font-family:'Outfit';padding:10px 6px;min-width:200px;">
-            <p style="font-weight:900;margin:0 0 8px 0;font-size:12px;color:#111827;text-transform:uppercase;letter-spacing:-0.02em;">${route.cadena || 'Sin nombre'}</p>
+            <p style="font-weight:900;margin:0 0 8px 0;font-size:12px;color:#111827;text-transform:uppercase;letter-spacing:-0.02em;">${escapeHtml(route.cadena || 'Sin nombre')}</p>
             <div style="font-size:10px;font-weight:700;color:#374151;line-height:1.9;">
-              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Código del local:</span><br/>${route.codigo_local || 'S/N'}</div>
-              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Dirección:</span><br/>${route.direccion || route.comuna || 'Sin dirección'}</div>
-              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Mercaderista:</span><br/>${route.usuario_nombre || 'Sin asignar'}</div>
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Código del local:</span><br/>${escapeHtml(route.codigo_local || 'S/N')}</div>
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Dirección:</span><br/>${escapeHtml(route.direccion || route.comuna || 'Sin dirección')}</div>
+              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Mercaderista:</span><br/>${escapeHtml(route.usuario_nombre || 'Sin asignar')}</div>
             </div>
             <div style="margin-top:8px;">
               <span style="font-size:8px;font-weight:900;color:white;background:${statusToColor(route.status)};padding:3px 8px;border-radius:6px;display:inline-block;text-transform:uppercase;letter-spacing:0.05em;">
@@ -285,8 +322,11 @@ const LiveMap = () => {
       });
 
       activeRoutes.forEach((route, index) => {
-        const lng = parseFloat(route.lng_in);
-        const lat = parseFloat(route.lat_in);
+        const lng = Number.parseFloat(route.lng_in);
+        const lat = Number.parseFloat(route.lat_in);
+
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+
         hasCoords = true;
         const userColor = stringToColor(route.user_id || "default");
         
@@ -326,9 +366,9 @@ const LiveMap = () => {
           .setLngLat([lng, lat])
           .setPopup(new mapboxgl.Popup({ offset: 20 }).setHTML(`
               <div style="font-family: 'Outfit'; padding: 6px;">
-                  <p style="font-weight: 900; font-size: 11px; margin: 0; color: #111;">${route.first_name} ${route.last_name}</p>
+                  <p style="font-weight: 900; font-size: 11px; margin: 0; color: #111;">${escapeHtml(`${route.first_name || ''} ${route.last_name || ''}`.trim() || 'Usuario')}</p>
                   <p style="font-size: 9px; color: #2563eb; font-weight: 700; margin: 2px 0 0 0; text-transform: uppercase;">
-                    ${route.local_nombre || 'En Movimiento'}
+                    ${escapeHtml(route.local_nombre || 'En Movimiento')}
                   </p>
               </div>
           `))
@@ -338,8 +378,12 @@ const LiveMap = () => {
         bounds.extend([lng, lat]);
       });
 
-      if (hasCoords && filteredRoutes.length > 0) {
-        map.current.fitBounds(bounds, { padding: 80, duration: 1000 });
+      if (hasCoords && !bounds.isEmpty()) {
+        map.current.fitBounds(bounds, {
+          padding: 80,
+          duration: 1000,
+          maxZoom: 15,
+        });
       }
     };
 
@@ -348,10 +392,16 @@ const LiveMap = () => {
   }, [filteredRoutes, activeRoutes]);
 
   const flyToRoute = (route) => {
-    if (!map.current || !route.lat || !route.lng) return;
+    if (!map.current) return;
+
+    const lng = Number.parseFloat(route.lng);
+    const lat = Number.parseFloat(route.lat);
+
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+
     setSelectedRoute(route);
     if (window.innerWidth < 1024) setPanelOpen(false);
-    map.current.flyTo({ center: [parseFloat(route.lng), parseFloat(route.lat)], zoom: 14, duration: 1200 });
+    map.current.flyTo({ center: [lng, lat], zoom: 14, duration: 1200 });
   };
 
   const formatLastUpdated = (date) => {
@@ -361,13 +411,17 @@ const LiveMap = () => {
 
   return (
     <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/50">
-      <div className="bg-white border-b border-gray-100 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><FiNavigation size={20} /></div>
-            <h2 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">Monitoreo GPS</h2>
+      <div className="bg-white border-b border-slate-200/80 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+            <FiNavigation size={22} />
           </div>
-          <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-12 mt-1">Planificación y seguimiento en tiempo real</p>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Monitoreo GPS</h1>
+            <p className="mt-1.5 text-[10px] font-black uppercase tracking-[0.24em] text-[#87be00]">
+              Planificación y seguimiento en tiempo real
+            </p>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
           {/* 🚩 Indicadores de color superiores corregidos */}
@@ -397,6 +451,25 @@ const LiveMap = () => {
       </div>
 
       <div className="flex-1 flex flex-col p-4 md:p-8 gap-4 md:gap-6 overflow-y-auto relative min-h-0">
+
+        {error && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-red-100 bg-red-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <FiAlertCircle className="mt-0.5 shrink-0 text-red-500" size={18} />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-red-600">Error de monitoreo</p>
+                <p className="mt-1 text-[11px] font-bold text-red-500">{error}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchData(false)}
+              className="rounded-xl bg-red-500 px-4 py-2.5 text-[9px] font-black uppercase tracking-widest text-white transition hover:bg-red-600"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-col md:flex-row gap-4 md:gap-6 shrink-0 md:h-[480px]">
 
