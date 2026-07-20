@@ -12,9 +12,9 @@ const POLL_INTERVAL = 15000;
 // 🎨 Colores de Estados de Planificación
 const statusToColor = (status) => {
   switch (status) {
-    case 'IN_PROGRESS': return '#5c9200'; // Ajustado al verde Cultiva corporativo
+    case 'IN_PROGRESS': return '#2563eb'; // Azul para rutas en proceso
     case 'PENDING':     return '#ef4444';
-    case 'COMPLETED':   return '#2563eb';
+    case 'COMPLETED':   return '#5c9200'; // Verde para rutas completadas
     default:            return '#94a3b8';
   }
 };
@@ -30,9 +30,9 @@ const statusLabel = (status) => {
 
 const statusBg = (status) => {
   switch (status) {
-    case 'IN_PROGRESS': return 'bg-[#5c9200]/10 text-[#5c9200] border-[#5c9200]/20';
+    case 'IN_PROGRESS': return 'bg-blue-50 text-blue-600 border-blue-100';
     case 'PENDING':     return 'bg-red-50 text-red-500 border-red-100';
-    case 'COMPLETED':   return 'bg-blue-50 text-blue-600 border-blue-100';
+    case 'COMPLETED':   return 'bg-[#5c9200]/10 text-[#5c9200] border-[#5c9200]/20';
     default:            return 'bg-gray-50 text-gray-500 border-gray-100';
   }
 };
@@ -392,8 +392,8 @@ const GpsMonitor = () => {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
           <div className="flex gap-4 bg-gray-50 px-5 py-3 rounded-[1rem] border border-gray-100 w-full sm:w-auto justify-center">
             <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] shadow-sm"></span>Pendiente</span>
-            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#5c9200] shadow-sm"></span>Proceso</span>
-            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Lista</span>
+            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Proceso</span>
+            <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#5c9200] shadow-sm"></span>Lista</span>
           </div>
 
           <div className="flex px-5 py-3 bg-green-50 rounded-[1rem] border border-green-100 items-center gap-2 w-full sm:w-auto justify-center shrink-0">
@@ -457,8 +457,8 @@ const GpsMonitor = () => {
             <div className="space-y-4">
               {[
                 { label: 'Pendiente',   count: stats.pending,    color: 'bg-[#ef4444]' },
-                { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#5c9200]' },
-                { label: 'Completada', count: stats.completed,  color: 'bg-[#2563eb]' },
+                { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#2563eb]' },
+                { label: 'Completada', count: stats.completed,  color: 'bg-[#5c9200]' },
               ].map(({ label, count, color }) => (
                 <div key={label}>
                   <div className="flex items-center justify-between mb-1">
@@ -508,8 +508,8 @@ const GpsMonitor = () => {
               <div className="grid grid-cols-4 gap-2">
                 <button onClick={() => setStatusFilter("ALL")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "ALL" ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-500"}`}>Todas</button>
                 <button onClick={() => setStatusFilter("PENDING")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "PENDING" ? "bg-red-500 text-white" : "bg-red-50 text-red-500"}`}>Pendientes</button>
-                <button onClick={() => setStatusFilter("IN_PROGRESS")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "IN_PROGRESS" ? "bg-[#5c9200] text-white" : "bg-[#5c9200]/10 text-[#5c9200]"}`}>En Proceso</button>
-                <button onClick={() => setStatusFilter("COMPLETED")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "COMPLETED" ? "bg-blue-500 text-white" : "bg-blue-50 text-blue-500"}`}>Completadas</button>
+                <button onClick={() => setStatusFilter("IN_PROGRESS")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "IN_PROGRESS" ? "bg-blue-500 text-white" : "bg-blue-50 text-blue-500"}`}>En Proceso</button>
+                <button onClick={() => setStatusFilter("COMPLETED")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "COMPLETED" ? "bg-[#5c9200] text-white" : "bg-[#5c9200]/10 text-[#5c9200]"}`}>Completadas</button>
               </div>
             </div>
 
@@ -546,8 +546,8 @@ const GpsMonitor = () => {
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[7px] font-bold text-gray-300 uppercase">{localData.codigo || 'S/N'} · {localData.comuna}</span>
                                   {pendiente  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span>{pendiente}</span>}
-                                  {enProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#5c9200]"><span className="w-1.5 h-1.5 rounded-full bg-[#5c9200]"></span>{enProceso}</span>}
-                                  {completada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{completada}</span>}
+                                  {enProceso  > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-blue-500"><span className="w-1.5 h-1.5 rounded-full bg-[#2563eb]"></span>{enProceso}</span>}
+                                  {completada > 0 && <span className="flex items-center gap-1 text-[7px] font-black text-[#5c9200]"><span className="w-1.5 h-1.5 rounded-full bg-[#5c9200]"></span>{completada}</span>}
                                 </div>
                               </div>
                               <FiChevronRight size={14} className={`text-gray-300 group-hover:text-[#5c9200] transition-all duration-300 shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
