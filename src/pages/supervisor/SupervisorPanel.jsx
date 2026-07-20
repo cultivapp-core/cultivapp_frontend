@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiUsers, FiMapPin, FiCheckCircle, FiAlertCircle, FiClock, FiShield, FiExternalLink, FiSearch, FiHash, FiCalendar, FiXCircle } from "react-icons/fi";
+import { FiUsers, FiMapPin, FiCheckCircle, FiAlertCircle, FiClock, FiShield, FiExternalLink, FiSearch, FiCalendar, FiXCircle } from "react-icons/fi";
 import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import api from "../../api/apiClient";
@@ -96,19 +96,37 @@ const SupervisorPanel = () => {
 
   // 🚩 TIEMPO REAL: Conexión WebSocket con el Backend
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    const rawUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    const socketUrl = rawUrl.replace(/\/api\/?$/, "");
+
     const socket = io(socketUrl, {
       withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      console.log("🟢 Supervisor conectado a Socket.IO:", socket.id);
     });
 
     socket.on("cobertura-modificada", (data) => {
-      if (data && data.company_id === user?.company_id) {
-        console.log("🔄 Actualización en tiempo real detectada. Refrescando dashboard...");
-        queryClient.invalidateQueries(['dashboard-stats']);
-      }
+      const sameCompany =
+        String(data?.company_id || "") === String(user?.company_id || "");
+
+      if (!sameCompany) return;
+
+      queryClient.invalidateQueries({
+        queryKey: ["dashboard-stats"],
+      });
     });
 
-    return () => socket.disconnect();
+    socket.on("connect_error", (socketError) => {
+      console.error("🔴 Error Socket.IO Supervisor:", socketError.message);
+    });
+
+    return () => {
+      socket.off("cobertura-modificada");
+      socket.disconnect();
+    };
   }, [user?.company_id, queryClient]);
 
   const { data: stats, isLoading, error, isFetching } = useQuery({
@@ -126,26 +144,16 @@ const SupervisorPanel = () => {
     refetchInterval: 10000,
   });
 
-  console.log("Dashboard Stats");
-console.log(stats);
 
   const filterData = () => {
     let baseData = stats?.locales_detalle || [];
 
-    console.log("ANTES", baseData);
     
     // 1. Filtro por Día (si está seleccionado)
     if (selectedDay) {
       baseData = baseData.filter(l => {
         const dias = parseDias(l.dias_planificados);
 
-        console.log({
-          local: l.cadena,
-          diasOriginal: l.dias_planificados,
-          diasParseados: dias,
-          selectedDay,
-          incluye: dias.includes(selectedDay)
-        });
 
         return dias.includes(selectedDay);
       });
@@ -213,6 +221,17 @@ console.log(stats);
 };
 
   const uniqueUsers = getUniqueUsers();
+
+  const filteredUsers = uniqueUsers.filter((assignedUser) => {
+    const term = searchTerm.trim().toLowerCase();
+
+    if (!term) return true;
+
+    const userName = String(assignedUser.name || "").toLowerCase();
+    const localNames = (assignedUser.locales || []).join(" ").toLowerCase();
+
+    return userName.includes(term) || localNames.includes(term);
+  });
 
   const cards = [
     { id: 'sin_ruta', label: "Locales fuera Ruta", value: stats?.sin_asignacion || 0, color: "bg-gray-900", text: "text-gray-900", icon: <FiXCircle size={24} /> },
@@ -303,9 +322,13 @@ console.log(stats);
   // Pastilla reutilizable para visitas realizadas por usuarios externos.
   // Al presionarla, despliega u oculta el nombre del mercaderista.
   const ExternalMerchantBadge = ({ item, compact = false }) => {
-    if (item?.mercaderista_tipo !== 'EXTERNO') return null;
+    const isExternalMerchant =
+      item?.mercaderista_tipo === 'EXTERNO' ||
+      item?.tipo_cobertura === 'MERCADERISTA_EXTERNO';
 
-    const externalKey = `${item.route_id || item.id}-external`;
+    if (!isExternalMerchant) return null;
+
+    const externalKey = `${item.route_id || item.id || item.local_id}-external`;
     const isExpanded = expandedExternalMerchant === externalKey;
 
     return (
@@ -354,7 +377,11 @@ console.log(stats);
   // Pastilla para usuarios del supervisor que visitan un local fuera de su cobertura.
   // Mantiene visible el nombre del mercaderista y destaca únicamente la condición del local.
   const ExternalLocalBadge = ({ item, compact = false }) => {
-    if (item?.tipo_cobertura !== 'LOCAL_EXTERNO') return null;
+    const isExternalLocal =
+      item?.tipo_cobertura === 'LOCAL_EXTERNO' ||
+      item?.local_tipo === 'EXTERNO';
+
+    if (!isExternalLocal) return null;
 
     return (
       <div className={`flex flex-col ${compact ? 'items-start' : 'items-start'} gap-1.5`}>
@@ -372,45 +399,89 @@ console.log(stats);
     </div>
   );
 
-  return (
-    <div className="space-y-6 md:space-y-8 font-[Outfit] pb-24 md:pb-20">
-      
-      {/* HEADER RESPONSIVO */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-2 pt-12 pl-8">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
-            Panel de Supervisión
-          </h2>
-          <div className="flex items-center gap-2 mt-2">
-              <div className="w-2 h-2 bg-[#87be00] rounded-full animate-ping shrink-0"></div>
-              <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest italic truncate">
-                Análisis de cobertura en tiempo real
-              </p>
+  if (error) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4 font-[Outfit]">
+        <div className="w-full max-w-md rounded-[2rem] border border-red-100 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+            <FiAlertCircle size={24} />
           </div>
-        </div>
-        
-        <div className="hidden sm:flex items-center gap-3 bg-white px-4 md:px-5 py-2 md:py-3 rounded-2xl md:rounded-[1.5rem] border border-gray-100 shadow-sm w-full md:w-auto">
-            <div className="w-7 h-7 md:w-8 md:h-8 bg-gray-900 rounded-xl flex items-center justify-center text-[#87be00] shrink-0">
-                <FiShield size={14} className="md:w-4 md:h-4" />
-            </div>
-            <div className="truncate">
-                <p className="text-[8px] font-black text-gray-400 uppercase tracking-tighter">Supervisor Activo</p>
-                <p className="text-[10px] font-black text-gray-900 uppercase italic leading-none truncate">
-                  {user?.first_name} {user?.last_name}
-                </p>
-            </div>
+
+          <h2 className="text-lg font-black uppercase italic tracking-tight text-gray-900">
+            No se pudo cargar el panel
+          </h2>
+
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+            {error?.response?.data?.message || error?.message || "Error de conexión"}
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              queryClient.invalidateQueries({
+                queryKey: ["dashboard-stats"],
+              })
+            }
+            className="mt-6 rounded-xl bg-gray-900 px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-[#87be00]"
+          >
+            Reintentar
+          </button>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-full space-y-8 bg-slate-50/70 px-4 pb-24 pt-6 font-[Outfit] sm:px-6 md:pb-20 lg:px-8">
+      
+      {/* ENCABEZADO UNIFICADO CON ADMIN Y ROOT */}
+      <header className="flex flex-col gap-5 border-b border-slate-200/80 pb-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+            <FiShield size={22} />
+          </div>
+
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+              Resumen de supervisión
+            </h1>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#87be00]">
+                Estado general de cobertura
+              </p>
+              {isFetching && !isLoading && (
+                <span className="rounded-full bg-[#87be00]/10 px-3 py-1 text-[8px] font-black uppercase tracking-widest text-[#87be00]">
+                  Actualizando
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:w-auto">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-[#87be00]">
+            <FiShield size={16} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[8px] font-black uppercase tracking-[0.18em] text-slate-400">
+              Supervisor activo
+            </p>
+            <p className="truncate text-[11px] font-black uppercase text-slate-900">
+              {user?.first_name} {user?.last_name}
+            </p>
+          </div>
+        </div>
+      </header>
 
       {/* SECCIÓN DIVIDIDA EN 2 COLUMNAS PRINCIPALES */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 px-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
         
         {/* COLUMNA IZQUIERDA: Gráfico de Torta arriba, Resumen abajo */}
         <div className="lg:col-span-5 flex flex-col gap-6">
           <DonutChart stats={stats} />
 
           <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50 space-y-3">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic mb-4">Resumen de Salas / Visitas</p>
+            <p className="mb-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Resumen de Salas / Visitas</p>
             
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -481,7 +552,7 @@ console.log(stats);
                   </div>
                 </div>
                 <h3 className="text-3xl md:text-5xl font-black text-gray-900 mb-1 tracking-tighter">{card.value}</h3>
-                <p className="text-[9px] md:text-[11px] font-black text-gray-800 uppercase italic leading-tight">{card.label}</p>
+                <p className="text-[9px] font-black uppercase leading-tight text-slate-700 md:text-[11px]">{card.label}</p>
                 
                 {activeFilter === card.id && (
                   <div className="absolute top-4 right-4 w-3 h-3 bg-gray-900 rounded-full animate-pulse"></div>
@@ -508,7 +579,7 @@ console.log(stats);
                   </div>
                 </div>
                 <h3 className="text-3xl md:text-5xl font-black text-gray-900 mb-1 tracking-tighter">{card.value}</h3>
-                <p className="text-[9px] md:text-[11px] font-black text-gray-800 uppercase italic leading-tight">{card.label}</p>
+                <p className="text-[9px] font-black uppercase leading-tight text-slate-700 md:text-[11px]">{card.label}</p>
                 
                 {activeFilter === card.id && (
                   <div className="absolute top-4 right-4 w-3 h-3 bg-gray-900 rounded-full animate-pulse"></div>
@@ -524,14 +595,14 @@ console.log(stats);
       <div className="space-y-4 md:space-y-6 pt-4">
         
         {/* Cabecera, Filtro de Días y Buscador */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 px-2 md:px-4">
+        <div className="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
             <div>
-                <h3 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic tracking-tighter leading-none">
-                  {activeFilter === 'sin_ruta' ? 'Locales Sin Planificación' : 
-                   activeFilter === 'locales' ? 'Listado de Locales Asignados' : 
-                   activeFilter === 'usuarios' ? 'Listado de Usuarios Asignados' : 
+                <h3 className="text-xl font-black tracking-tight text-slate-900 md:text-2xl">
+                  {activeFilter === 'sin_ruta' ? 'Locales sin planificación' : 
+                   activeFilter === 'locales' ? 'Locales asignados' : 
+                   activeFilter === 'usuarios' ? 'Usuarios asignados' : 
                    activeFilter ? `Detalle: ${cards.find(c => c.id === activeFilter)?.label}` : 
-                   'Mi Cartera Global'}
+                   'Mi cartera global'}
                 </h3>
                 <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
                   {activeFilter ? 'Mostrando resultados filtrados' : 'Todos los locales bajo tu gestión'}
@@ -573,12 +644,12 @@ console.log(stats);
         </div>
 
         {/* VISTA MÓVIL: Tarjetas Adaptativas */}
-        <div className="md:hidden space-y-4 px-2">
+        <div className="space-y-4 md:hidden">
           <AnimatePresence>
             {activeFilter === 'usuarios' ? (
               /* MÓVIL: Tarjetas de Usuarios Asignados */
-              uniqueUsers.length > 0 ? (
-                uniqueUsers.map((u, idx) => (
+              filteredUsers.length > 0 ? (
+                filteredUsers.map((u, idx) => (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }} 
                     animate={{ opacity: 1, y: 0 }} 
@@ -772,7 +843,7 @@ console.log(stats);
         </div>
 
         {/* VISTA DESKTOP: Tabla Dinámica */}
-        <div className="hidden md:block bg-white rounded-[3rem] shadow-sm border border-gray-50 overflow-hidden mx-2">
+        <div className="hidden overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm md:block">
           <div className="overflow-x-auto">
             {activeFilter === 'usuarios' ? (
               /* TABLA DE USUARIOS ASIGNADOS */
@@ -786,8 +857,8 @@ console.log(stats);
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   <AnimatePresence>
-                    {uniqueUsers.length > 0 ? (
-                      uniqueUsers.map((u, idx) => (
+                    {filteredUsers.length > 0 ? (
+                      filteredUsers.map((u, idx) => (
                         <motion.tr 
                           initial={{ opacity: 0, x: -10 }} 
                           animate={{ opacity: 1, x: 0 }} 
