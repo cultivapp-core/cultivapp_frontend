@@ -3,12 +3,16 @@ import {
   useState,
 } from "react";
 import {
+  AlertTriangle,
   Bell,
   BellOff,
   CheckCheck,
+  CheckCircle2,
   Globe2,
   Inbox,
+  Info,
   MapPin,
+  Navigation,
   RefreshCcw,
   Search,
   User,
@@ -26,10 +30,122 @@ import {
 } from "../components/ui";
 
 const TYPE_LABELS = {
+  URGENTE: "Urgente",
+  OPERATIVA: "Operativa",
   ROUTE_ASSIGNED: "Ruta asignada",
   ROUTE_UPDATED: "Ruta actualizada",
   VISIT_COMPLETED: "Visita completada",
   GENERAL: "General",
+};
+
+const getTypeConfig = (type, unread) => {
+  const normalizedType = String(type || "GENERAL").toUpperCase();
+
+  const configs = {
+    URGENTE: {
+      label: "Urgente",
+      icon: AlertTriangle,
+      cardClasses: unread
+        ? "bg-red-50/70 border-red-200 shadow-sm shadow-red-100/60"
+        : "bg-red-50/30 border-red-100",
+      iconClasses: unread
+        ? "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20"
+        : "bg-red-100 text-red-400 border-red-100",
+      titleClasses: unread ? "text-red-700" : "text-red-400",
+      badgeClasses: "bg-red-100 text-red-700 border-red-200",
+      statusClasses: unread
+        ? "bg-red-100 text-red-700 border-red-200"
+        : "bg-gray-100 text-gray-500 border-gray-200",
+      statusDotClasses: unread ? "bg-red-500" : "bg-gray-300",
+    },
+    OPERATIVA: {
+      label: "Operativa",
+      icon: Info,
+      cardClasses: unread
+        ? "bg-white border-[#87be00]/25 shadow-sm"
+        : "bg-gray-50 border-gray-100",
+      iconClasses: unread
+        ? "bg-[#87be00] text-white border-[#87be00]"
+        : "bg-gray-200 text-gray-400 border-gray-200",
+      titleClasses: unread ? "text-gray-900" : "text-gray-500",
+      badgeClasses:
+        "bg-[#87be00]/10 text-[#5c9200] border-[#87be00]/20",
+      statusClasses: unread
+        ? "bg-green-50 text-green-700 border-green-200"
+        : "bg-gray-100 text-gray-500 border-gray-200",
+      statusDotClasses: unread ? "bg-green-500" : "bg-gray-300",
+    },
+    ROUTE_ASSIGNED: {
+      label: "Ruta asignada",
+      icon: Navigation,
+      cardClasses: unread
+        ? "bg-blue-50/50 border-blue-200 shadow-sm"
+        : "bg-gray-50 border-gray-100",
+      iconClasses: unread
+        ? "bg-blue-600 text-white border-blue-600"
+        : "bg-gray-200 text-gray-400 border-gray-200",
+      titleClasses: unread ? "text-blue-800" : "text-gray-500",
+      badgeClasses: "bg-blue-50 text-blue-700 border-blue-200",
+      statusClasses: unread
+        ? "bg-blue-50 text-blue-700 border-blue-200"
+        : "bg-gray-100 text-gray-500 border-gray-200",
+      statusDotClasses: unread ? "bg-blue-500" : "bg-gray-300",
+    },
+    ROUTE_UPDATED: {
+      label: "Ruta actualizada",
+      icon: RefreshCcw,
+      cardClasses: unread
+        ? "bg-amber-50/50 border-amber-200 shadow-sm"
+        : "bg-gray-50 border-gray-100",
+      iconClasses: unread
+        ? "bg-amber-500 text-white border-amber-500"
+        : "bg-gray-200 text-gray-400 border-gray-200",
+      titleClasses: unread ? "text-amber-800" : "text-gray-500",
+      badgeClasses: "bg-amber-50 text-amber-700 border-amber-200",
+      statusClasses: unread
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : "bg-gray-100 text-gray-500 border-gray-200",
+      statusDotClasses: unread ? "bg-amber-500" : "bg-gray-300",
+    },
+    VISIT_COMPLETED: {
+      label: "Visita completada",
+      icon: CheckCircle2,
+      cardClasses: unread
+        ? "bg-emerald-50/50 border-emerald-200 shadow-sm"
+        : "bg-gray-50 border-gray-100",
+      iconClasses: unread
+        ? "bg-emerald-500 text-white border-emerald-500"
+        : "bg-gray-200 text-gray-400 border-gray-200",
+      titleClasses: unread ? "text-emerald-800" : "text-gray-500",
+      badgeClasses:
+        "bg-emerald-50 text-emerald-700 border-emerald-200",
+      statusClasses: unread
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        : "bg-gray-100 text-gray-500 border-gray-200",
+      statusDotClasses: unread ? "bg-emerald-500" : "bg-gray-300",
+    },
+    GENERAL: {
+      label: "General",
+      icon: Bell,
+      cardClasses: unread
+        ? "bg-white border-[#87be00]/20 shadow-sm"
+        : "bg-gray-50 border-gray-100",
+      iconClasses: unread
+        ? "bg-[#87be00] text-white border-[#87be00]"
+        : "bg-gray-200 text-gray-400 border-gray-200",
+      titleClasses: unread ? "text-gray-900" : "text-gray-500",
+      badgeClasses: "bg-gray-50 text-gray-600 border-gray-200",
+      statusClasses: unread
+        ? "bg-green-50 text-green-700 border-green-200"
+        : "bg-gray-100 text-gray-500 border-gray-200",
+      statusDotClasses: unread ? "bg-green-500" : "bg-gray-300",
+    },
+  };
+
+  return configs[normalizedType] || {
+    ...configs.GENERAL,
+    label: TYPE_LABELS[normalizedType] || normalizedType,
+  };
 };
 
 const getScopeConfig = (scope) => {
@@ -450,89 +566,71 @@ const NotificationCard = ({
   notification,
   onMarkRead,
 }) => {
-  const unread =
-    !notification.is_read;
-  const scope =
-    getScopeConfig(
-      notification.scope,
-    );
+  const unread = !notification.is_read;
+  const scope = getScopeConfig(
+    String(notification.scope || "").toLowerCase(),
+  );
   const ScopeIcon = scope.icon;
+
+  const typeConfig = getTypeConfig(
+    notification.type,
+    unread,
+  );
+  const TypeIcon = typeConfig.icon;
 
   return (
     <article
-      className={`relative p-4 sm:p-5 rounded-[1.5rem] border transition-all ${
-        unread
-          ? "bg-white border-[#87be00]/20 shadow-sm"
-          : "bg-gray-50 border-gray-100"
-      }`}
+      className={`relative rounded-[1.5rem] border p-4 transition-all sm:p-5 ${typeConfig.cardClasses}`}
     >
       <div className="flex items-start gap-3 sm:gap-4">
         <div
-          className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
-            unread
-              ? "bg-[#87be00] text-white border-[#87be00]"
-              : "bg-gray-200 text-gray-400 border-gray-200"
-          }`}
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${typeConfig.iconClasses}`}
+          title={typeConfig.label}
         >
-          <ScopeIcon size={18} />
+          <TypeIcon size={18} />
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
             <div className="min-w-0">
               <h3
-                className={`text-sm sm:text-base font-black leading-tight break-words ${
-                  unread
-                    ? "text-gray-900"
-                    : "text-gray-500"
-                }`}
+                className={`break-words text-sm font-black leading-tight sm:text-base ${typeConfig.titleClasses}`}
               >
                 {notification.title ||
                   "Notificación sin título"}
               </h3>
 
-              <div className="flex flex-wrap gap-1.5 mt-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 <span
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[8px] font-black uppercase tracking-wider ${scope.classes}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${typeConfig.badgeClasses}`}
+                >
+                  <TypeIcon size={10} />
+                  {typeConfig.label}
+                </span>
+
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${scope.classes}`}
                 >
                   <ScopeIcon size={10} />
                   {scope.label}
                 </span>
-
-                {notification.type && (
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full border bg-gray-50 text-gray-500 border-gray-200 text-[8px] font-black uppercase tracking-wider">
-                    {TYPE_LABELS[
-                      notification.type
-                    ] ||
-                      notification.type}
-                  </span>
-                )}
               </div>
             </div>
 
             <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider shrink-0 ${
-                unread
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : "bg-gray-100 text-gray-500 border border-gray-200"
-              }`}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${typeConfig.statusClasses}`}
             >
               <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  unread
-                    ? "bg-green-500"
-                    : "bg-gray-300"
-                }`}
+                className={`h-1.5 w-1.5 rounded-full ${typeConfig.statusDotClasses}`}
               />
-
               {unread ? "Nueva" : "Leída"}
             </span>
           </div>
 
           <p
-            className={`text-xs sm:text-sm leading-relaxed mt-3 whitespace-pre-wrap break-words ${
+            className={`mt-3 whitespace-pre-wrap break-words text-xs leading-relaxed sm:text-sm ${
               unread
-                ? "text-gray-600"
+                ? "text-gray-700"
                 : "text-gray-400"
             }`}
           >
@@ -540,8 +638,8 @@ const NotificationCard = ({
               "Sin contenido"}
           </p>
 
-          <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
+          <div className="mt-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <span className="text-[9px] font-black uppercase tracking-wider text-gray-400">
               {formatNotificationDate(
                 notification.created_at,
               )}
@@ -553,14 +651,10 @@ const NotificationCard = ({
                 variant="secondary"
                 size="sm"
                 leftIcon={
-                  <CheckCheck
-                    size={13}
-                  />
+                  <CheckCheck size={13} />
                 }
                 onClick={() =>
-                  onMarkRead(
-                    notification.id,
-                  )
+                  onMarkRead(notification.id)
                 }
               >
                 Marcar como leída
