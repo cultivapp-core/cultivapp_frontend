@@ -1,135 +1,610 @@
-import React from 'react';
-import { useNotificationContext } from '../context/NotificationContext';
-import { BellOff, RefreshCcw, CheckCheck, Eye, Inbox } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
- 
-const NotificationsLayout = ({ userRole }) => {
-  const { notifications, onMarkRead, onMarkAllRead, loading, refresh } = useNotificationContext();
- 
-  if (loading && notifications.length === 0) {
+import {
+  useMemo,
+  useState,
+} from "react";
+import {
+  Bell,
+  BellOff,
+  CheckCheck,
+  Globe2,
+  Inbox,
+  MapPin,
+  RefreshCcw,
+  Search,
+  User,
+  X,
+} from "lucide-react";
+import {
+  format,
+  isValid,
+} from "date-fns";
+import { es } from "date-fns/locale";
+import { useNotificationContext } from "../context/NotificationContext";
+import {
+  Button,
+  IconButton,
+} from "../components/ui";
+
+const TYPE_LABELS = {
+  ROUTE_ASSIGNED: "Ruta asignada",
+  ROUTE_UPDATED: "Ruta actualizada",
+  VISIT_COMPLETED: "Visita completada",
+  GENERAL: "General",
+};
+
+const getScopeConfig = (scope) => {
+  if (scope === "global") {
+    return {
+      label: "Global",
+      icon: Globe2,
+      classes:
+        "bg-blue-50 text-blue-600 border-blue-100",
+    };
+  }
+
+  if (scope === "local") {
+    return {
+      label: "Local",
+      icon: MapPin,
+      classes:
+        "bg-amber-50 text-amber-600 border-amber-100",
+    };
+  }
+
+  if (scope === "individual") {
+    return {
+      label: "Individual",
+      icon: User,
+      classes:
+        "bg-purple-50 text-purple-600 border-purple-100",
+    };
+  }
+
+  return {
+    label: "Notificación",
+    icon: Bell,
+    classes:
+      "bg-gray-50 text-gray-500 border-gray-100",
+  };
+};
+
+const formatNotificationDate = (value) => {
+  if (!value) return "Sin fecha";
+
+  const date = new Date(value);
+
+  if (!isValid(date)) {
+    return "Sin fecha";
+  }
+
+  return format(
+    date,
+    "dd MMM yyyy · HH:mm",
+    {
+      locale: es,
+    },
+  );
+};
+
+const NotificationsLayout = ({
+  userRole,
+}) => {
+  const {
+    notifications = [],
+    onMarkRead,
+    onMarkAllRead,
+    loading,
+    refresh,
+  } = useNotificationContext();
+
+  const [statusFilter, setStatusFilter] =
+    useState("ALL");
+  const [scopeFilter, setScopeFilter] =
+    useState("ALL");
+  const [searchTerm, setSearchTerm] =
+    useState("");
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const unreadCount = useMemo(
+    () =>
+      notifications.filter(
+        (notification) =>
+          !notification.is_read,
+      ).length,
+    [notifications],
+  );
+
+  const filteredNotifications =
+    useMemo(() => {
+      const term = searchTerm
+        .trim()
+        .toLowerCase();
+
+      return notifications.filter(
+        (notification) => {
+          const matchesStatus =
+            statusFilter === "ALL" ||
+            (statusFilter === "UNREAD"
+              ? !notification.is_read
+              : notification.is_read);
+
+          const matchesScope =
+            scopeFilter === "ALL" ||
+            notification.scope ===
+              scopeFilter;
+
+          const searchableText = [
+            notification.title,
+            notification.message,
+            notification.type,
+            TYPE_LABELS[
+              notification.type
+            ],
+            notification.scope,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          const matchesSearch =
+            !term ||
+            searchableText.includes(
+              term,
+            );
+
+          return (
+            matchesStatus &&
+            matchesScope &&
+            matchesSearch
+          );
+        },
+      );
+    }, [
+      notifications,
+      statusFilter,
+      scopeFilter,
+      searchTerm,
+    ]);
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setStatusFilter("ALL");
+    setScopeFilter("ALL");
+    setSearchTerm("");
+  };
+
+  const hasFilters =
+    statusFilter !== "ALL" ||
+    scopeFilter !== "ALL" ||
+    Boolean(searchTerm);
+
+  if (
+    loading &&
+    notifications.length === 0
+  ) {
     return (
-      <div className="flex flex-col items-center justify-center p-10 md:p-20 text-center animate-pulse">
-        <RefreshCcw className="animate-spin text-[#87be00] mb-4" size={32} />
-        <div className="font-[Outfit] font-black text-gray-300 italic uppercase tracking-widest text-xs">
-          Sincronizando Alertas...
-        </div>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 text-center font-[Outfit]">
+        <RefreshCcw
+          className="animate-spin text-[#87be00] mb-4"
+          size={34}
+        />
+
+        <p className="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em]">
+          Sincronizando notificaciones...
+        </p>
       </div>
     );
   }
- 
+
   return (
-    <div className="w-full max-w-5xl mx-auto pt-16 pb-10 px-3 md:px-6 font-[Outfit] animate-in fade-in duration-500">
-      
-      {/* HEADER RESPONSIVO */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-6 gap-4 px-2">
-        <div>
-          <h1 className="text-3xl md:text-5xl font-black italic tracking-tight uppercase leading-none text-gray-900">
-            Notificaciones
-          </h1>
-          <p className="text-[#87be00] text-[10px] font-black uppercase tracking-[0.2em] mt-2">
-            Centro de Comunicación Cultivapp
-          </p>
-        </div>
+    <div className="w-full min-h-full bg-gray-50/40 font-[Outfit] pb-20">
+      <header className="bg-white border-b border-gray-100">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 py-5 md:py-8 flex flex-col sm:flex-row sm:items-end justify-between gap-5">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-[#87be00]/10 rounded-xl text-[#87be00]">
+              <Bell size={20} />
+            </div>
 
-        <button
-          onClick={() => refresh()}
-          className="p-3 rounded-full bg-white border border-gray-100 text-gray-400 hover:text-[#87be00] transition-all shadow-sm"
-        >
-          <RefreshCcw size={18} />
-        </button>
-      </div>
+            <div>
+              <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight leading-none">
+                Notificaciones
+              </h1>
 
-      {/* CONTENEDOR PRINCIPAL */}
-      <div className="bg-white rounded-[2rem] p-4 md:p-6 border border-gray-100 shadow-sm">
-        
-        {/* BARRA DE ACCIÓN */}
-        {notifications.length > 0 && (
-          <div className="flex flex-wrap justify-between items-center mb-6 border-b border-gray-50 pb-4 gap-2">
-            <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
-              <Inbox size={14} className="text-[#87be00]" />
-              {notifications.length} Mensajes pendientes
-            </h3>
-            <button 
-              onClick={onMarkAllRead}
-              className="text-[10px] font-black uppercase text-[#87be00] hover:underline"
-            >
-              Marcar todos como leídos
-            </button>
-          </div>
-        )}
-
-        {/* LISTA DE NOTIFICACIONES */}
-        <div className="space-y-4">
-          {notifications.length === 0 ? (
-            <div className="bg-gray-50 rounded-[1.5rem] p-10 text-center border border-dashed border-gray-200">
-              <BellOff className="mx-auto text-gray-300 mb-4" size={32} />
-              <p className="text-gray-400 font-black uppercase text-[10px] tracking-widest italic">
-                Sin mensajes pendientes
+              <p className="text-[10px] font-black text-[#87be00] uppercase tracking-[0.2em] mt-2">
+                Centro de comunicación
               </p>
             </div>
-          ) : (
-            notifications.map(n => (
-              <div
-                key={n.id}
-                className={`group relative flex items-start gap-4 p-4 md:p-6 rounded-[1.5rem] border transition-all duration-300 ${
-                  !n.is_read
-                    ? 'bg-white border-gray-100 shadow-sm'
-                    : 'bg-gray-50 border-transparent opacity-80'
+          </div>
+
+          <div className="grid grid-cols-[1fr_auto] sm:flex gap-2 w-full sm:w-auto">
+            <div className="min-h-11 px-4 rounded-xl bg-green-50 border border-green-100 flex items-center justify-center gap-2">
+              <Inbox
+                size={14}
+                className="text-[#5c9200]"
+              />
+
+              <span className="text-[9px] font-black uppercase tracking-wider text-[#5c9200]">
+                No leídas: {unreadCount}
+              </span>
+            </div>
+
+            <IconButton
+              label="Actualizar notificaciones"
+              size="lg"
+              onClick={handleRefresh}
+              disabled={
+                refreshing || loading
+              }
+            >
+              <RefreshCcw
+                size={17}
+                className={
+                  refreshing
+                    ? "animate-spin"
+                    : ""
+                }
+              />
+            </IconButton>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 pt-6 space-y-6">
+        <section className="bg-white p-4 sm:p-5 rounded-[2rem] border border-gray-100 shadow-sm">
+          <div className="flex gap-2 overflow-x-auto pb-3 custom-scrollbar">
+            {[
+              {
+                value: "ALL",
+                label: "Todas",
+              },
+              {
+                value: "UNREAD",
+                label: "No leídas",
+              },
+              {
+                value: "READ",
+                label: "Leídas",
+              },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() =>
+                  setStatusFilter(
+                    item.value,
+                  )
+                }
+                className={`px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap border ${
+                  statusFilter ===
+                  item.value
+                    ? "bg-gray-900 text-white border-gray-900"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-[#87be00] hover:text-[#87be00]"
                 }`}
               >
-                {/* ÍCONO */}
-                <div className={`p-3 rounded-2xl shrink-0 ${
-                  !n.is_read ? 'bg-[#87be00] text-white' : 'bg-gray-200 text-gray-400'
-                }`}>
-                  {n.scope === 'global' ? '🌍' : '🔔'}
-                </div>
+                {item.label}
+              </button>
+            ))}
+          </div>
 
-                {/* CONTENIDO */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start gap-2">
-                    {/* TÍTULO CON WORD-WRAP PARA EVITAR PEGADO */}
-                    <h3 className={`text-[14px] md:text-lg font-black italic uppercase leading-tight break-words ${
-                      !n.is_read ? 'text-gray-900' : 'text-gray-500'
-                    }`}>
-                      {n.title}
-                    </h3>
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-3">
+            <select
+              value={scopeFilter}
+              onChange={(event) =>
+                setScopeFilter(
+                  event.target.value,
+                )
+              }
+              className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-black text-gray-600 outline-none focus:bg-white focus:border-[#87be00]/50 transition-all cursor-pointer"
+            >
+              <option value="ALL">
+                Todos los alcances
+              </option>
+              <option value="global">
+                Global
+              </option>
+              <option value="local">
+                Local
+              </option>
+              <option value="individual">
+                Individual
+              </option>
+            </select>
 
-                  {/* MENSAJE */}
-                  <p className={`text-[11px] md:text-sm font-medium leading-snug mt-1 break-words ${!n.is_read ? 'text-gray-600' : 'text-gray-400'}`}>
-                    {n.message}
-                  </p>
+            <div className="relative">
+              <Search
+                size={16}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+              />
 
-                  {/* FOOTER */}
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
-                      {n.created_at ? format(new Date(n.created_at), "dd MMM HH:mm", { locale: es }) : '---'}
-                    </span>
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) =>
+                  setSearchTerm(
+                    event.target.value,
+                  )
+                }
+                placeholder="Buscar por título, mensaje o tipo..."
+                className="w-full h-12 pl-11 pr-11 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-medium text-gray-700 placeholder:text-gray-300 outline-none focus:bg-white focus:border-[#87be00]/50 transition-all"
+              />
 
-                    <div className="flex items-center gap-3">
-                      <span className={`text-[9px] font-black uppercase flex items-center gap-1 ${n.is_read ? 'text-gray-400' : 'text-[#87be00]'}`}>
-                        <CheckCheck size={12} /> {n.is_read ? 'Visto' : 'Nuevo'}
-                      </span>
-                      
-                      {!n.is_read && (
-                        <button
-                          onClick={() => onMarkRead(n.id)}
-                          className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-[#87be00] transition-colors"
-                        >
-                          Leída
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
+              {searchTerm && (
+                <button
+                  type="button"
+                  aria-label="Limpiar búsqueda"
+                  onClick={() =>
+                    setSearchTerm("")
+                  }
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {hasFilters && (
+            <div className="mt-4">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                leftIcon={<X size={13} />}
+                onClick={clearFilters}
+              >
+                Limpiar filtros
+              </Button>
+            </div>
           )}
-        </div>
-      </div>
+        </section>
+
+        <section className="bg-white rounded-[2rem] p-4 md:p-6 border border-gray-100 shadow-sm">
+          {notifications.length > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-[10px] font-black uppercase text-gray-500 tracking-wider flex items-center gap-2">
+                  <Inbox
+                    size={14}
+                    className="text-[#87be00]"
+                  />
+
+                  {
+                    filteredNotifications.length
+                  }{" "}
+                  notificación
+                  {filteredNotifications.length ===
+                  1
+                    ? ""
+                    : "es"}
+                </h2>
+
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Rol actual:{" "}
+                  {userRole || "Sin rol"}
+                </p>
+              </div>
+
+              {unreadCount > 0 && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={
+                    <CheckCheck
+                      size={14}
+                    />
+                  }
+                  onClick={onMarkAllRead}
+                >
+                  Marcar todas como leídas
+                </Button>
+              )}
+            </div>
+          )}
+
+          {filteredNotifications.length ===
+          0 ? (
+            <EmptyState
+              filtered={
+                notifications.length > 0
+              }
+              onClear={
+                hasFilters
+                  ? clearFilters
+                  : undefined
+              }
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredNotifications.map(
+                (notification) => (
+                  <NotificationCard
+                    key={notification.id}
+                    notification={
+                      notification
+                    }
+                    onMarkRead={
+                      onMarkRead
+                    }
+                  />
+                ),
+              )}
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 };
- 
+
+const NotificationCard = ({
+  notification,
+  onMarkRead,
+}) => {
+  const unread =
+    !notification.is_read;
+  const scope =
+    getScopeConfig(
+      notification.scope,
+    );
+  const ScopeIcon = scope.icon;
+
+  return (
+    <article
+      className={`relative p-4 sm:p-5 rounded-[1.5rem] border transition-all ${
+        unread
+          ? "bg-white border-[#87be00]/20 shadow-sm"
+          : "bg-gray-50 border-gray-100"
+      }`}
+    >
+      <div className="flex items-start gap-3 sm:gap-4">
+        <div
+          className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+            unread
+              ? "bg-[#87be00] text-white border-[#87be00]"
+              : "bg-gray-200 text-gray-400 border-gray-200"
+          }`}
+        >
+          <ScopeIcon size={18} />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3
+                className={`text-sm sm:text-base font-black leading-tight break-words ${
+                  unread
+                    ? "text-gray-900"
+                    : "text-gray-500"
+                }`}
+              >
+                {notification.title ||
+                  "Notificación sin título"}
+              </h3>
+
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[8px] font-black uppercase tracking-wider ${scope.classes}`}
+                >
+                  <ScopeIcon size={10} />
+                  {scope.label}
+                </span>
+
+                {notification.type && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full border bg-gray-50 text-gray-500 border-gray-200 text-[8px] font-black uppercase tracking-wider">
+                    {TYPE_LABELS[
+                      notification.type
+                    ] ||
+                      notification.type}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider shrink-0 ${
+                unread
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : "bg-gray-100 text-gray-500 border border-gray-200"
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  unread
+                    ? "bg-green-500"
+                    : "bg-gray-300"
+                }`}
+              />
+
+              {unread ? "Nueva" : "Leída"}
+            </span>
+          </div>
+
+          <p
+            className={`text-xs sm:text-sm leading-relaxed mt-3 whitespace-pre-wrap break-words ${
+              unread
+                ? "text-gray-600"
+                : "text-gray-400"
+            }`}
+          >
+            {notification.message ||
+              "Sin contenido"}
+          </p>
+
+          <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">
+              {formatNotificationDate(
+                notification.created_at,
+              )}
+            </span>
+
+            {unread && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                leftIcon={
+                  <CheckCheck
+                    size={13}
+                  />
+                }
+                onClick={() =>
+                  onMarkRead(
+                    notification.id,
+                  )
+                }
+              >
+                Marcar como leída
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+};
+
+const EmptyState = ({
+  filtered,
+  onClear,
+}) => (
+  <div className="bg-gray-50 rounded-[1.5rem] p-10 text-center border border-dashed border-gray-200">
+    <BellOff
+      className="mx-auto text-gray-300"
+      size={32}
+    />
+
+    <h2 className="text-sm font-black text-gray-600 mt-4">
+      Sin información disponible
+    </h2>
+
+    <p className="text-xs text-gray-400 mt-2">
+      {filtered
+        ? "No hay notificaciones que coincidan con los filtros seleccionados."
+        : "No tienes notificaciones disponibles."}
+    </p>
+
+    {onClear && (
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={onClear}
+        className="mt-5"
+      >
+        Limpiar filtros
+      </Button>
+    )}
+  </div>
+);
+
 export default NotificationsLayout;
