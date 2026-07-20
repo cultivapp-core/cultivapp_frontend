@@ -25,6 +25,7 @@ import {
 import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
 import { getWeeksOfMonthCalendar } from "../../utils/helper";
+import { Button, IconButton } from "../../components/ui";
 
 /**
  * 📅 COMPONENTE: VISUALIZADOR MENSUAL CON TOOLTIP DINÁMICO
@@ -46,7 +47,7 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
       {weeks.map((week, index) => (
         <div key={week.id} className="flex items-center gap-3">
           <span className="text-[10px] font-black text-gray-400 w-4 tracking-tighter">S{index + 1}</span>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1 sm:gap-1.5">
             {days.map((d) => {
               const scheduleInfo = scheduledDays.find(
                 (item) => parseInt(item.day) === d.id && parseInt(item.week) === week.id
@@ -57,7 +58,7 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
               return (
                 <div key={d.id} className="relative group">
                   <div
-                    className={`w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[7px] md:text-[8px] font-black transition-all duration-300 cursor-default
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[7px] md:text-[8px] font-black transition-all duration-300 cursor-default
                       ${isActive 
                         ? "bg-[#87be00] text-white shadow-md group-hover:scale-110" 
                         : "bg-gray-100 text-gray-400"}`}
@@ -401,7 +402,7 @@ const AdminRoutes = () => {
   const getStatusBadge = (status) => {
     const config = {
       COMPLETED: { bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200', icon: <FiCheckCircle/>, label: 'Completado' },
-      IN_PROGRESS: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', icon: <FiPlayCircle className="animate-pulse"/>, label: 'En Curso' },
+      IN_PROGRESS: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', icon: <FiPlayCircle className="animate-pulse"/>, label: 'En curso' },
       PARTIAL: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200', icon: <FiRefreshCw/>, label: 'Parcial' },
       INCOMPLETE: { bg: 'bg-red-50', text: 'text-red-500', border: 'border-red-200', icon: <FiXCircle/>, label: 'Incompleto' },
       PENDING: { bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-gray-200', icon: <FiAlertCircle/>, label: 'Pendiente' }
@@ -414,7 +415,7 @@ const AdminRoutes = () => {
     return (
       <div className="h-screen flex flex-col items-center justify-center space-y-4 px-4 text-center">
         <FiRefreshCw className="animate-spin text-[#87be00]" size={42} />
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">Sincronizando Planificación...</p>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">Cargando planificación...</p>
       </div>
     );
   }
@@ -425,7 +426,7 @@ const AdminRoutes = () => {
         
         <div className="flex flex-col lg:flex-row justify-between gap-6">
           <div className="flex-1 w-full overflow-hidden">
-            <h1 className="text-xl md:text-2xl font-black text-gray-900 uppercase italic leading-none">Planificación Mensual</h1>
+            <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight leading-tight">Planificación mensual</h1>
             <div className="flex overflow-x-auto gap-3 mt-5 pb-2 custom-scrollbar">
               {weekRanges.map((w, idx) => (
                 <div key={idx} className={`flex flex-col gap-1 px-4 py-2.5 rounded-xl border shrink-0 min-w-[110px] transition-all ${activeWeekByDate === w.weekNum ? 'bg-[#87be00] border-[#87be00] text-white shadow-md' : 'bg-gray-50 border-gray-100/50'}`}>
@@ -437,22 +438,42 @@ const AdminRoutes = () => {
           </div>
 
           <div className="flex flex-row flex-wrap sm:flex-nowrap items-center gap-2 md:gap-3 w-full lg:w-auto">
-            <button onClick={fetchData} className="p-3 sm:p-4 bg-gray-50 text-gray-500 rounded-xl sm:rounded-2xl hover:bg-gray-100 hover:text-[#87be00] border border-gray-100 shrink-0 transition-all">
-              <FiRefreshCw size={18}/>
-            </button>
+            <IconButton
+              label="Actualizar planificación"
+              size="lg"
+              onClick={fetchData}
+              className="shrink-0"
+            >
+              <FiRefreshCw size={18} />
+            </IconButton>
             <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleImportExcel} />
-            <button onClick={() => fileInputRef.current.click()} className="flex-1 sm:flex-none bg-[#87be00] text-white px-3 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg hover:bg-[#76a600] transition-all whitespace-nowrap">
-              <FiUploadCloud size={16}/> 
-              <span className="hidden sm:inline">Cargar Excel</span>
+            <Button
+              type="button"
+              size="lg"
+              leftIcon={<FiUploadCloud size={16} />}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 sm:flex-none whitespace-nowrap"
+            >
+              <span className="hidden sm:inline">Importar Excel</span>
               <span className="sm:hidden">Excel</span>
-            </button>
-            <button onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }} className="flex-1 sm:flex-none bg-gray-900 text-white px-3 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl hover:bg-black transition-all whitespace-nowrap">
-              <FiPlus size={16}/> Nueva Ruta
-            </button>
+            </Button>
+            <Button
+              type="button"
+              variant="dark"
+              size="lg"
+              leftIcon={<FiPlus size={16} />}
+              onClick={() => {
+                setSelectedRoute(null);
+                setIsModalOpen(true);
+              }}
+              className="flex-1 sm:flex-none whitespace-nowrap"
+            >
+              Nueva ruta
+            </Button>
           </div>
         </div>
 
-        <div className={`grid grid-cols-1 md:grid-cols-2 ${isCultivaAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4 pt-4 border-t border-gray-50`}>
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${isCultivaAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-3 sm:gap-4 pt-4 border-t border-gray-50`}>
           
           {isCultivaAdmin && (
             <div className="relative">
@@ -462,7 +483,7 @@ const AdminRoutes = () => {
                 value={filterCompany} 
                 onChange={(e) => setFilterCompany(e.target.value)}
               >
-                <option value="">TODAS LAS EMPRESAS</option>
+                <option value="">Todas las empresas</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.name || c.nombre || 'Empresa'}</option>)}
               </select>
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -474,7 +495,7 @@ const AdminRoutes = () => {
 
           <div className="relative">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <input type="text" placeholder="BUSCAR LOCAL O CÓDIGO..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <input type="text" placeholder="Buscar local, código o usuario..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             {searchTerm && <button onClick={() => setSearchTerm("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
           </div>
 
@@ -488,7 +509,7 @@ const AdminRoutes = () => {
                 setSelectedComuna("");
               }}
             >
-              <option value="">TODAS LAS REGIONES</option>
+              <option value="">Todas las regiones</option>
               {regions.map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
@@ -506,7 +527,7 @@ const AdminRoutes = () => {
               value={selectedComuna} 
               onChange={(e) => setSelectedComuna(e.target.value)}
             >
-              <option value="">TODAS LAS COMUNAS</option>
+              <option value="">Todas las comunas</option>
               {comunas.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
@@ -524,7 +545,7 @@ const AdminRoutes = () => {
               value={filterUser} 
               onChange={(e) => setFilterUser(e.target.value)}
             >
-              <option value="">TODOS LOS REPONEDORES</option>
+              <option value="">Todos los mercaderistas</option>
               {uniqueMercaderistas.map(u => (
                 <option key={u} value={u}>{u}</option>
               ))}
@@ -538,8 +559,34 @@ const AdminRoutes = () => {
           <div className="relative">
             <FiCalendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input type="date" className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] font-black outline-none focus:bg-white focus:border-[#87be00]/40 transition-all shadow-inner cursor-pointer text-gray-500" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
-            {filterDate && <button onClick={() => setFilterDate("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
+            {filterDate && <button type="button" aria-label="Limpiar fecha" onClick={() => setFilterDate("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
           </div>
+
+          {(searchTerm ||
+            filterUser ||
+            filterDate ||
+            filterCompany ||
+            selectedRegion ||
+            selectedComuna) && (
+            <div className={isCultivaAdmin ? "lg:col-span-6" : "lg:col-span-5"}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                leftIcon={<FiX size={14} />}
+                onClick={() => {
+                  setSearchTerm("");
+                  setFilterUser("");
+                  setFilterDate("");
+                  setFilterCompany("");
+                  setSelectedRegion("");
+                  setSelectedComuna("");
+                }}
+              >
+                Limpiar filtros
+              </Button>
+            </div>
+          )}
 
         </div>
 
@@ -550,9 +597,9 @@ const AdminRoutes = () => {
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50/50 border-b border-gray-100">
               <tr>
-                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Punto de Venta / Local</th>
-                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Mercaderista Asignado</th>
-                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Calendario Mensual</th>
+                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Punto de venta</th>
+                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Mercaderista asignado</th>
+                <th className="p-6 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Calendario mensual</th>
                 <th className="p-6 text-center text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Estado</th>
                 <th className="p-6 text-right text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Acción</th>
               </tr>
@@ -621,20 +668,25 @@ const AdminRoutes = () => {
 
                       <td className="p-6 text-right">
                         <div className="flex justify-end items-center gap-2 min-w-[95px] inline-flex">
-                          <button 
-                            onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} 
-                            className="p-3.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all border border-gray-100 hover:border-transparent"
-                            title="Editar"
+                          <IconButton
+                            label="Editar planificación"
+                            size="sm"
+                            variant="primary"
+                            onClick={() => {
+                              setSelectedRoute(r);
+                              setIsModalOpen(true);
+                            }}
                           >
-                            <FiEdit3 size={16}/>
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteRoute(r)} 
-                            className="p-3.5 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded-xl shadow-sm transition-all border border-red-100 hover:border-transparent"
-                            title="Eliminar"
+                            <FiEdit3 size={16} />
+                          </IconButton>
+                          <IconButton
+                            label="Eliminar planificación"
+                            size="sm"
+                            variant="danger"
+                            onClick={() => handleDeleteRoute(r)}
                           >
-                            <FiTrash2 size={16}/>
-                          </button>
+                            <FiTrash2 size={16} />
+                          </IconButton>
                         </div>
                       </td>
                     </tr>
@@ -659,11 +711,11 @@ const AdminRoutes = () => {
             });
 
             return (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={`mob-${index}`} className="bg-white p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100 flex flex-col gap-5">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={`mob-${index}`} className="bg-white p-5 sm:p-6 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow border border-gray-100 flex flex-col gap-5">
                 
                 <div className="flex justify-between items-start">
                   <div className="pr-4">
-                    <p className="font-black text-gray-900 uppercase italic leading-tight text-sm">{r.cadena}</p>
+                    <p className="font-black text-gray-900 leading-tight text-base">{r.cadena}</p>
                     <p className="text-[11px] font-medium text-gray-400 mt-1">{r.direccion}</p>
                     <span className="inline-block mt-3 px-3 py-1.5 bg-gray-100 text-gray-600 text-[9px] font-black rounded-lg tracking-widest">{r.codigo_local}</span>
                   </div>
@@ -671,18 +723,25 @@ const AdminRoutes = () => {
                     {getStatusBadge(r.displayStatus)}
                     
                     <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }} 
-                        className="p-2.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl shadow-sm transition-all border border-gray-100"
+                      <IconButton
+                        label="Editar planificación"
+                        size="sm"
+                        variant="primary"
+                        onClick={() => {
+                          setSelectedRoute(r);
+                          setIsModalOpen(true);
+                        }}
                       >
-                        <FiEdit3 size={16}/>
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteRoute(r)} 
-                        className="p-2.5 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded-xl shadow-sm transition-all border border-red-100"
+                        <FiEdit3 size={16} />
+                      </IconButton>
+                      <IconButton
+                        label="Eliminar planificación"
+                        size="sm"
+                        variant="danger"
+                        onClick={() => handleDeleteRoute(r)}
                       >
-                        <FiTrash2 size={16}/>
-                      </button>
+                        <FiTrash2 size={16} />
+                      </IconButton>
                     </div>
                   </div>
                 </div>
@@ -747,18 +806,26 @@ const DeleteRouteModal = ({ group, onClose, onConfirm }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleConfirm = async () => {
-    setIsDeleting(true);
-    await onConfirm();
-    setIsDeleting(false);
+    try {
+      setIsDeleting(true);
+      await onConfirm();
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-[#111111]/70 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] font-[Outfit]">
       <div className="bg-white w-full max-w-md rounded-2xl border border-gray-100 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 p-6 relative">
         
-        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-400 hover:text-gray-600 rounded-lg transition-all">
+        <IconButton
+          label="Cerrar confirmación"
+          size="sm"
+          onClick={onClose}
+          className="absolute top-4 right-4"
+        >
           <FiX size={16} />
-        </button>
+        </IconButton>
 
         <div className="flex flex-col items-center text-center mt-3">
           <div className="w-12 h-12 bg-red-50 text-red-600 rounded-xl flex items-center justify-center mb-4">
@@ -766,7 +833,7 @@ const DeleteRouteModal = ({ group, onClose, onConfirm }) => {
           </div>
           
           <h3 className="text-base font-extrabold text-[#111111] uppercase tracking-tight">
-            ¿Confirmar Eliminación?
+            ¿Eliminar planificación?
           </h3>
           
           <p className="text-xs text-gray-500 mt-2 leading-relaxed">

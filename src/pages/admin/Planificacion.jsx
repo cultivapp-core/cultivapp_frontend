@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useLocation, useNavigate } from "react-router-dom"; // 🚩 Añadido para capturar el redireccionamiento
+import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../api/apiClient";
 import ManageRoutesModal from "../../components/ManageRoutesModal";
 import toast from "react-hot-toast";
@@ -18,6 +18,7 @@ import {
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { motion, AnimatePresence } from "framer-motion";
+import { Button, IconButton } from "../../components/ui";
 
 // ─────────────────────────────────────────────────────────────
 // 📅 VISUALIZADOR MENSUAL CON TOOLTIP FLOTANTE Y COLORES DINÁMICOS
@@ -113,7 +114,7 @@ const MonthlyStatus = ({ scheduledDays = [] }) => {
 const getStatusBadge = (status) => {
   const config = {
     COMPLETED: { bg: "bg-green-50", text: "text-green-600", border: "border-green-200", icon: <FiCheckCircle size={11} />, label: "Completado" },
-    IN_PROGRESS: { bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200", icon: <FiPlayCircle size={11} className="animate-pulse" />, label: "En Curso" },
+    IN_PROGRESS: { bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200", icon: <FiPlayCircle size={11} className="animate-pulse" />, label: "En curso" },
     PARTIAL: { bg: "bg-indigo-50", text: "text-indigo-600", border: "border-indigo-200", icon: <FiRefreshCw size={11} />, label: "Parcial" },
     PENDING: { bg: "bg-amber-50", text: "text-amber-500", border: "border-amber-200", icon: <FiAlertCircle size={11} />, label: "Pendiente" },
   };
@@ -278,16 +279,18 @@ const Planificacion = () => {
   // ── Agrupar rutas (ESTRICTO POR LOCAL PARA MANTENER MERCADERISTAS JUNTOS) ──────────────
   const filteredAndGroupedRoutes = useMemo(() => {
     const groups = {};
-    const search = searchTerm.toLowerCase();
+    const search = searchTerm.toLowerCase().trim();
 
     routes.forEach((r) => {
       if (!r.user_id || !r.local_id) return;
 
-      const matchText = 
-        r.cadena?.toLowerCase().includes(search) ||
-        r.direccion?.toLowerCase().includes(search) ||
-        r.codigo_local?.toString().includes(search) ||
-        `${r.first_name} ${r.last_name}`.toLowerCase().includes(search);
+      const matchText =
+        String(r.cadena || "").toLowerCase().includes(search) ||
+        String(r.direccion || "").toLowerCase().includes(search) ||
+        String(r.codigo_local || "").toLowerCase().includes(search) ||
+        `${r.first_name || ""} ${r.last_name || ""}`
+          .toLowerCase()
+          .includes(search);
 
       if (!matchText) return;
 
@@ -363,10 +366,10 @@ const Planificacion = () => {
   // ── LOADING ─────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center space-y-4">
+      <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 px-4 text-center">
         <FiRefreshCw className="animate-spin text-[#87be00]" size={38} />
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">
-          Sincronizando Planificación...
+          Cargando planificación...
         </p>
       </div>
     );
@@ -380,8 +383,8 @@ const Planificacion = () => {
       <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100 space-y-6">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5 ">
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-black text-gray-900 uppercase italic tracking-tight leading-none text-right lg:text-left">
-              Planificación Mensual
+            <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight leading-tight text-left">
+              Planificación mensual
             </h1>
             <div className="flex gap-2 mt-4 overflow-x-auto pb-1 custom-scrollbar">
               {weekRanges.map((w, idx) => (
@@ -393,31 +396,69 @@ const Planificacion = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button onClick={fetchData} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 hover:text-[#87be00] border border-gray-100 transition-all">
+          <div className="grid grid-cols-[auto_1fr_1fr] sm:flex sm:items-center gap-2 w-full lg:w-auto shrink-0">
+            <IconButton
+              label="Actualizar planificación"
+              size="lg"
+              onClick={fetchData}
+            >
               <FiRefreshCw size={17} />
-            </button>
+            </IconButton>
             <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx,.xls" onChange={handleImportExcel} />
-            <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-2 bg-[#87be00] hover:bg-[#76a600] text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md transition-all">
-              <FiUploadCloud size={15} /> Cargar Excel
-            </button>
-            <button onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }} className="flex items-center gap-2 bg-gray-900 hover:bg-black text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md transition-all">
-              <FiPlus size={15} /> Nueva Ruta
-            </button>
+            <Button
+              type="button"
+              size="lg"
+              leftIcon={<FiUploadCloud size={15} />}
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full sm:w-auto whitespace-nowrap"
+            >
+              <span className="hidden sm:inline">Importar Excel</span>
+              <span className="sm:hidden">Excel</span>
+            </Button>
+            <Button
+              type="button"
+              variant="dark"
+              size="lg"
+              leftIcon={<FiPlus size={15} />}
+              onClick={() => {
+                setSelectedRoute(null);
+                setIsModalOpen(true);
+              }}
+              className="w-full sm:w-auto whitespace-nowrap"
+            >
+              Nueva ruta
+            </Button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-50">
           <div className="md:col-span-2 relative">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <input type="text" placeholder="BUSCAR POR LOCAL, REPONEDOR O CÓDIGO..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border-2 border-transparent rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-            {searchTerm && <button onClick={() => setSearchTerm("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
+            <input type="text" placeholder="Buscar local, mercaderista o código..." className="w-full pl-12 pr-4 py-3 bg-gray-50 border-2 border-transparent rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            {searchTerm && <button type="button" aria-label="Limpiar búsqueda" onClick={() => setSearchTerm("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
           </div>
           <div className="relative">
             <FiCalendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input type="date" className="w-full pl-12 pr-4 py-3 bg-gray-50 border-2 border-transparent rounded-2xl text-[10px] font-black outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner cursor-pointer" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
-            {filterDate && <button onClick={() => setFilterDate("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
+            {filterDate && <button type="button" aria-label="Limpiar fecha" onClick={() => setFilterDate("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><FiX size={14}/></button>}
           </div>
+
+          {(searchTerm || filterDate) && (
+            <div className="md:col-span-3">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                leftIcon={<FiX size={14} />}
+                onClick={() => {
+                  setSearchTerm("");
+                  setFilterDate("");
+                }}
+              >
+                Limpiar filtros
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -426,9 +467,9 @@ const Planificacion = () => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-gray-100">
-              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Punto de Venta / Local</th>
-              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Mercaderista Asignado</th>
-              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Calendario Mensual</th>
+              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Punto de venta</th>
+              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Mercaderista asignado</th>
+              <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Calendario mensual</th>
               <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Estado</th>
               <th className="px-7 py-4 text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-right">Acción</th>
             </tr>
@@ -500,12 +541,17 @@ const Planificacion = () => {
                   </td>
 
                   <td className="px-7 py-6 align-top text-right">
-                    <button
-                      onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }}
-                      className="p-3 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl border border-gray-100 hover:border-transparent transition-all"
+                    <IconButton
+                      label="Editar planificación"
+                      size="sm"
+                      variant="primary"
+                      onClick={() => {
+                        setSelectedRoute(r);
+                        setIsModalOpen(true);
+                      }}
                     >
                       <FiEdit3 size={15} />
-                    </button>
+                    </IconButton>
                   </td>
                 </tr>
               ))
@@ -516,18 +562,29 @@ const Planificacion = () => {
 
       {/* ══ TARJETAS MÓVIL ══════════════════════════════════════ */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:hidden">
-        <AnimatePresence>
-          {filteredAndGroupedRoutes.map((r, index) => (
+        {filteredAndGroupedRoutes.length === 0 ? (
+          <div className="md:col-span-2 py-14 px-6 text-center bg-white rounded-[2rem] border border-gray-100">
+            <FiCalendar size={28} className="mx-auto text-gray-300" />
+            <p className="mt-4 text-sm font-black text-gray-700">
+              No hay rutas planificadas
+            </p>
+            <p className="mt-1 text-xs text-gray-400">
+              Ajusta los filtros o crea una nueva planificación.
+            </p>
+          </div>
+        ) : (
+          <AnimatePresence>
+            {filteredAndGroupedRoutes.map((r, index) => (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
               key={`mob-${index}`}
-              className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col gap-4"
+              className="bg-white p-5 sm:p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col gap-4"
             >
               <div className="flex justify-between items-start">
                 <div className="pr-3 min-w-0">
-                  <p className="font-black text-gray-900 uppercase italic text-sm leading-tight">{r.cadena}</p>
+                  <p className="font-black text-gray-900 text-base leading-tight">{r.cadena}</p>
                   <p className="text-[11px] font-medium text-gray-400 mt-1 truncate">{r.direccion}</p>
                   <span className="inline-block mt-2 px-2.5 py-1 bg-gray-100 text-gray-500 text-[9px] font-black rounded-lg tracking-widest">
                     {r.codigo_local}
@@ -535,12 +592,17 @@ const Planificacion = () => {
                 </div>
                 <div className="flex flex-col items-end gap-2 shrink-0">
                   {getStatusBadge(r.displayStatus)}
-                  <button
-                    onClick={() => { setSelectedRoute(r); setIsModalOpen(true); }}
-                    className="p-2.5 bg-gray-50 text-gray-400 hover:bg-[#87be00] hover:text-white rounded-xl transition-all"
+                  <IconButton
+                    label="Editar planificación"
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      setSelectedRoute(r);
+                      setIsModalOpen(true);
+                    }}
                   >
                     <FiEdit3 size={15} />
-                  </button>
+                  </IconButton>
                 </div>
               </div>
 
@@ -580,8 +642,9 @@ const Planificacion = () => {
                 <MonthlyStatus scheduledDays={r.scheduled_items} />
               </div>
             </motion.div>
-          ))}
-        </AnimatePresence>
+            ))}
+          </AnimatePresence>
+        )}
       </div>
 
       <ManageRoutesModal
