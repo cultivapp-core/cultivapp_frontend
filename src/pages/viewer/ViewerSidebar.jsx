@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import {
@@ -18,11 +19,18 @@ import {
   FiNavigation,
   FiPackage,
   FiPieChart,
+  FiTrendingUp,
   FiUserCheck,
   FiX,
 } from "react-icons/fi";
 
 import { useAuth } from "../../context/AuthContext";
+
+const ROLE_LABELS = {
+  VIEW: "Viewer",
+  ADMIN_CLIENTE: "Administrador",
+  ROOT: "Root",
+};
 
 const ViewerSidebar = ({
   isCollapsed,
@@ -38,6 +46,32 @@ const ViewerSidebar = ({
   const [tooltipTop, setTooltipTop] =
     useState(0);
 
+  const userInitials = useMemo(() => {
+    const firstInitial =
+      user?.first_name
+        ?.trim()
+        .charAt(0)
+        .toUpperCase() || "";
+
+    const lastInitial =
+      user?.last_name
+        ?.trim()
+        .charAt(0)
+        .toUpperCase() || "";
+
+    return (
+      `${firstInitial}${lastInitial}` ||
+      "V"
+    );
+  }, [
+    user?.first_name,
+    user?.last_name,
+  ]);
+
+  const roleLabel =
+    ROLE_LABELS[user?.role] ||
+    "Viewer";
+
   useEffect(() => {
     setIsMobileOpen(false);
     setHoveredLabel(null);
@@ -45,16 +79,43 @@ const ViewerSidebar = ({
 
   useEffect(() => {
     if (!isMobileOpen) {
-      document.body.style.overflow = "";
+      document.body.style.overflow =
+        "";
       return undefined;
     }
 
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow =
+      "hidden";
 
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow =
+        "";
     };
   }, [isMobileOpen]);
+
+  useEffect(() => {
+    const handleEscape = (
+      event,
+    ) => {
+      if (
+        event.key === "Escape"
+      ) {
+        setIsMobileOpen(false);
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      handleEscape,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleEscape,
+      );
+    };
+  }, []);
 
   const showTooltip = (
     event,
@@ -83,7 +144,9 @@ const ViewerSidebar = ({
   };
 
   const handleToggleCollapse = () => {
-    setIsCollapsed((current) => !current);
+    setIsCollapsed(
+      (current) => !current,
+    );
   };
 
   const NavItem = ({
@@ -97,16 +160,23 @@ const ViewerSidebar = ({
       end={end}
       aria-label={label}
       onMouseEnter={(event) =>
-        showTooltip(event, label)
+        showTooltip(
+          event,
+          label,
+        )
       }
-      onMouseLeave={hideTooltip}
-      className={({ isActive }) => `
+      onMouseLeave={
+        hideTooltip
+      }
+      className={({
+        isActive,
+      }) => `
         group relative flex min-h-[46px]
-        items-center gap-3 rounded-2xl
-        px-4 py-3
+        items-center gap-3 overflow-hidden
+        rounded-2xl px-4 py-3
         text-[11px] font-black uppercase
-        tracking-widest
-        transition-all duration-300
+        tracking-wider transition-all
+        duration-300
 
         ${
           isActive
@@ -135,35 +205,61 @@ const ViewerSidebar = ({
         }
       `}
     >
-      <div className="relative flex shrink-0 items-center justify-center">
-        <Icon
-          size={
-            isCollapsed ? 20 : 18
-          }
-          className="min-w-5"
-        />
-      </div>
+      {({
+        isActive,
+      }) => (
+        <>
+          <span
+            aria-hidden="true"
+            className={`
+              absolute bottom-2 left-0 top-2
+              w-1 rounded-r-full
+              bg-[#87be00]
+              transition-all duration-300
 
-      <span
-        className={`
-          overflow-hidden whitespace-nowrap
-          transition-all duration-300
+              ${
+                isActive
+                  ? "opacity-100"
+                  : "opacity-0"
+              }
+            `}
+          />
 
-          ${
-            isCollapsed
-              ? `
-                md:w-0
-                md:opacity-0
-              `
-              : `
-                w-auto
-                opacity-100
-              `
-          }
-        `}
-      >
-        {label}
-      </span>
+          <div className="relative flex shrink-0 items-center justify-center">
+            <Icon
+              size={
+                isCollapsed
+                  ? 20
+                  : 18
+              }
+              className="min-w-5"
+            />
+          </div>
+
+          <span
+            className={`
+              overflow-hidden
+              whitespace-nowrap
+              transition-all
+              duration-300
+
+              ${
+                isCollapsed
+                  ? `
+                    md:w-0
+                    md:opacity-0
+                  `
+                  : `
+                    w-auto
+                    opacity-100
+                  `
+              }
+            `}
+          >
+            {label}
+          </span>
+        </>
+      )}
     </NavLink>
   );
 
@@ -175,9 +271,10 @@ const ViewerSidebar = ({
         className={`
           px-4 text-[9px]
           font-black uppercase
-          tracking-[0.3em]
+          tracking-[0.25em]
           text-slate-300
-          transition-all duration-300
+          transition-all
+          duration-300
 
           ${
             isCollapsed
@@ -198,7 +295,8 @@ const ViewerSidebar = ({
       <div
         className={`
           mx-3 bg-slate-100
-          transition-all duration-300
+          transition-all
+          duration-300
 
           ${
             isCollapsed
@@ -224,13 +322,22 @@ const ViewerSidebar = ({
             setIsMobileOpen(true)
           }
           aria-label="Abrir menú"
+          aria-expanded={
+            isMobileOpen
+          }
           className="
-            fixed left-4 top-4 z-[9990]
-            flex h-12 w-12 items-center
-            justify-center rounded-2xl
-            border border-slate-200
-            bg-white text-slate-800
-            shadow-lg transition
+            fixed left-4 top-4
+            z-[9990]
+            flex h-12 w-12
+            items-center
+            justify-center
+            rounded-2xl
+            border
+            border-slate-200
+            bg-white
+            text-slate-800
+            shadow-lg
+            transition
             hover:bg-slate-50
             active:scale-95
             md:hidden
@@ -248,7 +355,8 @@ const ViewerSidebar = ({
             setIsMobileOpen(false)
           }
           className="
-            fixed inset-0 z-[9995]
+            fixed inset-0
+            z-[9995]
             bg-slate-950/60
             backdrop-blur-sm
             md:hidden
@@ -257,19 +365,25 @@ const ViewerSidebar = ({
       )}
 
       <aside
+        aria-label="Navegación Viewer"
         className={`
-          fixed left-0 top-0 z-[9999]
-          flex h-dvh flex-col
-          border-r border-slate-200
-          bg-white shadow-2xl
-          transition-all duration-300
+          fixed left-0 top-0
+          z-[9999]
+          flex h-dvh
+          flex-col
+          border-r
+          border-slate-200
+          bg-white
+          shadow-2xl
+          transition-all
+          duration-300
           ease-in-out
 
           w-[86vw]
           max-w-[320px]
 
           md:sticky
-          md:h-screen
+          md:h-dvh
           md:max-w-none
           md:translate-x-0
           md:shadow-none
@@ -294,9 +408,10 @@ const ViewerSidebar = ({
           }
           aria-label="Cerrar menú"
           className="
-            absolute right-4 top-4 z-50
-            flex h-10 w-10 items-center
-            justify-center rounded-xl
+            absolute right-4 top-4
+            z-50 flex h-10 w-10
+            items-center justify-center
+            rounded-xl
             text-slate-400
             transition
             hover:bg-red-50
@@ -317,14 +432,22 @@ const ViewerSidebar = ({
               ? "Expandir menú"
               : "Contraer menú"
           }
+          aria-expanded={
+            !isCollapsed
+          }
           className="
-            absolute -right-3 top-12 z-50
+            absolute -right-3
+            top-12 z-50
             hidden h-7 w-7
-            items-center justify-center
+            items-center
+            justify-center
             rounded-full
-            border border-slate-200
-            bg-white text-slate-400
-            shadow-md transition
+            border
+            border-slate-200
+            bg-white
+            text-slate-400
+            shadow-md
+            transition
             hover:scale-110
             hover:text-[#87be00]
             md:flex
@@ -345,8 +468,10 @@ const ViewerSidebar = ({
           className={`
             flex min-h-[104px]
             shrink-0 items-center
-            border-b border-slate-100
-            transition-all duration-300
+            border-b
+            border-slate-100
+            transition-all
+            duration-300
 
             ${
               isCollapsed
@@ -364,15 +489,17 @@ const ViewerSidebar = ({
           <div className="flex items-center gap-3">
             <div
               className="
-                flex h-11 w-11 shrink-0
-                items-center justify-center
+                flex h-11 w-11
+                shrink-0 items-center
+                justify-center
                 rounded-2xl
                 bg-[#87be00]/10
               "
             >
               <div
                 className="
-                  h-3 w-3 rounded-full
+                  h-3 w-3
+                  rounded-full
                   bg-[#87be00]
                   shadow-[0_0_10px_rgba(135,190,0,0.65)]
                 "
@@ -382,7 +509,8 @@ const ViewerSidebar = ({
             <div
               className={`
                 overflow-hidden
-                transition-all duration-300
+                transition-all
+                duration-300
 
                 ${
                   isCollapsed
@@ -400,10 +528,10 @@ const ViewerSidebar = ({
               <h2
                 className="
                   whitespace-nowrap
-                  text-xl font-black
-                  uppercase italic
+                  text-xl
+                  font-black
                   leading-none
-                  tracking-tighter
+                  tracking-tight
                   text-[#87be00]
                 "
               >
@@ -415,9 +543,10 @@ const ViewerSidebar = ({
 
               <p
                 className="
-                  mt-1 whitespace-nowrap
-                  text-[8px] font-black
-                  uppercase
+                  mt-1
+                  whitespace-nowrap
+                  text-[8px]
+                  font-black uppercase
                   tracking-[0.28em]
                   text-slate-400
                 "
@@ -465,7 +594,7 @@ const ViewerSidebar = ({
 
             <NavItem
               to="/viewer/trend"
-              icon={FiBarChart2}
+              icon={FiTrendingUp}
               label="Tendencia ventas"
             />
 
@@ -530,11 +659,14 @@ const ViewerSidebar = ({
               className={`
                 flex min-h-[46px]
                 items-center gap-3
-                rounded-2xl px-4 py-3
-                text-[11px] font-black
-                uppercase tracking-widest
+                rounded-2xl
+                px-4 py-3
+                text-[11px]
+                font-black uppercase
+                tracking-wider
                 text-slate-400
-                transition-all duration-300
+                transition-all
+                duration-300
                 hover:bg-red-50
                 hover:text-red-500
 
@@ -552,7 +684,9 @@ const ViewerSidebar = ({
             >
               <FiLogOut
                 size={
-                  isCollapsed ? 20 : 18
+                  isCollapsed
+                    ? 20
+                    : 18
                 }
                 className="min-w-5 shrink-0"
               />
@@ -561,7 +695,8 @@ const ViewerSidebar = ({
                 className={`
                   overflow-hidden
                   whitespace-nowrap
-                  transition-all duration-300
+                  transition-all
+                  duration-300
 
                   ${
                     isCollapsed
@@ -586,32 +721,32 @@ const ViewerSidebar = ({
           className="
             flex min-h-[82px]
             shrink-0 items-center
-            border-t border-slate-100
+            border-t
+            border-slate-100
             px-5
           "
         >
           <div
             className="
-              flex h-10 w-10 shrink-0
-              items-center justify-center
+              flex h-10 w-10
+              shrink-0 items-center
+              justify-center
               rounded-2xl
               bg-[#87be00]/10
-              text-sm font-black
+              text-[11px]
+              font-black
               text-[#87be00]
             "
           >
-            {user?.first_name
-              ? user.first_name
-                  .charAt(0)
-                  .toUpperCase()
-              : "V"}
+            {userInitials}
           </div>
 
           <div
             className={`
               ml-3 min-w-0
               overflow-hidden
-              transition-all duration-300
+              transition-all
+              duration-300
 
               ${
                 isCollapsed
@@ -628,8 +763,10 @@ const ViewerSidebar = ({
           >
             <p
               className="
-                truncate text-[10px]
-                font-black uppercase
+                truncate
+                text-[10px]
+                font-black
+                uppercase
                 text-slate-800
               "
             >
@@ -640,13 +777,14 @@ const ViewerSidebar = ({
 
             <p
               className="
-                mt-0.5 text-[8px]
+                mt-0.5
+                text-[8px]
                 font-black uppercase
                 tracking-[0.2em]
                 text-slate-400
               "
             >
-              Viewer
+              {roleLabel}
             </p>
           </div>
         </div>
@@ -660,7 +798,8 @@ const ViewerSidebar = ({
               pointer-events-none
               fixed left-24
               z-[99999]
-              hidden -translate-y-1/2
+              hidden
+              -translate-y-1/2
               whitespace-nowrap
               rounded-xl
               bg-slate-900

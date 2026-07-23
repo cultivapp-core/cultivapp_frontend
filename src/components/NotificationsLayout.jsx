@@ -8,6 +8,7 @@ import {
   BellOff,
   CheckCheck,
   CheckCircle2,
+  ChevronDown,
   Globe2,
   Inbox,
   Info,
@@ -23,171 +24,240 @@ import {
   isValid,
 } from "date-fns";
 import { es } from "date-fns/locale";
-import { useNotificationContext } from "../context/NotificationContext";
+
 import {
-  Button,
-  IconButton,
-} from "../components/ui";
+  useNotificationContext,
+} from "../context/NotificationContext";
 
 const TYPE_LABELS = {
   URGENTE: "Urgente",
   OPERATIVA: "Operativa",
-  ROUTE_ASSIGNED: "Ruta asignada",
-  ROUTE_UPDATED: "Ruta actualizada",
-  VISIT_COMPLETED: "Visita completada",
+  ROUTE_ASSIGNED:
+    "Ruta asignada",
+  ROUTE_UPDATED:
+    "Ruta actualizada",
+  VISIT_COMPLETED:
+    "Visita completada",
   GENERAL: "General",
 };
 
-const getTypeConfig = (type, unread) => {
-  const normalizedType = String(type || "GENERAL").toUpperCase();
+const ROLE_LABELS = {
+  MERCADERISTA:
+    "Mercaderista",
+  USUARIO: "Mercaderista",
+  VIEW: "Viewer",
+  SUPERVISOR:
+    "Supervisor",
+  ADMIN_CLIENTE:
+    "Administrador",
+  ROOT: "Root",
+};
+
+const isNotificationRead = (
+  notification,
+) =>
+  notification?.is_read ===
+    true ||
+  notification?.is_read ===
+    1 ||
+  String(
+    notification?.is_read,
+  ).toLowerCase() ===
+    "true";
+
+const getTypeConfig = (
+  type,
+  unread,
+) => {
+  const normalizedType =
+    String(
+      type || "GENERAL",
+    ).toUpperCase();
 
   const configs = {
     URGENTE: {
       label: "Urgente",
       icon: AlertTriangle,
       cardClasses: unread
-        ? "bg-red-50/70 border-red-200 shadow-sm shadow-red-100/60"
-        : "bg-red-50/30 border-red-100",
+        ? "border-red-200 bg-red-50/70 shadow-sm"
+        : "border-slate-200 bg-white",
       iconClasses: unread
-        ? "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20"
-        : "bg-red-100 text-red-400 border-red-100",
-      titleClasses: unread ? "text-red-700" : "text-red-400",
-      badgeClasses: "bg-red-100 text-red-700 border-red-200",
-      statusClasses: unread
-        ? "bg-red-100 text-red-700 border-red-200"
-        : "bg-gray-100 text-gray-500 border-gray-200",
-      statusDotClasses: unread ? "bg-red-500" : "bg-gray-300",
+        ? "bg-red-500 text-white"
+        : "bg-slate-100 text-slate-400",
+      titleClasses: unread
+        ? "text-red-700"
+        : "text-slate-600",
+      badgeClasses:
+        "border-red-200 bg-red-100 text-red-700",
+      dotClasses:
+        "bg-red-500",
     },
     OPERATIVA: {
       label: "Operativa",
       icon: Info,
       cardClasses: unread
-        ? "bg-white border-[#87be00]/25 shadow-sm"
-        : "bg-gray-50 border-gray-100",
+        ? "border-[#87be00]/25 bg-white shadow-sm"
+        : "border-slate-200 bg-white",
       iconClasses: unread
-        ? "bg-[#87be00] text-white border-[#87be00]"
-        : "bg-gray-200 text-gray-400 border-gray-200",
-      titleClasses: unread ? "text-gray-900" : "text-gray-500",
+        ? "bg-[#87be00] text-white"
+        : "bg-slate-100 text-slate-400",
+      titleClasses: unread
+        ? "text-slate-900"
+        : "text-slate-600",
       badgeClasses:
-        "bg-[#87be00]/10 text-[#5c9200] border-[#87be00]/20",
-      statusClasses: unread
-        ? "bg-green-50 text-green-700 border-green-200"
-        : "bg-gray-100 text-gray-500 border-gray-200",
-      statusDotClasses: unread ? "bg-green-500" : "bg-gray-300",
+        "border-[#87be00]/20 bg-[#87be00]/10 text-[#5c9200]",
+      dotClasses:
+        "bg-[#87be00]",
     },
     ROUTE_ASSIGNED: {
-      label: "Ruta asignada",
+      label:
+        "Ruta asignada",
       icon: Navigation,
       cardClasses: unread
-        ? "bg-blue-50/50 border-blue-200 shadow-sm"
-        : "bg-gray-50 border-gray-100",
+        ? "border-blue-200 bg-blue-50/50 shadow-sm"
+        : "border-slate-200 bg-white",
       iconClasses: unread
-        ? "bg-blue-600 text-white border-blue-600"
-        : "bg-gray-200 text-gray-400 border-gray-200",
-      titleClasses: unread ? "text-blue-800" : "text-gray-500",
-      badgeClasses: "bg-blue-50 text-blue-700 border-blue-200",
-      statusClasses: unread
-        ? "bg-blue-50 text-blue-700 border-blue-200"
-        : "bg-gray-100 text-gray-500 border-gray-200",
-      statusDotClasses: unread ? "bg-blue-500" : "bg-gray-300",
+        ? "bg-blue-600 text-white"
+        : "bg-slate-100 text-slate-400",
+      titleClasses: unread
+        ? "text-blue-800"
+        : "text-slate-600",
+      badgeClasses:
+        "border-blue-200 bg-blue-50 text-blue-700",
+      dotClasses:
+        "bg-blue-500",
     },
     ROUTE_UPDATED: {
-      label: "Ruta actualizada",
+      label:
+        "Ruta actualizada",
       icon: RefreshCcw,
       cardClasses: unread
-        ? "bg-amber-50/50 border-amber-200 shadow-sm"
-        : "bg-gray-50 border-gray-100",
+        ? "border-amber-200 bg-amber-50/60 shadow-sm"
+        : "border-slate-200 bg-white",
       iconClasses: unread
-        ? "bg-amber-500 text-white border-amber-500"
-        : "bg-gray-200 text-gray-400 border-gray-200",
-      titleClasses: unread ? "text-amber-800" : "text-gray-500",
-      badgeClasses: "bg-amber-50 text-amber-700 border-amber-200",
-      statusClasses: unread
-        ? "bg-amber-50 text-amber-700 border-amber-200"
-        : "bg-gray-100 text-gray-500 border-gray-200",
-      statusDotClasses: unread ? "bg-amber-500" : "bg-gray-300",
+        ? "bg-amber-500 text-white"
+        : "bg-slate-100 text-slate-400",
+      titleClasses: unread
+        ? "text-amber-800"
+        : "text-slate-600",
+      badgeClasses:
+        "border-amber-200 bg-amber-50 text-amber-700",
+      dotClasses:
+        "bg-amber-500",
     },
     VISIT_COMPLETED: {
-      label: "Visita completada",
+      label:
+        "Visita completada",
       icon: CheckCircle2,
       cardClasses: unread
-        ? "bg-emerald-50/50 border-emerald-200 shadow-sm"
-        : "bg-gray-50 border-gray-100",
+        ? "border-emerald-200 bg-emerald-50/60 shadow-sm"
+        : "border-slate-200 bg-white",
       iconClasses: unread
-        ? "bg-emerald-500 text-white border-emerald-500"
-        : "bg-gray-200 text-gray-400 border-gray-200",
-      titleClasses: unread ? "text-emerald-800" : "text-gray-500",
+        ? "bg-emerald-500 text-white"
+        : "bg-slate-100 text-slate-400",
+      titleClasses: unread
+        ? "text-emerald-800"
+        : "text-slate-600",
       badgeClasses:
-        "bg-emerald-50 text-emerald-700 border-emerald-200",
-      statusClasses: unread
-        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-        : "bg-gray-100 text-gray-500 border-gray-200",
-      statusDotClasses: unread ? "bg-emerald-500" : "bg-gray-300",
+        "border-emerald-200 bg-emerald-50 text-emerald-700",
+      dotClasses:
+        "bg-emerald-500",
     },
     GENERAL: {
       label: "General",
       icon: Bell,
       cardClasses: unread
-        ? "bg-white border-[#87be00]/20 shadow-sm"
-        : "bg-gray-50 border-gray-100",
+        ? "border-[#87be00]/20 bg-white shadow-sm"
+        : "border-slate-200 bg-white",
       iconClasses: unread
-        ? "bg-[#87be00] text-white border-[#87be00]"
-        : "bg-gray-200 text-gray-400 border-gray-200",
-      titleClasses: unread ? "text-gray-900" : "text-gray-500",
-      badgeClasses: "bg-gray-50 text-gray-600 border-gray-200",
-      statusClasses: unread
-        ? "bg-green-50 text-green-700 border-green-200"
-        : "bg-gray-100 text-gray-500 border-gray-200",
-      statusDotClasses: unread ? "bg-green-500" : "bg-gray-300",
+        ? "bg-[#87be00] text-white"
+        : "bg-slate-100 text-slate-400",
+      titleClasses: unread
+        ? "text-slate-900"
+        : "text-slate-600",
+      badgeClasses:
+        "border-slate-200 bg-slate-50 text-slate-600",
+      dotClasses:
+        "bg-[#87be00]",
     },
   };
 
-  return configs[normalizedType] || {
-    ...configs.GENERAL,
-    label: TYPE_LABELS[normalizedType] || normalizedType,
-  };
+  return (
+    configs[
+      normalizedType
+    ] || {
+      ...configs.GENERAL,
+      label:
+        TYPE_LABELS[
+          normalizedType
+        ] ||
+        normalizedType,
+    }
+  );
 };
 
-const getScopeConfig = (scope) => {
-  if (scope === "global") {
+const getScopeConfig = (
+  scope,
+) => {
+  const normalizedScope =
+    String(scope || "")
+      .trim()
+      .toLowerCase();
+
+  if (
+    normalizedScope ===
+    "global"
+  ) {
     return {
       label: "Global",
       icon: Globe2,
       classes:
-        "bg-blue-50 text-blue-600 border-blue-100",
+        "border-blue-100 bg-blue-50 text-blue-600",
     };
   }
 
-  if (scope === "local") {
+  if (
+    normalizedScope ===
+    "local"
+  ) {
     return {
       label: "Local",
       icon: MapPin,
       classes:
-        "bg-amber-50 text-amber-600 border-amber-100",
+        "border-amber-100 bg-amber-50 text-amber-600",
     };
   }
 
-  if (scope === "individual") {
+  if (
+    normalizedScope ===
+    "individual"
+  ) {
     return {
       label: "Individual",
       icon: User,
       classes:
-        "bg-purple-50 text-purple-600 border-purple-100",
+        "border-violet-100 bg-violet-50 text-violet-600",
     };
   }
 
   return {
-    label: "Notificación",
+    label:
+      "Notificación",
     icon: Bell,
     classes:
-      "bg-gray-50 text-gray-500 border-gray-100",
+      "border-slate-200 bg-slate-50 text-slate-500",
   };
 };
 
-const formatNotificationDate = (value) => {
-  if (!value) return "Sin fecha";
+const formatNotificationDate = (
+  value,
+) => {
+  if (!value) {
+    return "Sin fecha";
+  }
 
-  const date = new Date(value);
+  const date =
+    new Date(value);
 
   if (!isValid(date)) {
     return "Sin fecha";
@@ -202,6 +272,20 @@ const formatNotificationDate = (value) => {
   );
 };
 
+const getTimestamp = (
+  notification,
+) => {
+  const date =
+    new Date(
+      notification?.created_at ||
+        0,
+    );
+
+  return isValid(date)
+    ? date.getTime()
+    : 0;
+};
+
 const NotificationsLayout = ({
   userRole,
 }) => {
@@ -209,73 +293,136 @@ const NotificationsLayout = ({
     notifications = [],
     onMarkRead,
     onMarkAllRead,
-    loading,
+    loading = false,
     refresh,
   } = useNotificationContext();
 
-  const [statusFilter, setStatusFilter] =
-    useState("ALL");
-  const [scopeFilter, setScopeFilter] =
-    useState("ALL");
-  const [searchTerm, setSearchTerm] =
-    useState("");
-  const [refreshing, setRefreshing] =
-    useState(false);
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState("ALL");
 
-  const unreadCount = useMemo(
-    () =>
-      notifications.filter(
-        (notification) =>
-          !notification.is_read,
-      ).length,
-    [notifications],
-  );
+  const [
+    scopeFilter,
+    setScopeFilter,
+  ] = useState("ALL");
+
+  const [
+    searchTerm,
+    setSearchTerm,
+  ] = useState("");
+
+  const [
+    refreshing,
+    setRefreshing,
+  ] = useState(false);
+
+  const [
+    markingAll,
+    setMarkingAll,
+  ] = useState(false);
+
+  const [
+    markingId,
+    setMarkingId,
+  ] = useState(null);
+
+  const unreadCount =
+    useMemo(
+      () =>
+        notifications.filter(
+          (notification) =>
+            !isNotificationRead(
+              notification,
+            ),
+        ).length,
+      [notifications],
+    );
+
+  const readCount =
+    notifications.length -
+    unreadCount;
 
   const filteredNotifications =
     useMemo(() => {
-      const term = searchTerm
-        .trim()
-        .toLowerCase();
+      const term =
+        searchTerm
+          .trim()
+          .toLowerCase();
 
-      return notifications.filter(
-        (notification) => {
-          const matchesStatus =
-            statusFilter === "ALL" ||
-            (statusFilter === "UNREAD"
-              ? !notification.is_read
-              : notification.is_read);
+      return [
+        ...notifications,
+      ]
+        .sort(
+          (
+            first,
+            second,
+          ) =>
+            getTimestamp(
+              second,
+            ) -
+            getTimestamp(
+              first,
+            ),
+        )
+        .filter(
+          (
+            notification,
+          ) => {
+            const isRead =
+              isNotificationRead(
+                notification,
+              );
 
-          const matchesScope =
-            scopeFilter === "ALL" ||
-            notification.scope ===
-              scopeFilter;
+            const matchesStatus =
+              statusFilter ===
+                "ALL" ||
+              (statusFilter ===
+              "UNREAD"
+                ? !isRead
+                : isRead);
 
-          const searchableText = [
-            notification.title,
-            notification.message,
-            notification.type,
-            TYPE_LABELS[
-              notification.type
-            ],
-            notification.scope,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
+            const normalizedScope =
+              String(
+                notification.scope ||
+                  "",
+              ).toLowerCase();
 
-          const matchesSearch =
-            !term ||
-            searchableText.includes(
-              term,
+            const matchesScope =
+              scopeFilter ===
+                "ALL" ||
+              normalizedScope ===
+                scopeFilter;
+
+            const searchableText =
+              [
+                notification.title,
+                notification.message,
+                notification.type,
+                TYPE_LABELS[
+                  notification.type
+                ],
+                notification.scope,
+              ]
+                .filter(
+                  Boolean,
+                )
+                .join(" ")
+                .toLowerCase();
+
+            const matchesSearch =
+              !term ||
+              searchableText.includes(
+                term,
+              );
+
+            return (
+              matchesStatus &&
+              matchesScope &&
+              matchesSearch
             );
-
-          return (
-            matchesStatus &&
-            matchesScope &&
-            matchesSearch
-          );
-        },
-      );
+          },
+        );
     }, [
       notifications,
       statusFilter,
@@ -283,14 +430,65 @@ const NotificationsLayout = ({
       searchTerm,
     ]);
 
-  const handleRefresh = async () => {
-    try {
-      setRefreshing(true);
-      await refresh();
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  const handleRefresh =
+    async () => {
+      if (
+        typeof refresh !==
+        "function"
+      ) {
+        return;
+      }
+
+      try {
+        setRefreshing(true);
+        await refresh();
+      } finally {
+        setRefreshing(false);
+      }
+    };
+
+  const handleMarkRead =
+    async (
+      notificationId,
+    ) => {
+      if (
+        typeof onMarkRead !==
+        "function"
+      ) {
+        return;
+      }
+
+      try {
+        setMarkingId(
+          notificationId,
+        );
+
+        await onMarkRead(
+          notificationId,
+        );
+      } finally {
+        setMarkingId(
+          null,
+        );
+      }
+    };
+
+  const handleMarkAllRead =
+    async () => {
+      if (
+        typeof onMarkAllRead !==
+        "function"
+      ) {
+        return;
+      }
+
+      try {
+        setMarkingAll(true);
+        await onMarkAllRead();
+      } finally {
+        setMarkingAll(false);
+      }
+    };
 
   const clearFilters = () => {
     setStatusFilter("ALL");
@@ -299,67 +497,82 @@ const NotificationsLayout = ({
   };
 
   const hasFilters =
-    statusFilter !== "ALL" ||
-    scopeFilter !== "ALL" ||
+    statusFilter !==
+      "ALL" ||
+    scopeFilter !==
+      "ALL" ||
     Boolean(searchTerm);
+
+  const roleLabel =
+    ROLE_LABELS[
+      userRole
+    ] ||
+    userRole ||
+    "Mercaderista";
 
   if (
     loading &&
-    notifications.length === 0
+    notifications.length ===
+      0
   ) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 text-center font-[Outfit]">
-        <RefreshCcw
-          className="animate-spin text-[#87be00] mb-4"
-          size={34}
-        />
+      <div className="flex min-h-[70vh] items-center justify-center bg-slate-50 px-4 font-[Outfit]">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+            <RefreshCcw
+              className="animate-spin"
+              size={22}
+            />
+          </div>
 
-        <p className="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em]">
-          Sincronizando notificaciones...
-        </p>
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Sincronizando notificaciones
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full min-h-full bg-gray-50/40 font-[Outfit] pb-20">
-      <header className="bg-white border-b border-gray-100">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 py-5 md:py-8 flex flex-col sm:flex-row sm:items-end justify-between gap-5">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-[#87be00]/10 rounded-xl text-[#87be00]">
-              <Bell size={20} />
+    <div className="min-h-full bg-slate-50 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 font-[Outfit] sm:px-5 md:px-6 md:pb-10">
+      <div className="mx-auto flex w-full max-w-[820px] flex-col gap-5">
+        {/* CABECERA */}
+        <header className="overflow-hidden rounded-[2rem] bg-slate-900 p-5 text-white shadow-xl shadow-slate-900/10">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-[#a8d52c]">
+                <Bell
+                  size={20}
+                />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#a8d52c]">
+                  Centro de comunicación
+                </p>
+
+                <h1 className="mt-1 text-2xl font-black tracking-tight">
+                  Notificaciones
+                </h1>
+
+                <p className="mt-2 text-sm text-slate-400">
+                  Información para tu perfil{" "}
+                  {roleLabel}
+                </p>
+              </div>
             </div>
 
-            <div>
-              <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight leading-none">
-                Notificaciones
-              </h1>
-
-              <p className="text-[10px] font-black text-[#87be00] uppercase tracking-[0.2em] mt-2">
-                Centro de comunicación
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-[1fr_auto] sm:flex gap-2 w-full sm:w-auto">
-            <div className="min-h-11 px-4 rounded-xl bg-green-50 border border-green-100 flex items-center justify-center gap-2">
-              <Inbox
-                size={14}
-                className="text-[#5c9200]"
-              />
-
-              <span className="text-[9px] font-black uppercase tracking-wider text-[#5c9200]">
-                No leídas: {unreadCount}
-              </span>
-            </div>
-
-            <IconButton
-              label="Actualizar notificaciones"
-              size="lg"
-              onClick={handleRefresh}
-              disabled={
-                refreshing || loading
+            <button
+              type="button"
+              onClick={
+                handleRefresh
               }
+              disabled={
+                refreshing ||
+                loading
+              }
+              aria-label="Actualizar notificaciones"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCcw
                 size={17}
@@ -369,88 +582,180 @@ const NotificationsLayout = ({
                     : ""
                 }
               />
-            </IconButton>
+            </button>
           </div>
-        </div>
-      </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 pt-6 space-y-6">
-        <section className="bg-white p-4 sm:p-5 rounded-[2rem] border border-gray-100 shadow-sm">
-          <div className="flex gap-2 overflow-x-auto pb-3 custom-scrollbar">
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            <div className="rounded-2xl bg-white/5 p-3">
+              <p className="text-xl font-black text-white">
+                {
+                  notifications.length
+                }
+              </p>
+
+              <p className="mt-1 text-[7px] font-black uppercase tracking-wider text-slate-400">
+                Total
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/5 p-3">
+              <p className="text-xl font-black text-[#a8d52c]">
+                {unreadCount}
+              </p>
+
+              <p className="mt-1 text-[7px] font-black uppercase tracking-wider text-slate-400">
+                Nuevas
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/5 p-3">
+              <p className="text-xl font-black text-blue-400">
+                {readCount}
+              </p>
+
+              <p className="mt-1 text-[7px] font-black uppercase tracking-wider text-slate-400">
+                Leídas
+              </p>
+            </div>
+          </div>
+        </header>
+
+        {/* FILTROS */}
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="custom-scrollbar flex gap-2 overflow-x-auto pb-3">
             {[
               {
-                value: "ALL",
-                label: "Todas",
+                value:
+                  "ALL",
+                label:
+                  "Todas",
+                count:
+                  notifications.length,
               },
               {
-                value: "UNREAD",
-                label: "No leídas",
+                value:
+                  "UNREAD",
+                label:
+                  "No leídas",
+                count:
+                  unreadCount,
               },
               {
-                value: "READ",
-                label: "Leídas",
+                value:
+                  "READ",
+                label:
+                  "Leídas",
+                count:
+                  readCount,
               },
             ].map((item) => (
               <button
-                key={item.value}
+                key={
+                  item.value
+                }
                 type="button"
                 onClick={() =>
                   setStatusFilter(
                     item.value,
                   )
                 }
-                className={`px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap border ${
-                  statusFilter ===
-                  item.value
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "bg-white text-gray-500 border-gray-200 hover:border-[#87be00] hover:text-[#87be00]"
-                }`}
+                className={`
+                  inline-flex min-h-[40px]
+                  shrink-0 items-center
+                  gap-2 rounded-xl
+                  border px-3.5
+                  text-[8px] font-black
+                  uppercase tracking-wider
+                  transition
+
+                  ${
+                    statusFilter ===
+                    item.value
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-[#87be00]/40 hover:text-[#87be00]"
+                  }
+                `}
               >
                 {item.label}
+
+                <span
+                  className={`
+                    rounded-lg px-2 py-0.5 text-[7px]
+
+                    ${
+                      statusFilter ===
+                      item.value
+                        ? "bg-white/10 text-white"
+                        : "bg-slate-100 text-slate-500"
+                    }
+                  `}
+                >
+                  {item.count}
+                </span>
               </button>
             ))}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-3">
-            <select
-              value={scopeFilter}
-              onChange={(event) =>
-                setScopeFilter(
-                  event.target.value,
-                )
-              }
-              className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-black text-gray-600 outline-none focus:bg-white focus:border-[#87be00]/50 transition-all cursor-pointer"
-            >
-              <option value="ALL">
-                Todos los alcances
-              </option>
-              <option value="global">
-                Global
-              </option>
-              <option value="local">
-                Local
-              </option>
-              <option value="individual">
-                Individual
-              </option>
-            </select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[190px_minmax(0,1fr)]">
+            <div className="relative">
+              <select
+                value={
+                  scopeFilter
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setScopeFilter(
+                    event.target
+                      .value,
+                  )
+                }
+                className="h-12 w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 px-4 pr-10 text-[9px] font-black uppercase text-slate-600 outline-none transition focus:border-[#87be00]/50 focus:bg-white focus:ring-4 focus:ring-[#87be00]/10"
+              >
+                <option value="ALL">
+                  Todos los alcances
+                </option>
+
+                <option value="global">
+                  Global
+                </option>
+
+                <option value="local">
+                  Local
+                </option>
+
+                <option value="individual">
+                  Individual
+                </option>
+              </select>
+
+              <ChevronDown
+                size={15}
+                className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+            </div>
 
             <div className="relative">
               <Search
                 size={16}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
               />
 
               <input
                 type="search"
-                value={searchTerm}
-                onChange={(event) =>
+                value={
+                  searchTerm
+                }
+                onChange={(
+                  event,
+                ) =>
                   setSearchTerm(
-                    event.target.value,
+                    event.target
+                      .value,
                   )
                 }
-                placeholder="Buscar por título, mensaje o tipo..."
-                className="w-full h-12 pl-11 pr-11 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-medium text-gray-700 placeholder:text-gray-300 outline-none focus:bg-white focus:border-[#87be00]/50 transition-all"
+                placeholder="Buscar título, mensaje o tipo"
+                className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-11 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#87be00]/50 focus:bg-white focus:ring-4 focus:ring-[#87be00]/10"
               />
 
               {searchTerm && (
@@ -460,78 +765,84 @@ const NotificationsLayout = ({
                   onClick={() =>
                     setSearchTerm("")
                   }
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+                  className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
                 >
-                  <X size={15} />
+                  <X
+                    size={15}
+                  />
                 </button>
               )}
             </div>
           </div>
 
           {hasFilters && (
-            <div className="mt-4">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                leftIcon={<X size={13} />}
-                onClick={clearFilters}
-              >
-                Limpiar filtros
-              </Button>
-            </div>
+            <button
+              type="button"
+              onClick={
+                clearFilters
+              }
+              className="mt-3 inline-flex min-h-[38px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-[8px] font-black uppercase tracking-wider text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+            >
+              <X size={13} />
+              Limpiar filtros
+            </button>
           )}
         </section>
 
-        <section className="bg-white rounded-[2rem] p-4 md:p-6 border border-gray-100 shadow-sm">
-          {notifications.length > 0 && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-gray-100">
-              <div>
-                <h2 className="text-[10px] font-black uppercase text-gray-500 tracking-wider flex items-center gap-2">
-                  <Inbox
-                    size={14}
-                    className="text-[#87be00]"
-                  />
+        {/* LISTADO */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">
+                Bandeja
+              </p>
 
-                  {
-                    filteredNotifications.length
-                  }{" "}
-                  notificación
-                  {filteredNotifications.length ===
-                  1
-                    ? ""
-                    : "es"}
-                </h2>
+              <h2 className="mt-1 text-lg font-black tracking-tight text-slate-900">
+                Mensajes recibidos
+              </h2>
+            </div>
 
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Rol actual:{" "}
-                  {userRole || "Sin rol"}
-                </p>
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-xl bg-white px-3 py-2 text-[9px] font-black uppercase tracking-wider text-slate-500 shadow-sm">
+                {
+                  filteredNotifications.length
+                }
+              </span>
 
-              {unreadCount > 0 && (
-                <Button
+              {unreadCount >
+                0 && (
+                <button
                   type="button"
-                  variant="secondary"
-                  size="sm"
-                  leftIcon={
-                    <CheckCheck
-                      size={14}
-                    />
+                  onClick={
+                    handleMarkAllRead
                   }
-                  onClick={onMarkAllRead}
+                  disabled={
+                    markingAll
+                  }
+                  aria-label="Marcar todas como leídas"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00] transition hover:bg-[#87be00] hover:text-white disabled:cursor-wait disabled:opacity-60"
                 >
-                  Marcar todas como leídas
-                </Button>
+                  {markingAll ? (
+                    <RefreshCcw
+                      size={15}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <CheckCheck
+                      size={17}
+                    />
+                  )}
+                </button>
               )}
             </div>
-          )}
+          </div>
 
           {filteredNotifications.length ===
           0 ? (
             <EmptyState
               filtered={
-                notifications.length > 0
+                notifications.length >
+                0
               }
               onClear={
                 hasFilters
@@ -542,14 +853,22 @@ const NotificationsLayout = ({
           ) : (
             <div className="space-y-3">
               {filteredNotifications.map(
-                (notification) => (
+                (
+                  notification,
+                ) => (
                   <NotificationCard
-                    key={notification.id}
+                    key={
+                      notification.id
+                    }
                     notification={
                       notification
                     }
                     onMarkRead={
-                      onMarkRead
+                      handleMarkRead
+                    }
+                    marking={
+                      markingId ===
+                      notification.id
                     }
                   />
                 ),
@@ -557,7 +876,19 @@ const NotificationsLayout = ({
             </div>
           )}
         </section>
-      </main>
+
+        {loading &&
+          notifications.length >
+            0 && (
+            <div className="flex items-center justify-center gap-2 py-2 text-[8px] font-black uppercase tracking-wider text-slate-400">
+              <RefreshCcw
+                size={12}
+                className="animate-spin text-[#87be00]"
+              />
+              Actualizando bandeja
+            </div>
+          )}
+      </div>
     </div>
   );
 };
@@ -565,36 +896,69 @@ const NotificationsLayout = ({
 const NotificationCard = ({
   notification,
   onMarkRead,
+  marking,
 }) => {
-  const unread = !notification.is_read;
-  const scope = getScopeConfig(
-    String(notification.scope || "").toLowerCase(),
-  );
-  const ScopeIcon = scope.icon;
+  const unread =
+    !isNotificationRead(
+      notification,
+    );
 
-  const typeConfig = getTypeConfig(
-    notification.type,
-    unread,
-  );
-  const TypeIcon = typeConfig.icon;
+  const scope =
+    getScopeConfig(
+      notification.scope,
+    );
+
+  const ScopeIcon =
+    scope.icon;
+
+  const typeConfig =
+    getTypeConfig(
+      notification.type,
+      unread,
+    );
+
+  const TypeIcon =
+    typeConfig.icon;
 
   return (
     <article
-      className={`relative rounded-[1.5rem] border p-4 transition-all sm:p-5 ${typeConfig.cardClasses}`}
+      className={`
+        relative overflow-hidden
+        rounded-[2rem] border
+        p-4 transition-all
+        sm:p-5
+        ${typeConfig.cardClasses}
+      `}
     >
-      <div className="flex items-start gap-3 sm:gap-4">
+      {unread && (
+        <span
+          className={`absolute bottom-4 left-0 top-4 w-1 rounded-r-full ${typeConfig.dotClasses}`}
+        />
+      )}
+
+      <div className="flex items-start gap-3">
         <div
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${typeConfig.iconClasses}`}
-          title={typeConfig.label}
+          className={`
+            flex h-11 w-11
+            shrink-0 items-center
+            justify-center
+            rounded-2xl
+            ${typeConfig.iconClasses}
+          `}
+          title={
+            typeConfig.label
+          }
         >
-          <TypeIcon size={18} />
+          <TypeIcon
+            size={18}
+          />
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h3
-                className={`break-words text-sm font-black leading-tight sm:text-base ${typeConfig.titleClasses}`}
+                className={`break-words text-sm font-black leading-tight ${typeConfig.titleClasses}`}
               >
                 {notification.title ||
                   "Notificación sin título"}
@@ -602,63 +966,114 @@ const NotificationCard = ({
 
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <span
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${typeConfig.badgeClasses}`}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[7px] font-black uppercase tracking-wider ${typeConfig.badgeClasses}`}
                 >
-                  <TypeIcon size={10} />
-                  {typeConfig.label}
+                  <TypeIcon
+                    size={9}
+                  />
+
+                  {
+                    typeConfig.label
+                  }
                 </span>
 
                 <span
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${scope.classes}`}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[7px] font-black uppercase tracking-wider ${scope.classes}`}
                 >
-                  <ScopeIcon size={10} />
+                  <ScopeIcon
+                    size={9}
+                  />
+
                   {scope.label}
                 </span>
               </div>
             </div>
 
             <span
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-wider ${typeConfig.statusClasses}`}
+              className={`
+                inline-flex shrink-0
+                items-center gap-1.5
+                rounded-lg border px-2
+                py-1 text-[7px]
+                font-black uppercase
+                tracking-wider
+
+                ${
+                  unread
+                    ? "border-[#87be00]/20 bg-[#87be00]/10 text-[#87be00]"
+                    : "border-slate-200 bg-slate-100 text-slate-400"
+                }
+              `}
             >
               <span
-                className={`h-1.5 w-1.5 rounded-full ${typeConfig.statusDotClasses}`}
+                className={`
+                  h-1.5 w-1.5
+                  rounded-full
+
+                  ${
+                    unread
+                      ? typeConfig.dotClasses
+                      : "bg-slate-300"
+                  }
+                `}
               />
-              {unread ? "Nueva" : "Leída"}
+
+              {unread
+                ? "Nueva"
+                : "Leída"}
             </span>
           </div>
 
           <p
-            className={`mt-3 whitespace-pre-wrap break-words text-xs leading-relaxed sm:text-sm ${
-              unread
-                ? "text-gray-700"
-                : "text-gray-400"
-            }`}
+            className={`
+              mt-3 whitespace-pre-wrap
+              break-words text-xs
+              leading-relaxed
+
+              ${
+                unread
+                  ? "text-slate-700"
+                  : "text-slate-500"
+              }
+            `}
           >
             {notification.message ||
-              "Sin contenido"}
+              "Sin contenido disponible"}
           </p>
 
-          <div className="mt-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <span className="text-[9px] font-black uppercase tracking-wider text-gray-400">
+          <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">
               {formatNotificationDate(
                 notification.created_at,
               )}
             </span>
 
             {unread && (
-              <Button
+              <button
                 type="button"
-                variant="secondary"
-                size="sm"
-                leftIcon={
-                  <CheckCheck size={13} />
-                }
                 onClick={() =>
-                  onMarkRead(notification.id)
+                  onMarkRead(
+                    notification.id,
+                  )
                 }
+                disabled={
+                  marking
+                }
+                className="inline-flex min-h-[38px] items-center justify-center gap-2 rounded-xl border border-[#87be00]/25 bg-[#87be00]/10 px-3.5 text-[8px] font-black uppercase tracking-wider text-[#6e9e00] transition hover:bg-[#87be00] hover:text-white disabled:cursor-wait disabled:opacity-60"
               >
+                {marking ? (
+                  <RefreshCcw
+                    size={12}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <CheckCheck
+                    size={13}
+                  />
+                )}
+
                 Marcar como leída
-              </Button>
+              </button>
             )}
           </div>
         </div>
@@ -671,32 +1086,30 @@ const EmptyState = ({
   filtered,
   onClear,
 }) => (
-  <div className="bg-gray-50 rounded-[1.5rem] p-10 text-center border border-dashed border-gray-200">
-    <BellOff
-      className="mx-auto text-gray-300"
-      size={32}
-    />
+  <div className="flex min-h-[280px] flex-col items-center justify-center rounded-[2rem] border border-dashed border-slate-200 bg-white p-8 text-center">
+    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-300">
+      <BellOff size={28} />
+    </div>
 
-    <h2 className="text-sm font-black text-gray-600 mt-4">
+    <h2 className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
       Sin información disponible
     </h2>
 
-    <p className="text-xs text-gray-400 mt-2">
+    <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-500">
       {filtered
-        ? "No hay notificaciones que coincidan con los filtros seleccionados."
-        : "No tienes notificaciones disponibles."}
+        ? "No existen notificaciones que coincidan con los filtros seleccionados."
+        : "No tienes notificaciones disponibles en tu bandeja."}
     </p>
 
     {onClear && (
-      <Button
+      <button
         type="button"
-        variant="secondary"
-        size="sm"
         onClick={onClear}
-        className="mt-5"
+        className="mt-5 inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-[8px] font-black uppercase tracking-wider text-white transition hover:bg-[#87be00]"
       >
+        <X size={13} />
         Limpiar filtros
-      </Button>
+      </button>
     )}
   </div>
 );

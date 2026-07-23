@@ -1,280 +1,1081 @@
-import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom"; 
-import { FiMapPin, FiPlay, FiClock, FiSend, FiCheckCircle, FiLoader } from "react-icons/fi";
-import api from "../../api/apiClient";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  useNavigate,
+} from "react-router-dom";
+import {
+  FiAlertCircle,
+  FiCalendar,
+  FiCheckCircle,
+  FiChevronLeft,
+  FiChevronRight,
+  FiClock,
+  FiLoader,
+  FiMapPin,
+  FiNavigation,
+  FiPlay,
+  FiSend,
+} from "react-icons/fi";
 import toast from "react-hot-toast";
+
+import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
-import { getWeeksOfMonthCalendar } from "../../utils/helper"; // Importamos el helper oficial
+import { getWeeksOfMonthCalendar } from "../../utils/helper";
+
+const STATUS_CONFIG = {
+  PENDING: {
+    label: "Pendiente",
+    badge:
+      "border-amber-100 bg-amber-50 text-amber-600",
+    dot: "bg-amber-400",
+  },
+  PENDIENTE: {
+    label: "Pendiente",
+    badge:
+      "border-amber-100 bg-amber-50 text-amber-600",
+    dot: "bg-amber-400",
+  },
+  IN_PROGRESS: {
+    label: "En curso",
+    badge:
+      "border-blue-100 bg-blue-50 text-blue-600",
+    dot: "bg-blue-500",
+  },
+  EN_PROCESO: {
+    label: "En curso",
+    badge:
+      "border-blue-100 bg-blue-50 text-blue-600",
+    dot: "bg-blue-500",
+  },
+  COMPLETED: {
+    label: "Completada",
+    badge:
+      "border-[#87be00]/20 bg-[#87be00]/10 text-[#87be00]",
+    dot: "bg-[#87be00]",
+  },
+  FINALIZADO: {
+    label: "Completada",
+    badge:
+      "border-[#87be00]/20 bg-[#87be00]/10 text-[#87be00]",
+    dot: "bg-[#87be00]",
+  },
+};
 
 const UserHome = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [allTasks, setAllTasks] = useState([]); 
-  const [displayTasks, setDisplayTasks] = useState([]); 
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(null); 
-  const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // Normaliza una fecha local a YYYY-MM-DD sin desplazarla por UTC.
-  const toLocalDateKey = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
+  const [allTasks, setAllTasks] =
+    useState([]);
+  const [
+    displayTasks,
+    setDisplayTasks,
+  ] = useState([]);
+  const [loading, setLoading] =
+    useState(true);
+  const [
+    actionLoading,
+    setActionLoading,
+  ] = useState(null);
+  const [
+    selectedDate,
+    setSelectedDate,
+  ] = useState(new Date());
+
+  const toLocalDateKey = (
+    date,
+  ) => {
+    const year =
+      date.getFullYear();
+    const month = String(
+      date.getMonth() + 1,
+    ).padStart(2, "0");
+    const day = String(
+      date.getDate(),
+    ).padStart(2, "0");
+
     return `${year}-${month}-${day}`;
   };
 
   const safeSelectedDate =
-  selectedDate instanceof Date && !Number.isNaN(selectedDate.getTime())
-    ? selectedDate
-    : new Date();
+    selectedDate instanceof Date &&
+    !Number.isNaN(
+      selectedDate.getTime(),
+    )
+      ? selectedDate
+      : new Date();
 
-const todayKey = toLocalDateKey(new Date());
-const selectedDateKey = toLocalDateKey(safeSelectedDate);
+  const todayKey =
+    toLocalDateKey(new Date());
 
-const isSelectedDateToday = selectedDateKey === todayKey;
-const isSelectedDatePast = selectedDateKey < todayKey;
-const isSelectedDateFuture = selectedDateKey > todayKey;
+  const selectedDateKey =
+    toLocalDateKey(
+      safeSelectedDate,
+    );
 
-  // 🚩 LÓGICA DE FILTRADO UNIFICADA (Idéntica a la del calendario de agenda)
-  const getWeekNumber = (date) => {
-    const weeks = getWeeksOfMonthCalendar(date);
-    const targetTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    const foundWeek = weeks.find(w => {
-      const start = new Date(w.start).setHours(0, 0, 0, 0);
-      const end = new Date(w.end).setHours(23, 59, 59, 999);
-      return targetTime >= start && targetTime <= end;
-    });
-    return foundWeek ? foundWeek.id : 1;
+  const isSelectedDateToday =
+    selectedDateKey === todayKey;
+
+  const isSelectedDatePast =
+    selectedDateKey < todayKey;
+
+  const isSelectedDateFuture =
+    selectedDateKey > todayKey;
+
+  const getWeekNumber = (
+    date,
+  ) => {
+    const weeks =
+      getWeeksOfMonthCalendar(
+        date,
+      );
+
+    const targetTime =
+      new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+      ).getTime();
+
+    const foundWeek =
+      weeks.find((week) => {
+        const start =
+          new Date(
+            week.start,
+          ).setHours(
+            0,
+            0,
+            0,
+            0,
+          );
+
+        const end =
+          new Date(
+            week.end,
+          ).setHours(
+            23,
+            59,
+            59,
+            999,
+          );
+
+        return (
+          targetTime >= start &&
+          targetTime <= end
+        );
+      });
+
+    return foundWeek
+      ? foundWeek.id
+      : 1;
   };
 
-  const fetchData = useCallback(async () => {
-    const token = localStorage.getItem("token");
-    if (!token || !user) return;
-    try {
-      setLoading(true);
-      const data = await api.get(`/routes/user/${user.id}`);
-      setAllTasks(Array.isArray(data) ? data : (data?.data || []));
-    } catch (error) {
-      if (error.status !== 401) toast.error("Error al cargar agenda");
-    } finally {
-      setLoading(false);
+  const extractRows = (
+    response,
+  ) => {
+    if (Array.isArray(response)) {
+      return response;
     }
-  }, [user]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+    if (
+      Array.isArray(
+        response?.data,
+      )
+    ) {
+      return response.data;
+    }
 
-  // 🚩 FILTRO MEJORADO: Ahora valida Semana + Mes + Día
-  useEffect(() => {
-    const filtered = allTasks.filter(t => {
-      // 1. Caso Tarea única (visit_date)
-      if (t.visit_date) {
-        const taskDate = new Date(t.visit_date);
-        return (
-  !Number.isNaN(taskDate.getTime()) &&
-  taskDate.toDateString() === safeSelectedDate.toDateString()
-);
+    if (
+      Array.isArray(
+        response?.rows,
+      )
+    ) {
+      return response.rows;
+    }
+
+    return [];
+  };
+
+  const fetchData =
+    useCallback(async () => {
+      const token =
+        localStorage.getItem(
+          "token",
+        );
+
+      if (!token || !user?.id) {
+        setLoading(false);
+        return;
       }
 
-      // 2. Caso Tarea Recurrente (TURNO)
-      if (t.is_recurring) {
-        // CANDADO DE MES (Opcional): Si existe created_at, lo usamos para filtrar, si no, lo ignoramos para no romper el filtro
-        if (t.created_at) {
-          const createdDate = new Date(t.created_at);
-          const isSameMonth = safeSelectedDate.getMonth() === createdDate.getMonth() && 
-                              safeSelectedDate.getFullYear() === createdDate.getFullYear();
-          if (!isSameMonth) return false;
+      try {
+        setLoading(true);
+
+        const response =
+          await api.get(
+            `/routes/user/${user.id}`,
+          );
+
+        setAllTasks(
+          extractRows(response),
+        );
+      } catch (error) {
+        if (
+          error?.response?.status !==
+            401 &&
+          error?.status !== 401
+        ) {
+          toast.error(
+            "Error al cargar agenda",
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, [user?.id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const filtered =
+      allTasks.filter((task) => {
+        if (task.visit_date) {
+          const taskDate =
+            new Date(
+              task.visit_date,
+            );
+
+          return (
+            !Number.isNaN(
+              taskDate.getTime(),
+            ) &&
+            toLocalDateKey(
+              taskDate,
+            ) ===
+              selectedDateKey
+          );
         }
 
-        // VALIDACIÓN DE SEMANA Y DÍA
+        if (
+          task.is_recurring
+        ) {
+          if (
+            task.created_at
+          ) {
+            const createdDate =
+              new Date(
+                task.created_at,
+              );
 
-        const currentWeek = getWeekNumber(safeSelectedDate);
-const currentDay = safeSelectedDate.getDay();
-       
-        
-        return Number(t.week_number) === currentWeek && Number(t.day_of_week) === currentDay;
-      }
-      return false;
-    });
+            const isSameMonth =
+              safeSelectedDate.getMonth() ===
+                createdDate.getMonth() &&
+              safeSelectedDate.getFullYear() ===
+                createdDate.getFullYear();
+
+            if (!isSameMonth) {
+              return false;
+            }
+          }
+
+          const currentWeek =
+            getWeekNumber(
+              safeSelectedDate,
+            );
+
+          const jsDay =
+            safeSelectedDate.getDay();
+
+          const isoDay =
+            jsDay === 0
+              ? 7
+              : jsDay;
+
+          return (
+            Number(
+              task.week_number,
+            ) === currentWeek &&
+            Number(
+              task.day_of_week,
+            ) === isoDay
+          );
+        }
+
+        return false;
+      });
+
     setDisplayTasks(filtered);
-  }, [selectedDate, allTasks]);
+  }, [
+    allTasks,
+    selectedDateKey,
+  ]);
 
-  const handleStartVisit = async (taskId) => {
-    // Candado visual. El backend también debe validar esta misma regla.
-    if (!isSelectedDateToday) {
-      return toast.error(
-        isSelectedDatePast
-          ? "No puedes iniciar una visita pasada"
-          : "La visita solo se puede iniciar el día programado"
-      );
-    }
-
-    if (!navigator.geolocation) return toast.error("GPS no disponible");
-    setActionLoading(taskId); 
-    const toastId = toast.loading("Validando GPS...");
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          await api.post(`/routes/${taskId}/check-in`, {
-            lat_in: position.coords.latitude,
-            lng_in: position.coords.longitude
-          });
-          toast.success("Visita iniciada", { id: toastId });
-          navigate(`/usuario/reporte/${taskId}`);
-        } catch (error) {
-          toast.error(error.response?.data?.message || "Error al iniciar", { id: toastId });
-        } finally { setActionLoading(null); }
-      },
-      () => { toast.error("Activa el GPS", { id: toastId }); setActionLoading(null); },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
-
-  const getWeekDays = () => {
+  const getWeekDays = (
+    date,
+  ) => {
     const days = [];
-    const baseDate = new Date(safeSelectedDate);
-    const day = baseDate.getDay();
-    const diff = baseDate.getDate() - day + (day === 0 ? -6 : 1); 
-    const monday = new Date(baseDate.setDate(diff));
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      days.push(d);
+    const baseDate =
+      new Date(date);
+    const day =
+      baseDate.getDay();
+
+    const diff =
+      baseDate.getDate() -
+      day +
+      (day === 0 ? -6 : 1);
+
+    const monday =
+      new Date(
+        baseDate.setDate(diff),
+      );
+
+    for (
+      let index = 0;
+      index < 7;
+      index += 1
+    ) {
+      const current =
+        new Date(monday);
+
+      current.setDate(
+        monday.getDate() +
+          index,
+      );
+
+      days.push(current);
     }
+
     return days;
   };
 
-  if (!user || (loading && allTasks.length === 0)) {
+  const weekDays = useMemo(
+    () =>
+      getWeekDays(
+        safeSelectedDate,
+      ),
+    [selectedDateKey],
+  );
+
+  const daySummary = useMemo(() => {
+    return displayTasks.reduce(
+      (summary, task) => {
+        const status =
+          String(
+            task.status || "",
+          ).toUpperCase();
+
+        if (
+          status ===
+            "COMPLETED" ||
+          status ===
+            "FINALIZADO"
+        ) {
+          summary.completed += 1;
+        } else if (
+          status ===
+            "IN_PROGRESS" ||
+          status ===
+            "EN_PROCESO"
+        ) {
+          summary.inProgress += 1;
+        } else {
+          summary.pending += 1;
+        }
+
+        return summary;
+      },
+      {
+        pending: 0,
+        inProgress: 0,
+        completed: 0,
+      },
+    );
+  }, [displayTasks]);
+
+  const changeWeek = (
+    offset,
+  ) => {
+    const nextDate =
+      new Date(
+        safeSelectedDate,
+      );
+
+    nextDate.setDate(
+      nextDate.getDate() +
+        offset * 7,
+    );
+
+    setSelectedDate(
+      nextDate,
+    );
+  };
+
+  const goToToday = () => {
+    setSelectedDate(
+      new Date(),
+    );
+  };
+
+  const handleStartVisit =
+    async (taskId) => {
+      if (
+        !isSelectedDateToday
+      ) {
+        toast.error(
+          isSelectedDatePast
+            ? "No puedes iniciar una visita pasada"
+            : "La visita solo se puede iniciar el día programado",
+        );
+        return;
+      }
+
+      if (
+        !navigator.geolocation
+      ) {
+        toast.error(
+          "GPS no disponible",
+        );
+        return;
+      }
+
+      setActionLoading(
+        taskId,
+      );
+
+      const toastId =
+        toast.loading(
+          "Validando ubicación...",
+        );
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            await api.post(
+              `/routes/${taskId}/check-in`,
+              {
+                lat_in:
+                  position.coords
+                    .latitude,
+                lng_in:
+                  position.coords
+                    .longitude,
+              },
+            );
+
+            toast.success(
+              "Visita iniciada",
+              {
+                id: toastId,
+              },
+            );
+
+            navigate(
+              `/usuario/reporte/${taskId}`,
+            );
+          } catch (error) {
+            toast.error(
+              error?.response?.data
+                ?.message ||
+                error?.data
+                  ?.message ||
+                "Error al iniciar la visita",
+              {
+                id: toastId,
+              },
+            );
+          } finally {
+            setActionLoading(
+              null,
+            );
+          }
+        },
+        (error) => {
+          const message =
+            error?.code === 1
+              ? "Debes permitir el acceso a tu ubicación"
+              : "No fue posible obtener tu ubicación";
+
+          toast.error(
+            message,
+            {
+              id: toastId,
+            },
+          );
+
+          setActionLoading(
+            null,
+          );
+        },
+        {
+          enableHighAccuracy:
+            true,
+          timeout: 15000,
+          maximumAge: 0,
+        },
+      );
+    };
+
+  if (
+    !user ||
+    (loading &&
+      allTasks.length === 0)
+  ) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-white">
-        <div className="w-10 h-10 border-4 border-gray-100 border-t-[#87be00] rounded-full animate-spin"></div>
+      <div className="flex min-h-[70vh] items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-11 w-11 animate-spin rounded-full border-4 border-slate-100 border-t-[#87be00]" />
+
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Cargando agenda
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-24 font-[Outfit]">
-      <header className="bg-white px-5 pt-10 pb-5 flex items-center justify-between sticky top-0 z-30 border-b border-gray-100">
-        <div>
-          <p className="text-[10px] font-black text-[#87be00] uppercase tracking-widest">Cultiva</p>
-          <h1 className="text-xl font-black text-gray-900 leading-none">Mi Agenda</h1>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] font-bold text-gray-400 uppercase">{safeSelectedDate.toLocaleDateString('es-CL', { month: 'short' })}</p>
-          <p className="text-lg font-black text-gray-800 leading-none">{safeSelectedDate.getFullYear()}</p>
-        </div>
-      </header>
+    <div className="min-h-full bg-slate-50 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 font-[Outfit] sm:px-5 md:px-6 md:pb-10">
+      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5">
+        {/* RESUMEN DEL DÍA */}
+        <section className="overflow-hidden rounded-[2rem] bg-slate-900 p-5 text-white shadow-xl shadow-slate-900/10">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#a8d52c]">
+                Mi agenda
+              </p>
 
-      <main className="p-4 space-y-6 max-w-md mx-auto">
-        <section className="bg-white p-3 rounded-3xl shadow-sm border border-gray-50">
-          <div className="grid grid-cols-7 gap-1">
-            {getWeekDays().map((date, idx) => {
-              const isSelected = toLocalDateKey(date) === selectedDateKey;
-              return (
-                <button key={idx} onClick={() => setSelectedDate(date)} className={`flex flex-col items-center py-3 rounded-2xl transition-all ${isSelected ? 'bg-black text-white shadow-lg' : 'bg-transparent text-gray-400'}`}>
-                  <span className="text-[8px] font-bold uppercase mb-1">{date.toLocaleDateString('es-CL', { weekday: 'short' }).substring(0,2)}</span>
-                  <span className="text-sm font-black">{date.getDate()}</span>
-                </button>
-              );
-            })}
+              <h1 className="mt-2 text-2xl font-black tracking-tight">
+                {safeSelectedDate.toLocaleDateString(
+                  "es-CL",
+                  {
+                    weekday:
+                      "long",
+                    day: "numeric",
+                    month: "long",
+                  },
+                )}
+              </h1>
+
+              <p className="mt-2 text-sm text-slate-400">
+                {displayTasks.length ===
+                1
+                  ? "1 visita programada"
+                  : `${displayTasks.length} visitas programadas`}
+              </p>
+            </div>
+
+            {!isSelectedDateToday && (
+              <button
+                type="button"
+                onClick={goToToday}
+                className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[8px] font-black uppercase tracking-wider text-white transition hover:bg-white/20"
+              >
+                Hoy
+              </button>
+            )}
+          </div>
+
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            <div className="rounded-2xl bg-white/5 p-3">
+              <p className="text-xl font-black text-amber-400">
+                {daySummary.pending}
+              </p>
+
+              <p className="mt-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
+                Pendientes
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/5 p-3">
+              <p className="text-xl font-black text-blue-400">
+                {daySummary.inProgress}
+              </p>
+
+              <p className="mt-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
+                En curso
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/5 p-3">
+              <p className="text-xl font-black text-[#a8d52c]">
+                {daySummary.completed}
+              </p>
+
+              <p className="mt-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
+                Completadas
+              </p>
+            </div>
           </div>
         </section>
 
-        <section className="space-y-4">
-          {displayTasks.length === 0 ? (
-            <div className="text-center py-20 text-gray-300 uppercase text-[10px] font-bold tracking-widest">No hay visitas</div>
-          ) : (
-            displayTasks.map((task) => {
-              const isPending = task.status === 'PENDING' || task.status === 'PENDIENTE';
-              const isInProgress = task.status === 'IN_PROGRESS' || task.status === 'EN_PROCESO';
-              const isCompleted = task.status === 'COMPLETED' || task.status === 'FINALIZADO';
+        {/* SELECTOR SEMANAL */}
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 flex items-center justify-between px-1">
+            <button
+              type="button"
+              onClick={() =>
+                changeWeek(-1)
+              }
+              aria-label="Semana anterior"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            >
+              <FiChevronLeft
+                size={17}
+              />
+            </button>
 
-              const canStartVisit = isPending && isSelectedDateToday;
-              const isStarting = actionLoading === task.id;
+            <div className="text-center">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">
+                Semana
+              </p>
 
-              const unavailableLabel = isSelectedDatePast
-                ? "Visita pasada"
-                : isSelectedDateFuture
-                  ? "Disponible el día programado"
-                  : "No disponible";
+              <p className="mt-0.5 text-[10px] font-black text-slate-700">
+                {weekDays[0]?.toLocaleDateString(
+                  "es-CL",
+                  {
+                    day: "2-digit",
+                    month:
+                      "short",
+                  },
+                )}{" "}
+                —{" "}
+                {weekDays[6]?.toLocaleDateString(
+                  "es-CL",
+                  {
+                    day: "2-digit",
+                    month:
+                      "short",
+                  },
+                )}
+              </p>
+            </div>
 
-              return (
-                <div key={task.id} className={`bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 ${isCompleted ? 'opacity-70' : ''}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="max-w-[70%]">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-black text-[#87be00] flex items-center gap-1">
-                           <FiClock size={12}/> {task.start_time?.slice(0, 5)}
-                        </span>
-                        {isCompleted && <span className="text-[8px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-bold uppercase">Completado</span>}
-                      </div>
-                      
-                      <h2 className="text-lg font-black text-gray-800 uppercase leading-none truncate">{task.cadena}</h2>
-                      
-                      <div className="mt-2 mb-1">
-                        <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 italic tracking-tighter">
-                          N° de Visita: {task.visit_number || 'S/N'}
-                        </span>
-                      </div>
-                      
-                      <p className="text-[9px] font-bold text-gray-400 uppercase mt-2 truncate">{task.direccion}</p>
-                    </div>
-                    <div className={`w-3 h-3 rounded-full ${isPending ? 'bg-orange-400' : isInProgress ? 'bg-blue-500 animate-pulse' : 'bg-[#87be00]'}`}></div>
-                  </div>
+            <button
+              type="button"
+              onClick={() =>
+                changeWeek(1)
+              }
+              aria-label="Semana siguiente"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            >
+              <FiChevronRight
+                size={17}
+              />
+            </button>
+          </div>
 
-                  <div className="flex gap-2">
-                    {isCompleted ? (
-                      <div className="flex-1 bg-gray-50 text-gray-400 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 border border-gray-100">
-                        <FiCheckCircle size={16}/> Reporte Finalizado
-                      </div>
-                    ) : isPending ? (
-                      <button
-                        type="button"
-                        onClick={() => handleStartVisit(task.id)}
-                        disabled={!canStartVisit || isStarting}
-                        className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
-                          canStartVisit
-                            ? "bg-black text-white active:bg-[#87be00]"
-                            : "bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
-                        }`}
-                      >
-                        {isStarting ? (
-                          <>
-                            <FiLoader size={16} className="animate-spin" />
-                            Validando
-                          </>
-                        ) : canStartVisit ? (
-                          <>
-                            <FiPlay size={16} />
-                            Iniciar
-                          </>
-                        ) : (
-                          <>
-                            <FiClock size={16} />
-                            {unavailableLabel}
-                          </>
-                        )}
-                      </button>
-                    ) : (
-                      <button onClick={() => navigate(`/usuario/reporte/${task.id}`)} className="flex-1 bg-blue-600 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
-                        <FiSend size={16}/> Continuar
-                      </button>
+          <div className="grid grid-cols-7 gap-1">
+            {weekDays.map(
+              (date) => {
+                const dateKey =
+                  toLocalDateKey(
+                    date,
+                  );
+
+                const isSelected =
+                  dateKey ===
+                  selectedDateKey;
+
+                const isToday =
+                  dateKey ===
+                  todayKey;
+
+                return (
+                  <button
+                    key={dateKey}
+                    type="button"
+                    onClick={() =>
+                      setSelectedDate(
+                        date,
+                      )
+                    }
+                    className={`
+                      relative flex min-h-[58px]
+                      flex-col items-center
+                      justify-center rounded-2xl
+                      transition-all
+
+                      ${
+                        isSelected
+                          ? `
+                            bg-slate-900
+                            text-white
+                            shadow-lg
+                            shadow-slate-900/15
+                          `
+                          : `
+                            text-slate-400
+                            hover:bg-slate-50
+                            hover:text-slate-900
+                          `
+                      }
+                    `}
+                  >
+                    <span className="text-[7px] font-black uppercase tracking-wider">
+                      {date
+                        .toLocaleDateString(
+                          "es-CL",
+                          {
+                            weekday:
+                              "short",
+                          },
+                        )
+                        .replace(
+                          ".",
+                          "",
+                        )
+                        .slice(0, 2)}
+                    </span>
+
+                    <span className="mt-1 text-sm font-black">
+                      {date.getDate()}
+                    </span>
+
+                    {isToday && (
+                      <span
+                        className={`
+                          absolute bottom-1.5
+                          h-1.5 w-1.5
+                          rounded-full
+
+                          ${
+                            isSelected
+                              ? "bg-[#a8d52c]"
+                              : "bg-[#87be00]"
+                          }
+                        `}
+                      />
                     )}
-                    
-                    <a 
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.direccion)}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="bg-gray-100 text-gray-900 p-4 rounded-2xl active:bg-black active:text-white"
-                    >
-                      <FiMapPin size={18}/>
-                    </a>
-                  </div>
-                </div>
-              );
-            })
+                  </button>
+                );
+              },
+            )}
+          </div>
+        </section>
+
+        {/* VISITAS */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">
+                Planificación
+              </p>
+
+              <h2 className="mt-1 text-lg font-black tracking-tight text-slate-900">
+                Visitas del día
+              </h2>
+            </div>
+
+            <span className="rounded-xl bg-white px-3 py-2 text-[9px] font-black uppercase tracking-wider text-slate-500 shadow-sm">
+              {displayTasks.length}
+            </span>
+          </div>
+
+          {displayTasks.length ===
+          0 ? (
+            <div className="flex min-h-[260px] flex-col items-center justify-center rounded-[2rem] border border-dashed border-slate-200 bg-white p-8 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-300">
+                <FiCalendar
+                  size={28}
+                />
+              </div>
+
+              <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                Sin visitas programadas
+              </p>
+
+              <p className="mt-2 max-w-xs text-sm text-slate-500">
+                No tienes locales asignados para la fecha seleccionada.
+              </p>
+            </div>
+          ) : (
+            displayTasks.map(
+              (task) => {
+                const status =
+                  String(
+                    task.status ||
+                      "PENDING",
+                  ).toUpperCase();
+
+                const statusConfig =
+                  STATUS_CONFIG[
+                    status
+                  ] ||
+                  STATUS_CONFIG.PENDING;
+
+                const isPending =
+                  status ===
+                    "PENDING" ||
+                  status ===
+                    "PENDIENTE";
+
+                const isInProgress =
+                  status ===
+                    "IN_PROGRESS" ||
+                  status ===
+                    "EN_PROCESO";
+
+                const isCompleted =
+                  status ===
+                    "COMPLETED" ||
+                  status ===
+                    "FINALIZADO";
+
+                const canStartVisit =
+                  isPending &&
+                  isSelectedDateToday;
+
+                const isStarting =
+                  actionLoading ===
+                  task.id;
+
+                const unavailableLabel =
+                  isSelectedDatePast
+                    ? "Visita pasada"
+                    : isSelectedDateFuture
+                      ? "Disponible el día programado"
+                      : "No disponible";
+
+                const mapsQuery =
+                  task.lat &&
+                  task.lng
+                    ? `${task.lat},${task.lng}`
+                    : task.direccion ||
+                      "";
+
+                return (
+                  <article
+                    key={task.id}
+                    className={`
+                      overflow-hidden rounded-[2rem]
+                      border border-slate-200
+                      bg-white shadow-sm
+                      transition
+
+                      ${
+                        isCompleted
+                          ? "opacity-80"
+                          : "hover:shadow-md"
+                      }
+                    `}
+                  >
+                    <div className="p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`
+                                inline-flex items-center
+                                gap-1.5 rounded-lg
+                                border px-2.5 py-1
+                                text-[8px] font-black
+                                uppercase tracking-wider
+                                ${statusConfig.badge}
+                              `}
+                            >
+                              <span
+                                className={`
+                                  h-1.5 w-1.5
+                                  rounded-full
+                                  ${statusConfig.dot}
+                                  ${
+                                    isInProgress
+                                      ? "animate-pulse"
+                                      : ""
+                                  }
+                                `}
+                              />
+
+                              {statusConfig.label}
+                            </span>
+
+                            <span className="inline-flex items-center gap-1.5 text-[9px] font-black text-[#87be00]">
+                              <FiClock
+                                size={12}
+                              />
+
+                              {task.start_time?.slice(
+                                0,
+                                5,
+                              ) ||
+                                "--:--"}
+
+                              {task.end_time &&
+                                ` — ${task.end_time.slice(
+                                  0,
+                                  5,
+                                )}`}
+                            </span>
+                          </div>
+
+                          <h3 className="mt-3 truncate text-lg font-black tracking-tight text-slate-900">
+                            {task.cadena ||
+                              "Local asignado"}
+                          </h3>
+
+                          <p className="mt-2 flex items-start gap-2 text-[10px] font-bold leading-relaxed text-slate-500">
+                            <FiMapPin
+                              size={13}
+                              className="mt-0.5 shrink-0 text-slate-400"
+                            />
+
+                            <span className="line-clamp-2">
+                              {task.direccion ||
+                                "Dirección no disponible"}
+                            </span>
+                          </p>
+                        </div>
+
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
+                          <FiNavigation
+                            size={18}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+                        <span className="rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider text-blue-600">
+                          Visita{" "}
+                          {task.visit_number ||
+                            "S/N"}
+                        </span>
+
+                        {task.codigo_local && (
+                          <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider text-slate-500">
+                            Código{" "}
+                            {task.codigo_local}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 border-t border-slate-100 bg-slate-50/70 p-3">
+                      {isCompleted ? (
+                        <div className="flex min-h-[50px] flex-1 items-center justify-center gap-2 rounded-2xl border border-[#87be00]/20 bg-[#87be00]/10 px-4 text-[9px] font-black uppercase tracking-wider text-[#87be00]">
+                          <FiCheckCircle
+                            size={16}
+                          />
+                          Reporte finalizado
+                        </div>
+                      ) : isPending ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleStartVisit(
+                              task.id,
+                            )
+                          }
+                          disabled={
+                            !canStartVisit ||
+                            isStarting
+                          }
+                          className={`
+                            flex min-h-[50px]
+                            flex-1 items-center
+                            justify-center gap-2
+                            rounded-2xl px-4
+                            text-[9px] font-black
+                            uppercase tracking-wider
+                            transition
+
+                            ${
+                              canStartVisit
+                                ? `
+                                  bg-slate-900
+                                  text-white
+                                  shadow-lg
+                                  shadow-slate-900/10
+                                  hover:bg-[#87be00]
+                                `
+                                : `
+                                  cursor-not-allowed
+                                  border
+                                  border-slate-200
+                                  bg-slate-100
+                                  text-slate-400
+                                `
+                            }
+                          `}
+                        >
+                          {isStarting ? (
+                            <>
+                              <FiLoader
+                                size={16}
+                                className="animate-spin"
+                              />
+                              Validando
+                            </>
+                          ) : canStartVisit ? (
+                            <>
+                              <FiPlay
+                                size={16}
+                              />
+                              Iniciar visita
+                            </>
+                          ) : (
+                            <>
+                              <FiClock
+                                size={16}
+                              />
+                              {unavailableLabel}
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(
+                              `/usuario/reporte/${task.id}`,
+                            )
+                          }
+                          className="flex min-h-[50px] flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-[9px] font-black uppercase tracking-wider text-white shadow-lg shadow-blue-600/15 transition hover:bg-blue-700"
+                        >
+                          <FiSend
+                            size={16}
+                          />
+                          Continuar visita
+                        </button>
+                      )}
+
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          mapsQuery,
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Abrir ubicación en Google Maps"
+                        className="flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:border-[#87be00]/40 hover:bg-[#87be00]/10 hover:text-[#87be00]"
+                      >
+                        <FiMapPin
+                          size={18}
+                        />
+                      </a>
+                    </div>
+                  </article>
+                );
+              },
+            )
           )}
         </section>
-      </main>
+
+        {loading &&
+          allTasks.length > 0 && (
+            <div className="flex items-center justify-center gap-2 py-3 text-[9px] font-black uppercase tracking-wider text-slate-400">
+              <FiLoader
+                size={14}
+                className="animate-spin text-[#87be00]"
+              />
+              Actualizando agenda
+            </div>
+          )}
+      </div>
     </div>
   );
 };

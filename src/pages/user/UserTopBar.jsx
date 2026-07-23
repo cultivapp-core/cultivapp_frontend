@@ -1,70 +1,216 @@
-import { useContext } from "react";
-import { AuthContext } from "../../context/AuthContext";
-import { useNotificationContext } from "../../context/NotificationContext";
-import { useNavigate } from "react-router-dom";
-import { FiLogOut, FiBell, FiMaximize } from "react-icons/fi"; // FiMaximize simulando el icono de QR
+import {
+  useContext,
+  useMemo,
+} from "react";
+import {
+  useNavigate,
+} from "react-router-dom";
+import {
+  FiBell,
+  FiLogOut,
+  FiMaximize,
+} from "react-icons/fi";
+
+import {
+  AuthContext,
+} from "../../context/AuthContext";
+import {
+  useNotificationContext,
+} from "../../context/NotificationContext";
 
 const UserTopbar = () => {
-  const { logout, user } = useContext(AuthContext);
-  const { unreadCount } = useNotificationContext();
+  const { logout, user } =
+    useContext(AuthContext);
+  const { unreadCount = 0 } =
+    useNotificationContext();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
-    navigate("/", { replace: true });
+  const initials = useMemo(() => {
+    const first =
+      user?.first_name
+        ?.trim()
+        .charAt(0)
+        .toUpperCase() || "";
+
+    const last =
+      user?.last_name
+        ?.trim()
+        .charAt(0)
+        .toUpperCase() || "";
+
+    return `${first}${last}` || "M";
+  }, [
+    user?.first_name,
+    user?.last_name,
+  ]);
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/", {
+      replace: true,
+    });
   };
 
-  // Iniciales del usuario
-  const initials = `${user?.first_name?.[0] || 'J'}${user?.last_name?.[0] || 'E'}`.toUpperCase();
-
   return (
-    <div className="bg-white border border-gray-100 rounded-[2rem] mx-4 mt-4 md:mx-6 md:mt-6 px-4 md:px-6 py-3 flex justify-between items-center shadow-[0_10px_40px_rgba(0,0,0,0.02)] shrink-0 font-[Outfit]">
-      
-      {/* SECCIÓN IZQUIERDA: PERFIL */}
-      <div className="flex items-center gap-4">
-        <div className="w-11 h-11 rounded-full bg-[#87be00]/10 border border-[#87be00]/20 flex items-center justify-center text-[#87be00] font-black text-sm shrink-0">
-          {initials}
-        </div>
-        <div className="flex flex-col justify-center">
-          <h2 className="text-[12px] font-black text-gray-900 uppercase tracking-widest leading-tight italic">
-            Hola, {user?.first_name || 'Juan'}
-          </h2>
-          <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">
-            Panel de Colaborador
-          </p>
-        </div>
-      </div>
+    <header
+      className="
+        sticky top-0 z-40 shrink-0
+        border-b border-slate-200/90
+        bg-white/95 backdrop-blur-xl
 
-      {/* SECCIÓN DERECHA: ACCIONES */}
-      <div className="flex items-center gap-2 md:gap-4">
-        
-        {/* Campana de Notificaciones */}
-        <button className="relative p-2 text-gray-400 hover:text-[#87be00] transition-colors">
-          <FiBell size={18} />
-          {unreadCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse border border-white"></span>
-          )}
-        </button>
+        md:mx-6 md:mt-6
+        md:rounded-[2rem]
+        md:border md:shadow-sm
+      "
+    >
+      <div
+        className="
+          relative flex min-h-[72px]
+          items-center justify-end
+          px-4
+          pt-[env(safe-area-inset-top)]
+          sm:px-5
+          md:min-h-[76px]
+          md:justify-between
+          md:px-6
+          md:pt-0
+        "
+      >
+        {/* Perfil centrado en móvil */}
+        <div
+          className="
+            absolute left-1/2 top-1/2
+            w-[160px]
+            -translate-x-1/2
+            -translate-y-1/2
+            text-center
 
-        {/* Icono QR (Visible solo en pantallas más grandes para no saturar móviles) */}
-        <button className="hidden sm:flex p-2 text-gray-400 hover:text-gray-900 transition-colors bg-gray-50 rounded-xl">
-          <FiMaximize size={18} />
-        </button>
-
-        {/* Separador visual */}
-        <div className="w-[1px] h-6 bg-gray-100 hidden sm:block mx-1"></div>
-
-        {/* Botón Salir */}
-        <button 
-          onClick={handleLogout}
-          className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-          title="Cerrar sesión"
+            md:static md:flex
+            md:w-auto md:translate-x-0
+            md:translate-y-0
+            md:items-center md:gap-3
+            md:text-left
+          "
         >
-          <FiLogOut size={18} />
-        </button>
-      </div>
+          <div
+            className="
+              hidden h-11 w-11 shrink-0
+              items-center justify-center
+              rounded-2xl border
+              border-[#87be00]/20
+              bg-[#87be00]/10
+              text-sm font-black
+              text-[#87be00]
+              md:flex
+            "
+          >
+            {initials}
+          </div>
 
-    </div>
+          <div className="min-w-0">
+            <h2
+              className="
+                truncate text-[11px]
+                font-black text-slate-900
+                sm:text-xs
+                md:text-[12px]
+              "
+            >
+              Hola,{" "}
+              {user?.first_name ||
+                "Mercaderista"}
+            </h2>
+
+            <p
+              className="
+                mt-1 truncate
+                text-[8px] font-black
+                uppercase tracking-[0.18em]
+                text-[#87be00]
+                md:text-slate-400
+              "
+            >
+              Panel de colaborador
+            </p>
+          </div>
+        </div>
+
+        {/* Acciones */}
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2 md:gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                "/usuario/notifications",
+              )
+            }
+            aria-label="Abrir notificaciones"
+            className="
+              relative flex h-10 w-10
+              items-center justify-center
+              rounded-xl text-slate-400
+              transition
+              hover:bg-[#87be00]/10
+              hover:text-[#87be00]
+            "
+          >
+            <FiBell size={18} />
+
+            {unreadCount > 0 && (
+              <span
+                className="
+                  absolute right-1 top-1
+                  flex h-[17px] min-w-[17px]
+                  items-center justify-center
+                  rounded-full bg-red-500
+                  px-1 text-[7px]
+                  font-black text-white
+                  ring-2 ring-white
+                "
+              >
+                {unreadCount > 9
+                  ? "9+"
+                  : unreadCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            aria-label="Abrir código QR"
+            className="
+              hidden h-10 w-10
+              items-center justify-center
+              rounded-xl bg-slate-50
+              text-slate-400 transition
+              hover:bg-slate-100
+              hover:text-slate-900
+              sm:flex
+            "
+          >
+            <FiMaximize size={18} />
+          </button>
+
+          <div className="hidden h-6 w-px bg-slate-200 sm:block" />
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
+            className="
+              flex h-10 w-10
+              items-center justify-center
+              rounded-xl text-slate-400
+              transition hover:bg-red-50
+              hover:text-red-500
+            "
+          >
+            <FiLogOut size={18} />
+          </button>
+        </div>
+      </div>
+    </header>
   );
 };
 
