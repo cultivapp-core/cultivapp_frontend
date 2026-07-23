@@ -114,6 +114,16 @@ const PHOTO_STATUS = {
   ERROR: "error",
 };
 
+const GPS_STATUS = {
+  IDLE: "idle",
+  LOCATING: "locating",
+  CHECKING: "checking",
+  SUCCESS: "success",
+  ERROR: "error",
+};
+
+const MAX_CHECK_IN_DISTANCE_METERS = 300;
+
 const primaryButtonClass =
   "flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-[#87be00] px-5 text-[9px] font-black uppercase tracking-wider text-white shadow-lg shadow-[#87be00]/20 transition hover:bg-[#76a600] active:scale-[0.98] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:active:scale-100";
 
@@ -352,6 +362,104 @@ const compressImage = async (
   );
 };
 
+const getCurrentGpsPosition = () =>
+  new Promise(
+    (resolve, reject) => {
+      if (
+        !navigator.geolocation
+      ) {
+        reject(
+          new Error(
+            "El dispositivo no permite obtener la ubicación GPS.",
+          ),
+        );
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        resolve,
+        reject,
+        {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+        },
+      );
+    },
+  );
+
+const getApiPayload = (
+  response,
+) => {
+  if (
+    response &&
+    typeof response === "object" &&
+    (
+      Object.prototype.hasOwnProperty.call(
+        response,
+        "success",
+      ) ||
+      Object.prototype.hasOwnProperty.call(
+        response,
+        "isValid",
+      ) ||
+      Object.prototype.hasOwnProperty.call(
+        response,
+        "code",
+      )
+    )
+  ) {
+    return response;
+  }
+
+  if (
+    response?.data &&
+    typeof response.data === "object"
+  ) {
+    return response.data;
+  }
+
+  return response || {};
+};
+
+const getGpsErrorMessage = (
+  error,
+) => {
+  const backendData =
+    error?.response?.data ??
+    error?.data ??
+    null;
+
+  if (
+    backendData?.message
+  ) {
+    return backendData.message;
+  }
+
+  if (
+    error?.code === 1
+  ) {
+    return "Debes autorizar el acceso a la ubicación para iniciar la visita.";
+  }
+
+  if (
+    error?.code === 2
+  ) {
+    return "No fue posible determinar tu ubicación. Activa el GPS e inténtalo nuevamente.";
+  }
+
+  if (
+    error?.code === 3
+  ) {
+    return "La ubicación tardó demasiado en responder. Verifica la señal GPS e inténtalo nuevamente.";
+  }
+
+  return (
+    error?.message ||
+    "No fue posible validar tu ubicación."
+  );
+};
+
 const VisitFlow = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -377,6 +485,36 @@ const VisitFlow = () => {
     useState(
       navigator.onLine,
     );
+
+  const visitSessionKey =
+    `cultivapp_visit_started_${id}`;
+
+  const [
+    visitStarted,
+    setVisitStarted,
+  ] = useState(
+    () =>
+      sessionStorage.getItem(
+        visitSessionKey,
+      ) === "true",
+  );
+
+  const [
+    gpsStatus,
+    setGpsStatus,
+  ] = useState(
+    GPS_STATUS.IDLE,
+  );
+
+  const [
+    gpsMessage,
+    setGpsMessage,
+  ] = useState("");
+
+  const [
+    gpsDistance,
+    setGpsDistance,
+  ] = useState(null);
 
   const [step, setStep] =
     useState(1);
@@ -1604,6 +1742,207 @@ const VisitFlow = () => {
       }
     };
 
+  const handleStartVisit =
+    async () => {
+      if (
+        gpsStatus ===
+          GPS_STATUS.LOCATING ||
+        gpsStatus ===
+          GPS_STATUS.CHECKING
+      ) {
+        return;
+      }
+
+      if (!navigator.onLine) {
+        const message =
+          "Necesitas conexión para validar tu ubicación e iniciar la visita.";
+
+        setGpsStatus(
+          GPS_STATUS.ERROR,
+        );
+        setGpsMessage(message);
+        toast.error(message);
+        return;
+      }
+
+      setGpsStatus(
+        GPS_STATUS.LOCATING,
+      );
+      setGpsMessage("");
+      setGpsDistance(null);
+
+      try {
+        const position =
+          await getCurrentGpsPosition();
+
+        const latitude =
+          Number(
+            position.coords
+              .latitude,
+          );
+
+        const longitude =
+          Number(
+            position.coords
+              .longitude,
+          );
+
+        if (
+          !Number.isFinite(
+            latitude,
+          ) ||
+          !Number.isFinite(
+            longitude,
+          )
+        ) {
+          throw new Error(
+            "El dispositivo entregó coordenadas GPS inválidas.",
+          );
+        }
+
+        setGpsStatus(
+          GPS_STATUS.CHECKING,
+        );
+
+        const response =
+          await api.post(
+            `/routes/${id}/check-in`,
+            {
+              lat_in:
+                latitude,
+              lng_in:
+                longitude,
+            },
+          );
+
+        const payload =
+          getApiPayload(
+            response,
+          );
+
+        const visitData =
+          payload?.data ??
+          null;
+
+        const rawDistance =
+          payload?.distance ??
+          visitData
+            ?.distance_meters ??
+          null;
+
+        const distance =
+          Number(
+            rawDistance,
+          );
+
+        const isValid =
+          payload?.isValid ===
+            true ||
+          (
+            payload?.success ===
+              true &&
+            visitData
+              ?.is_valid_gps ===
+              true
+          );
+
+        if (!isValid) {
+          const message =
+            payload?.message ||
+            `Debes estar a un máximo de ${MAX_CHECK_IN_DISTANCE_METERS} metros del local para iniciar la visita.`;
+
+          setGpsDistance(
+            Number.isFinite(
+              distance,
+            )
+              ? distance
+              : null,
+          );
+
+          setGpsStatus(
+            GPS_STATUS.ERROR,
+          );
+
+          setGpsMessage(
+            message,
+          );
+
+          toast.error(message);
+          return;
+        }
+
+        sessionStorage.setItem(
+          visitSessionKey,
+          "true",
+        );
+
+        setGpsDistance(
+          Number.isFinite(
+            distance,
+          )
+            ? distance
+            : null,
+        );
+
+        setGpsStatus(
+          GPS_STATUS.SUCCESS,
+        );
+
+        setGpsMessage(
+          "Ubicación validada. Puedes comenzar la visita.",
+        );
+
+        setVisitStarted(true);
+
+        toast.success(
+          "Ubicación validada. Visita iniciada.",
+        );
+      } catch (error) {
+        const backendData =
+          error?.response
+            ?.data ??
+          error?.data ??
+          null;
+
+        const rawDistance =
+          backendData
+            ?.distance ??
+          backendData?.data
+            ?.distance_meters ??
+          null;
+
+        const distance =
+          Number(
+            rawDistance,
+          );
+
+        const message =
+          getGpsErrorMessage(
+            error,
+          );
+
+        setGpsDistance(
+          Number.isFinite(
+            distance,
+          )
+            ? distance
+            : null,
+        );
+
+        setGpsStatus(
+          GPS_STATUS.ERROR,
+        );
+
+        setGpsMessage(
+          message,
+        );
+
+        setVisitStarted(false);
+
+        toast.error(message);
+      }
+    };
+
   const finalizarVisitaTotal =
     async () => {
       if (!exitPhoto) {
@@ -1652,6 +1991,10 @@ const VisitFlow = () => {
           {
             id: toastId,
           },
+        );
+
+        sessionStorage.removeItem(
+          visitSessionKey,
         );
 
         setStep(8);
@@ -1911,6 +2254,294 @@ const VisitFlow = () => {
       </button>
     );
   };
+
+  const isGpsBusy =
+    gpsStatus ===
+      GPS_STATUS.LOCATING ||
+    gpsStatus ===
+      GPS_STATUS.CHECKING;
+
+  if (!visitStarted) {
+    return (
+      <div
+        className={`
+          min-h-full px-4 pb-[calc(6rem+env(safe-area-inset-bottom))]
+          pt-4 font-[Outfit] transition-colors
+          sm:px-5 md:pb-10
+
+          ${
+            isOnline
+              ? "bg-slate-50"
+              : "bg-amber-50/70"
+          }
+        `}
+      >
+        {!isOnline && (
+          <div className="fixed inset-x-0 top-0 z-[10000] flex min-h-8 items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-center text-[8px] font-black uppercase tracking-wider text-white shadow-lg">
+            <FiWifiOff
+              size={13}
+            />
+            Sin conexión: no es posible validar el GPS
+          </div>
+        )}
+
+        <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4">
+          <header className="rounded-[2rem] border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    "/usuario/home",
+                  )
+                }
+                aria-label="Volver al inicio"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 transition hover:bg-slate-200"
+              >
+                <FiArrowLeft
+                  size={18}
+                />
+              </button>
+
+              <div className="min-w-0 flex-1 text-center">
+                <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#87be00]">
+                  Inicio de visita
+                </p>
+
+                <p className="mt-1 truncate text-[10px] font-black text-slate-700">
+                  Local{" "}
+                  {id
+                    ?.slice(0, 8)
+                    .toUpperCase()}
+                </p>
+              </div>
+
+              <div
+                className={`
+                  flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl
+
+                  ${
+                    isOnline
+                      ? "bg-[#87be00]/10 text-[#87be00]"
+                      : "bg-amber-100 text-amber-600"
+                  }
+                `}
+              >
+                {isOnline ? (
+                  <FiWifi
+                    size={18}
+                  />
+                ) : (
+                  <FiWifiOff
+                    size={18}
+                  />
+                )}
+              </div>
+            </div>
+          </header>
+
+          <main className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+                  <FiMapPin
+                    size={22}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#87be00]">
+                    Validación obligatoria
+                  </p>
+
+                  <h1 className="mt-1 text-xl font-black tracking-tight text-slate-900">
+                    Confirma tu ubicación
+                  </h1>
+
+                  <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                    Para iniciar el flujo debes encontrarte dentro del radio permitido del local.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="rounded-[1.75rem] bg-slate-900 p-5 text-white">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-[#a8d52c]">
+                    <FiMapPin
+                      size={25}
+                    />
+                  </div>
+
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-wider text-[#a8d52c]">
+                      Distancia máxima
+                    </p>
+
+                    <p className="mt-1 text-3xl font-black">
+                      {MAX_CHECK_IN_DISTANCE_METERS} m
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-4 text-xs leading-relaxed text-slate-300">
+                  El servidor comparará la ubicación del dispositivo con las coordenadas registradas para el local.
+                </p>
+              </div>
+
+              {gpsDistance !== null && (
+                <div
+                  className={`
+                    rounded-2xl border p-4
+
+                    ${
+                      gpsStatus ===
+                      GPS_STATUS.ERROR
+                        ? "border-red-100 bg-red-50"
+                        : "border-[#87be00]/20 bg-[#87be00]/10"
+                    }
+                  `}
+                >
+                  <p
+                    className={`
+                      text-[8px] font-black uppercase tracking-wider
+
+                      ${
+                        gpsStatus ===
+                        GPS_STATUS.ERROR
+                          ? "text-red-600"
+                          : "text-[#6e9e00]"
+                      }
+                    `}
+                  >
+                    Distancia detectada
+                  </p>
+
+                  <p
+                    className={`
+                      mt-1 text-2xl font-black
+
+                      ${
+                        gpsStatus ===
+                        GPS_STATUS.ERROR
+                          ? "text-red-700"
+                          : "text-slate-900"
+                      }
+                    `}
+                  >
+                    {gpsDistance} metros
+                  </p>
+                </div>
+              )}
+
+              {gpsMessage && (
+                <div
+                  className={`
+                    flex items-start gap-3 rounded-2xl border p-4
+
+                    ${
+                      gpsStatus ===
+                      GPS_STATUS.ERROR
+                        ? "border-red-100 bg-red-50"
+                        : "border-blue-100 bg-blue-50"
+                    }
+                  `}
+                >
+                  <FiAlertCircle
+                    className={`
+                      mt-0.5 shrink-0
+
+                      ${
+                        gpsStatus ===
+                        GPS_STATUS.ERROR
+                          ? "text-red-500"
+                          : "text-blue-500"
+                      }
+                    `}
+                    size={17}
+                  />
+
+                  <p
+                    className={`
+                      text-xs leading-relaxed
+
+                      ${
+                        gpsStatus ===
+                        GPS_STATUS.ERROR
+                          ? "text-red-700"
+                          : "text-blue-700"
+                      }
+                    `}
+                  >
+                    {gpsMessage}
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={
+                  handleStartVisit
+                }
+                disabled={
+                  isGpsBusy ||
+                  !isOnline
+                }
+                className={primaryButtonClass}
+              >
+                {isGpsBusy ? (
+                  <>
+                    <FiLoader
+                      size={16}
+                      className="animate-spin"
+                    />
+
+                    {gpsStatus ===
+                    GPS_STATUS.LOCATING
+                      ? "Obteniendo ubicación"
+                      : "Validando distancia"}
+                  </>
+                ) : gpsStatus ===
+                  GPS_STATUS.ERROR ? (
+                  <>
+                    <FiRefreshCw
+                      size={16}
+                    />
+                    Reintentar validación
+                  </>
+                ) : (
+                  <>
+                    <FiPlay
+                      size={16}
+                    />
+                    Validar GPS e iniciar
+                  </>
+                )}
+              </button>
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <p className="text-[8px] font-black uppercase tracking-wider text-blue-600">
+                  Permiso de ubicación
+                </p>
+
+                <p className="mt-1 text-xs leading-relaxed text-blue-700">
+                  Mantén el GPS activado y autoriza el acceso a la ubicación precisa cuando el navegador lo solicite.
+                </p>
+              </div>
+            </div>
+
+            <footer className="flex items-center justify-center gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4 text-[7px] font-black uppercase tracking-[0.2em] text-slate-400">
+              <FiMapPin
+                size={11}
+              />
+              No podrás acceder al flujo sin validación GPS
+            </footer>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
