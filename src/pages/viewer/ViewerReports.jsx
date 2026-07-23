@@ -62,12 +62,52 @@ const getNumericValue = (value) => {
       : 0;
   }
 
-  const normalized = String(value)
+  const raw = String(value)
     .trim()
     .replace(/\$/g, "")
-    .replace(/\s/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
+    .replace(/\s/g, "");
+
+  let normalized = raw;
+
+  /*
+   * PostgreSQL suele devolver numeric como "3982.79".
+   * Los archivos locales también pueden usar "3.982,79".
+   */
+  if (
+    raw.includes(".") &&
+    raw.includes(",")
+  ) {
+    const decimalSeparator =
+      raw.lastIndexOf(",") >
+      raw.lastIndexOf(".")
+        ? ","
+        : ".";
+
+    const thousandsSeparator =
+      decimalSeparator === ","
+        ? "."
+        : ",";
+
+    normalized = raw
+      .replace(
+        new RegExp(
+          `\\${thousandsSeparator}`,
+          "g",
+        ),
+        "",
+      )
+      .replace(
+        decimalSeparator,
+        ".",
+      );
+  } else if (
+    raw.includes(",")
+  ) {
+    normalized = raw.replace(
+      /,/g,
+      ".",
+    );
+  }
 
   const parsed =
     Number.parseFloat(normalized);
@@ -131,6 +171,282 @@ const normalizeReportData = (
   return Array.isArray(raw)
     ? raw
     : [];
+};
+
+const FIELD_ALIASES = {
+  productDescription: [
+    "(I) Descripción Producto Interno",
+    "(I) Descripcion Producto Interno",
+    "Descripción Producto Interno",
+    "Descripcion Producto Interno",
+    "descripcion_producto",
+    "descripcionProducto",
+    "descripcion_producto_interno",
+    "product_description",
+    "producto",
+    "producto_nombre",
+    "nombre_producto",
+    "product_name",
+  ],
+  units: [
+    "Unidades vendidas",
+    "unidades_vendidas",
+    "unidadesVendidas",
+    "units",
+    "total_unidades",
+  ],
+  inventory: [
+    "Inventario Unidades",
+    "Inventario unidades",
+    "inventario_unidades",
+    "inventarioUnidades",
+    "inventory_units",
+    "inventario",
+    "stock_unidades",
+    "stock",
+  ],
+  ean: [
+    "(E) EAN",
+    "EAN",
+    "ean",
+  ],
+  internalCode: [
+    "(I) Código Producto Interno",
+    "(I) Codigo Producto Interno",
+    "codigo_producto_interno",
+    "codigoProductoInterno",
+    "internal_product_code",
+  ],
+  externalCode: [
+    "(E) Codigo Producto Externo",
+    "(E) Código Producto Externo",
+    "codigo_producto_externo",
+    "codigoProductoExterno",
+    "external_product_code",
+  ],
+  brand: [
+    "(E) Marca",
+    "Marca",
+    "marca",
+    "brand",
+  ],
+  format: [
+    "(I) Formato",
+    "Formato",
+    "formato",
+  ],
+};
+
+const normalizeFieldName = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const createFieldLookup = (item) =>
+  Object.entries(item || {}).reduce(
+    (lookup, [key, value]) => {
+      lookup[
+        normalizeFieldName(key)
+      ] = value;
+
+      return lookup;
+    },
+    {},
+  );
+
+const readField = (
+  item,
+  lookup,
+  aliases,
+) => {
+  for (const alias of aliases) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        item,
+        alias,
+      )
+    ) {
+      return {
+        found: true,
+        value: item[alias],
+      };
+    }
+
+    const normalizedAlias =
+      normalizeFieldName(alias);
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        lookup,
+        normalizedAlias,
+      )
+    ) {
+      return {
+        found: true,
+        value:
+          lookup[
+            normalizedAlias
+          ],
+      };
+    }
+  }
+
+  return {
+    found: false,
+    value: undefined,
+  };
+};
+
+const getOptionalNumericValue = (
+  field,
+) => {
+  if (
+    !field.found ||
+    field.value === null ||
+    field.value === undefined ||
+    String(field.value).trim() === ""
+  ) {
+    return null;
+  }
+
+  return getNumericValue(
+    field.value,
+  );
+};
+
+const isMeaningfulProductText = (
+  value,
+) => {
+  const text =
+    String(value || "").trim();
+
+  if (!text) {
+    return false;
+  }
+
+  const normalized =
+    normalizeFieldName(text);
+
+  return ![
+    "productogenerico",
+    "productosindescripcion",
+    "productosininformacion",
+    "sininformacion",
+    "sininfo",
+    "null",
+    "undefined",
+  ].includes(normalized);
+};
+
+const resolveProductIdentity = (
+  item,
+  lookup,
+) => {
+  const descriptionField =
+    readField(
+      item,
+      lookup,
+      FIELD_ALIASES.productDescription,
+    );
+
+  if (
+    isMeaningfulProductText(
+      descriptionField.value,
+    )
+  ) {
+    return {
+      name: String(
+        descriptionField.value,
+      ).trim(),
+      hasDescription: true,
+    };
+  }
+
+  const internalCode =
+    readField(
+      item,
+      lookup,
+      FIELD_ALIASES.internalCode,
+    ).value;
+
+  const externalCode =
+    readField(
+      item,
+      lookup,
+      FIELD_ALIASES.externalCode,
+    ).value;
+
+  const ean =
+    readField(
+      item,
+      lookup,
+      FIELD_ALIASES.ean,
+    ).value;
+
+  const brand =
+    readField(
+      item,
+      lookup,
+      FIELD_ALIASES.brand,
+    ).value;
+
+  const productFormat =
+    readField(
+      item,
+      lookup,
+      FIELD_ALIASES.format,
+    ).value;
+
+  const validEan =
+    ean &&
+    String(ean).trim() !== "0";
+
+  if (internalCode) {
+    return {
+      name: `Código interno ${internalCode}`,
+      hasDescription: false,
+    };
+  }
+
+  if (externalCode) {
+    return {
+      name: `Código externo ${externalCode}`,
+      hasDescription: false,
+    };
+  }
+
+  if (validEan) {
+    return {
+      name: `EAN ${ean}`,
+      hasDescription: false,
+    };
+  }
+
+  const descriptiveFallback = [
+    brand,
+    productFormat,
+  ]
+    .filter(
+      isMeaningfulProductText,
+    )
+    .map((value) =>
+      String(value).trim(),
+    )
+    .join(" · ");
+
+  if (descriptiveFallback) {
+    return {
+      name: descriptiveFallback,
+      hasDescription: false,
+    };
+  }
+
+  return {
+    name: "Producto sin identificar",
+    hasDescription: false,
+  };
 };
 
 const EmptyState = ({
@@ -299,6 +615,66 @@ const ViewerReports = () => {
     fetchReportData();
   }, [fetchReportData]);
 
+  const preparedData =
+    useMemo(
+      () =>
+        data.map((item) => {
+          const lookup =
+            createFieldLookup(item);
+
+          const productIdentity =
+            resolveProductIdentity(
+              item,
+              lookup,
+            );
+
+          return {
+            source: item,
+            productName:
+              productIdentity.name,
+            hasProductDescription:
+              productIdentity.hasDescription,
+            units:
+              getOptionalNumericValue(
+                readField(
+                  item,
+                  lookup,
+                  FIELD_ALIASES.units,
+                ),
+              ) ?? 0,
+            inventory:
+              getOptionalNumericValue(
+                readField(
+                  item,
+                  lookup,
+                  FIELD_ALIASES.inventory,
+                ),
+              ),
+          };
+        }),
+      [data],
+    );
+
+  const productDescriptionRecordsCount =
+    useMemo(
+      () =>
+        preparedData.filter(
+          (item) =>
+            item.hasProductDescription,
+        ).length,
+      [preparedData],
+    );
+
+  const inventoryRecordsCount =
+    useMemo(
+      () =>
+        preparedData.filter(
+          (item) =>
+            item.inventory !== null,
+        ).length,
+      [preparedData],
+    );
+
   const kpiTotals =
     useMemo(() => {
       return data.reduce(
@@ -377,38 +753,22 @@ const ViewerReports = () => {
   const topProducts =
     useMemo(() => {
       const grouped =
-        data.reduce(
+        preparedData.reduce(
           (accumulator, item) => {
-            const product =
-              item[
-                "(I) Descripción Producto Interno"
-              ] ??
-              item.descripcion_producto ??
-              item.descripcion_producto_interno ??
-              "Producto genérico";
-
-            const units =
-              getNumericValue(
-                item[
-                  "Unidades vendidas"
-                ] ??
-                  item.unidades_vendidas ??
-                  item.units ??
-                  0,
-              );
-
             if (
-              product &&
-              units > 0
+              item.units <= 0 ||
+              !item.productName
             ) {
-              accumulator[
-                product
-              ] =
-                (accumulator[
-                  product
-                ] || 0) +
-                units;
+              return accumulator;
             }
+
+            accumulator[
+              item.productName
+            ] =
+              (accumulator[
+                item.productName
+              ] || 0) +
+              item.units;
 
             return accumulator;
           },
@@ -430,28 +790,35 @@ const ViewerReports = () => {
             first.units,
         )
         .slice(0, 8);
-    }, [data]);
+    }, [preparedData]);
 
   const stockBreakStockData =
     useMemo(() => {
       let inStock = 0;
       let outOfStock = 0;
 
-      data.forEach((item) => {
-        const stock =
-          getNumericValue(
-            item.inventario_unidades ??
-              item.inventario ??
-              item.stock ??
-              0,
-          );
+      preparedData.forEach(
+        (item) => {
+          /*
+           * Un inventario ausente no se considera quiebre.
+           * Así evitamos mostrar 100% de quiebre cuando el
+           * endpoint no incluyó inventario_unidades.
+           */
+          if (
+            item.inventory === null
+          ) {
+            return;
+          }
 
-        if (stock <= 0) {
-          outOfStock += 1;
-        } else {
-          inStock += 1;
-        }
-      });
+          if (
+            item.inventory <= 0
+          ) {
+            outOfStock += 1;
+          } else {
+            inStock += 1;
+          }
+        },
+      );
 
       return [
         {
@@ -464,11 +831,20 @@ const ViewerReports = () => {
           value: outOfStock,
         },
       ];
-    }, [data]);
+    }, [preparedData]);
 
   const hasStockData =
+    inventoryRecordsCount > 0 &&
     stockBreakStockData.some(
       (item) => item.value > 0,
+    );
+
+  const reportFieldsWarning =
+    data.length > 0 &&
+    (
+      productDescriptionRecordsCount ===
+        0 ||
+      inventoryRecordsCount === 0
     );
 
   const filteredComunas =
@@ -929,6 +1305,35 @@ const ViewerReports = () => {
           </section>
         )}
 
+        {reportFieldsWarning && (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <FiAlertTriangle
+                size={18}
+                className="mt-0.5 shrink-0 text-amber-500"
+              />
+
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-wider text-amber-700">
+                  Campos incompletos en la respuesta
+                </p>
+
+                <p className="mt-1 text-sm leading-relaxed text-amber-700">
+                  El endpoint debe incluir{" "}
+                  <strong>
+                    descripcion_producto
+                  </strong>{" "}
+                  e{" "}
+                  <strong>
+                    inventario_unidades
+                  </strong>
+                  . Los valores ausentes ya no se interpretan como producto genérico ni como quiebre de stock.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <article className="flex min-h-[132px] items-center gap-5 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
@@ -1176,6 +1581,14 @@ const ViewerReports = () => {
                 message="Sin productos con unidades vendidas"
               />
             )}
+
+            {!loading &&
+              data.length > 0 &&
+              productDescriptionRecordsCount === 0 && (
+                <p className="mt-4 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[8px] font-black uppercase tracking-wider text-amber-600">
+                  La API no está entregando descripcion_producto; se muestran códigos como respaldo.
+                </p>
+              )}
           </article>
 
           <article className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
@@ -1269,7 +1682,7 @@ const ViewerReports = () => {
             ) : (
               <EmptyState
                 compact
-                message="Sin información de inventario"
+                message={data.length > 0 && inventoryRecordsCount === 0 ? "La API no está entregando inventario_unidades" : "Sin información de inventario"}
               />
             )}
           </article>
