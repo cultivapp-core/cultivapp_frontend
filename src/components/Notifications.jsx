@@ -1,66 +1,470 @@
-import { useEffect, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, X, Check, BellRing } from 'lucide-react';
-import { useNotificationContext } from '../context/NotificationContext';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  AnimatePresence,
+  motion,
+} from "framer-motion";
+import {
+  AlertTriangle,
+  Bell,
+  BellOff,
+  BellRing,
+  Check,
+  CheckCheck,
+  ChevronRight,
+  Info,
+  MapPin,
+  Navigation,
+  RefreshCcw,
+  X,
+} from "lucide-react";
+import {
+  useNavigate,
+} from "react-router-dom";
 
-// 🚩 Importación del archivo desde tu carpeta de assets
-import soundFile from '../assets/sound/notificacion.mp3';
+import {
+  useNotificationContext,
+} from "../context/NotificationContext";
 
-const Notifications = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const { notifications, unreadCount, onMarkRead } = useNotificationContext();
-  
-  // 🚩 Referencia para el reproductor usando el archivo importado
-  const audioPlayer = useRef(new Audio(soundFile));
-  // 🚩 Referencia para el conteo previo
-  const prevCount = useRef(unreadCount);
+import soundFile from "../assets/sound/notificacion.mp3";
+
+const TYPE_CONFIG = {
+  URGENTE: {
+    label: "Urgente",
+    icon: AlertTriangle,
+    iconClasses:
+      "bg-red-500 text-white",
+    badgeClasses:
+      "border-red-200 bg-red-50 text-red-600",
+    dotClasses:
+      "bg-red-500",
+  },
+  OPERATIVA: {
+    label: "Operativa",
+    icon: Info,
+    iconClasses:
+      "bg-[#87be00] text-white",
+    badgeClasses:
+      "border-[#87be00]/20 bg-[#87be00]/10 text-[#5c9200]",
+    dotClasses:
+      "bg-[#87be00]",
+  },
+  ROUTE_ASSIGNED: {
+    label: "Ruta asignada",
+    icon: Navigation,
+    iconClasses:
+      "bg-blue-600 text-white",
+    badgeClasses:
+      "border-blue-200 bg-blue-50 text-blue-600",
+    dotClasses:
+      "bg-blue-500",
+  },
+  ROUTE_UPDATED: {
+    label: "Ruta actualizada",
+    icon: RefreshCcw,
+    iconClasses:
+      "bg-amber-500 text-white",
+    badgeClasses:
+      "border-amber-200 bg-amber-50 text-amber-600",
+    dotClasses:
+      "bg-amber-500",
+  },
+  GENERAL: {
+    label: "General",
+    icon: Bell,
+    iconClasses:
+      "bg-slate-900 text-white",
+    badgeClasses:
+      "border-slate-200 bg-slate-50 text-slate-600",
+    dotClasses:
+      "bg-[#87be00]",
+  },
+};
+
+const isRead = (
+  notification,
+) =>
+  notification?.is_read ===
+    true ||
+  notification?.is_read ===
+    1 ||
+  String(
+    notification?.is_read,
+  ).toLowerCase() ===
+    "true";
+
+const getTypeConfig = (
+  type,
+) =>
+  TYPE_CONFIG[
+    String(
+      type || "GENERAL",
+    ).toUpperCase()
+  ] || TYPE_CONFIG.GENERAL;
+
+const getTimestamp = (
+  notification,
+) => {
+  const date =
+    new Date(
+      notification?.created_at ||
+        0,
+    );
+
+  return Number.isNaN(
+    date.getTime(),
+  )
+    ? 0
+    : date.getTime();
+};
+
+const formatDate = (
+  value,
+) => {
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "Sin fecha";
+  }
+
+  return date.toLocaleDateString(
+    "es-CL",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    },
+  );
+};
+
+const formatTime = (
+  value,
+) => {
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return "--:--";
+  }
+
+  return date.toLocaleTimeString(
+    "es-CL",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  );
+};
+
+const Notifications = ({
+  notificationsPath = "/usuario/notifications",
+  maxVisible = 8,
+}) => {
+  const navigate = useNavigate();
+
+  const {
+    notifications = [],
+    unreadCount = 0,
+    onMarkRead,
+    onMarkAllRead,
+    loading = false,
+    refresh,
+  } = useNotificationContext();
+
+  const [isOpen, setIsOpen] =
+    useState(false);
+
+  const [
+    markingId,
+    setMarkingId,
+  ] = useState(null);
+
+  const [
+    markingAll,
+    setMarkingAll,
+  ] = useState(false);
+
+  const [
+    refreshing,
+    setRefreshing,
+  ] = useState(false);
+
+  const previousUnreadCount =
+    useRef(unreadCount);
+
+  const audioPlayer =
+    useRef(null);
 
   useEffect(() => {
-    // Solo suena si el nuevo conteo es mayor (llegó una nueva notificación)
-    if (unreadCount > prevCount.current) {
-      playNotificationSound();
-    }
-    prevCount.current = unreadCount;
+    const audio =
+      new Audio(soundFile);
+
+    audio.preload = "auto";
+    audio.volume = 0.55;
+
+    audioPlayer.current =
+      audio;
+
+    return () => {
+      audio.pause();
+      audio.src = "";
+      audioPlayer.current =
+        null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const playSound =
+      async () => {
+        if (
+          unreadCount <=
+          previousUnreadCount.current
+        ) {
+          previousUnreadCount.current =
+            unreadCount;
+          return;
+        }
+
+        try {
+          if (
+            audioPlayer.current
+          ) {
+            audioPlayer.current.currentTime =
+              0;
+
+            await audioPlayer.current.play();
+          }
+        } catch {
+          console.warn(
+            "El navegador requiere una interacción previa para reproducir sonidos.",
+          );
+        } finally {
+          previousUnreadCount.current =
+            unreadCount;
+        }
+      };
+
+    playSound();
   }, [unreadCount]);
 
-  const playNotificationSound = () => {
-    try {
-      audioPlayer.current.currentTime = 0;
-      audioPlayer.current.play();
-    } catch (error) {
-      // Los navegadores bloquean el audio automático hasta la primera interacción del usuario
-      console.warn("Audio bloqueado por el navegador hasta interacción del usuario.");
+  useEffect(() => {
+    if (!isOpen) {
+      document.body.style.overflow =
+        "";
+      return undefined;
     }
-  };
 
-  const handleMarkAsRead = async (id) => {
-    try {
-      await onMarkRead(id);
-    } catch (error) {
-      console.error("No se pudo notificar la lectura al sistema");
-    }
-  };
+    document.body.style.overflow =
+      "hidden";
+
+    return () => {
+      document.body.style.overflow =
+        "";
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    const handleEscape = (
+      event,
+    ) => {
+      if (
+        event.key === "Escape"
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      handleEscape,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleEscape,
+      );
+    };
+  }, []);
+
+  const sortedNotifications =
+    useMemo(
+      () =>
+        [
+          ...notifications,
+        ].sort(
+          (
+            first,
+            second,
+          ) =>
+            getTimestamp(
+              second,
+            ) -
+            getTimestamp(
+              first,
+            ),
+        ),
+      [notifications],
+    );
+
+  const visibleNotifications =
+    sortedNotifications.slice(
+      0,
+      maxVisible,
+    );
+
+  const handleToggle =
+    () => {
+      setIsOpen(
+        (current) =>
+          !current,
+      );
+    };
+
+  const handleRefresh =
+    async () => {
+      if (
+        typeof refresh !==
+        "function"
+      ) {
+        return;
+      }
+
+      try {
+        setRefreshing(true);
+        await refresh();
+      } finally {
+        setRefreshing(false);
+      }
+    };
+
+  const handleMarkAsRead =
+    async (id) => {
+      if (
+        typeof onMarkRead !==
+        "function"
+      ) {
+        return;
+      }
+
+      try {
+        setMarkingId(id);
+        await onMarkRead(id);
+      } catch (error) {
+        console.error(
+          "No se pudo marcar la notificación como leída:",
+          error,
+        );
+      } finally {
+        setMarkingId(null);
+      }
+    };
+
+  const handleMarkAll =
+    async () => {
+      if (
+        typeof onMarkAllRead !==
+        "function"
+      ) {
+        return;
+      }
+
+      try {
+        setMarkingAll(true);
+        await onMarkAllRead();
+      } catch (error) {
+        console.error(
+          "No se pudieron marcar todas las notificaciones:",
+          error,
+        );
+      } finally {
+        setMarkingAll(false);
+      }
+    };
+
+  const handleOpenAll =
+    () => {
+      setIsOpen(false);
+      navigate(
+        notificationsPath,
+      );
+    };
 
   return (
-    // 🚩 relative estricto aquí para que en Desktop el modal se ancle a esta campana
     <div className="relative font-[Outfit]">
-      
-      {/* 🔔 BOTÓN CAMPANA */}
-      <button 
-        onClick={() => setIsOpen(!isOpen)} 
-        className={`relative p-2.5 md:p-3 rounded-2xl transition-all duration-300 group ${
-          isOpen ? 'bg-[#87be00] text-white shadow-lg shadow-[#87be00]/30' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-        }`}
+      {/* CAMPANA */}
+      <button
+        type="button"
+        onClick={handleToggle}
+        aria-label="Abrir notificaciones"
+        aria-expanded={isOpen}
+        className={`
+          relative flex h-10 w-10
+          items-center justify-center
+          rounded-xl transition-all
+          duration-300
+
+          ${
+            isOpen
+              ? `
+                bg-[#87be00]
+                text-white
+                shadow-lg
+                shadow-[#87be00]/25
+              `
+              : `
+                bg-slate-50
+                text-slate-400
+                hover:bg-[#87be00]/10
+                hover:text-[#87be00]
+              `
+          }
+        `}
       >
-        <Bell size={18} className={`md:w-5 md:h-5 ${isOpen ? 'animate-bounce' : 'group-hover:rotate-12 transition-transform'}`} />
-        
+        <Bell
+          size={18}
+          className={
+            isOpen
+              ? "animate-[wiggle_0.5s_ease-in-out]"
+              : ""
+          }
+        />
+
         {unreadCount > 0 && (
-          <motion.span 
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black h-4 w-4 md:h-5 md:w-5 rounded-full flex items-center justify-center border-2 md:border-[3px] border-white shadow-sm"
+          <motion.span
+            initial={{
+              scale: 0,
+            }}
+            animate={{
+              scale: 1,
+            }}
+            className="
+              absolute -right-1.5
+              -top-1.5 flex h-[18px]
+              min-w-[18px] items-center
+              justify-center rounded-full
+              bg-red-500 px-1
+              text-[7px] font-black
+              text-white ring-2
+              ring-white
+            "
           >
-            {unreadCount > 9 ? '+9' : unreadCount}
+            {unreadCount > 9
+              ? "9+"
+              : unreadCount}
           </motion.span>
         )}
       </button>
@@ -68,112 +472,441 @@ const Notifications = () => {
       <AnimatePresence>
         {isOpen && (
           <>
-            {/* FONDO OSCURO (OVERLAY) */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100]" 
-              onClick={() => setIsOpen(false)}
-            ></motion.div>
-            
-            {/* PANEL DE NOTIFICACIONES */}
-            <motion.div 
-              initial={{ opacity: 0, y: 100 }} 
-              animate={{ opacity: 1, y: 0 }} 
-              exit={{ opacity: 0, y: 100 }}
-              className={`
-                /* 📱 VISTA MÓVIL: Bottom Sheet (Fijado abajo, ancho total, esquinas redondas solo arriba) */
-                fixed bottom-0 left-0 right-0 w-full z-[110] bg-white rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)]
-                
-                /* 💻 VISTA DESKTOP: Popover (Flotante bajo la campana, ancho limitado, todas las esquinas redondas) */
-                md:absolute md:bottom-auto md:top-full md:left-auto md:right-0 md:mt-4 md:w-[22rem] md:rounded-[2.5rem] md:shadow-2xl
-                
-                overflow-hidden flex flex-col max-h-[85vh] md:max-h-[500px]
-              `}
-            >
-              {/* Pillilla gris (Handle) en móviles para indicar arrastre/cierre */}
-              <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mt-3 mb-1 md:hidden"></div>
+            {/* OVERLAY */}
+            <motion.button
+              type="button"
+              aria-label="Cerrar notificaciones"
+              initial={{
+                opacity: 0,
+              }}
+              animate={{
+                opacity: 1,
+              }}
+              exit={{
+                opacity: 0,
+              }}
+              onClick={() =>
+                setIsOpen(false)
+              }
+              className="
+                fixed inset-0
+                z-[9997]
+                bg-slate-950/55
+                backdrop-blur-sm
+                md:bg-slate-950/20
+                md:backdrop-blur-[2px]
+              "
+            />
 
-              {/* HEADER */}
-              <div className="p-5 md:p-6 bg-gray-900 text-white flex justify-between items-center relative overflow-hidden shrink-0">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-[#87be00]/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
-                <div className="relative">
-                  <span className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em] text-[#87be00] italic">Centro de</span>
-                  <h3 className="text-base md:text-lg font-black uppercase italic leading-none">Avisos</h3>
-                </div>
-                <button onClick={() => setIsOpen(false)} className="bg-white/10 p-2 rounded-xl hover:bg-white/20 transition-colors">
-                  <X size={18} className="text-white"/>
-                </button>
+            {/* PANEL */}
+            <motion.section
+              role="dialog"
+              aria-modal="true"
+              aria-label="Centro de notificaciones"
+              initial={{
+                opacity: 0,
+                y: 80,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              exit={{
+                opacity: 0,
+                y: 80,
+              }}
+              transition={{
+                type: "spring",
+                damping: 28,
+                stiffness: 320,
+              }}
+              className="
+                fixed inset-x-0 bottom-0
+                z-[9998] mx-auto
+                flex max-h-[88dvh]
+                w-full max-w-[480px]
+                flex-col overflow-hidden
+                rounded-t-[2rem]
+                border border-slate-200
+                bg-white
+                shadow-[0_-20px_60px_rgba(15,23,42,0.28)]
+
+                md:absolute
+                md:bottom-auto
+                md:left-auto
+                md:right-0
+                md:top-[calc(100%+0.75rem)]
+                md:mx-0
+                md:max-h-[620px]
+                md:w-[390px]
+                md:max-w-none
+                md:rounded-[2rem]
+                md:shadow-2xl
+              "
+            >
+              {/* HANDLE MÓVIL */}
+              <div className="flex h-7 shrink-0 items-center justify-center bg-white md:hidden">
+                <span className="h-1.5 w-12 rounded-full bg-slate-200" />
               </div>
 
-              {/* LISTA */}
-              <div className="flex-1 overflow-y-auto p-4 bg-[#F8FAFC] custom-scrollbar">
-                {notifications.length === 0 ? (
-                  <div className="py-20 flex flex-col items-center justify-center gap-3 opacity-20">
-                    <BellRing size={40} strokeWidth={1} />
-                    <span className="text-[10px] font-black uppercase tracking-widest italic">Bandeja Vacía</span>
+              {/* HEADER */}
+              <header className="relative shrink-0 overflow-hidden bg-slate-900 px-5 pb-5 pt-4 text-white md:p-5">
+                <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-[#87be00]/15 blur-2xl" />
+
+                <div className="relative flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-[#a8d52c]">
+                      <BellRing
+                        size={20}
+                      />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-[8px] font-black uppercase tracking-[0.22em] text-[#a8d52c]">
+                        Centro de comunicación
+                      </p>
+
+                      <h2 className="mt-1 text-xl font-black tracking-tight">
+                        Avisos
+                      </h2>
+
+                      <p className="mt-1 text-[9px] font-bold text-slate-400">
+                        {unreadCount ===
+                        1
+                          ? "1 notificación nueva"
+                          : `${unreadCount} notificaciones nuevas`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={
+                        handleRefresh
+                      }
+                      disabled={
+                        refreshing ||
+                        loading
+                      }
+                      aria-label="Actualizar notificaciones"
+                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20 disabled:cursor-wait disabled:opacity-50"
+                    >
+                      <RefreshCcw
+                        size={15}
+                        className={
+                          refreshing
+                            ? "animate-spin"
+                            : ""
+                        }
+                      />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setIsOpen(
+                          false,
+                        )
+                      }
+                      aria-label="Cerrar panel"
+                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-red-500"
+                    >
+                      <X
+                        size={17}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {unreadCount > 0 &&
+                  typeof onMarkAllRead ===
+                    "function" && (
+                    <button
+                      type="button"
+                      onClick={
+                        handleMarkAll
+                      }
+                      disabled={
+                        markingAll
+                      }
+                      className="relative mt-4 inline-flex min-h-[38px] items-center justify-center gap-2 rounded-xl bg-white/10 px-3.5 text-[8px] font-black uppercase tracking-wider text-white transition hover:bg-white/20 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {markingAll ? (
+                        <RefreshCcw
+                          size={12}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <CheckCheck
+                          size={13}
+                        />
+                      )}
+
+                      Marcar todas como leídas
+                    </button>
+                  )}
+              </header>
+
+              {/* LISTADO */}
+              <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50 p-3 md:p-4">
+                {loading &&
+                notifications.length ===
+                  0 ? (
+                  <div className="flex min-h-[260px] flex-col items-center justify-center gap-4 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+                      <RefreshCcw
+                        size={22}
+                        className="animate-spin"
+                      />
+                    </div>
+
+                    <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">
+                      Sincronizando avisos
+                    </p>
+                  </div>
+                ) : visibleNotifications.length ===
+                  0 ? (
+                  <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-slate-200 bg-white p-8 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-300">
+                      <BellOff
+                        size={28}
+                      />
+                    </div>
+
+                    <p className="mt-5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+                      Bandeja vacía
+                    </p>
+
+                    <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-500">
+                      No tienes notificaciones disponibles en este momento.
+                    </p>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-3 pb-8 md:pb-0">
-                    {notifications.map(n => (
-                      <motion.div 
-                        layout
-                        key={n.id} 
-                        className={`p-4 md:p-5 rounded-[1.5rem] md:rounded-[1.8rem] transition-all relative border ${
-                          !n.is_read 
-                          ? 'bg-white border-green-100 shadow-md shadow-green-900/5' 
-                          : 'bg-white/40 border-transparent opacity-70'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-2 gap-3">
-                          <div className="flex flex-col pr-2">
-                            {!n.is_read ? (
-                                <span className="text-[8px] font-black text-[#87be00] uppercase tracking-tighter mb-1">Pendiente</span>
-                            ) : (
-                                <span className="text-[8px] font-black text-gray-400 uppercase tracking-tighter mb-1 flex items-center gap-1">
-                                    <Check size={10} strokeWidth={3} /> Visto
-                                </span>
-                            )}
-                            <h4 className={`text-[10px] md:text-[11px] font-black uppercase leading-tight italic ${
-                              !n.is_read ? 'text-gray-900' : 'text-gray-400'
-                            }`}>
-                              {n.title}
-                            </h4>
-                          </div>
-                          
-                          {!n.is_read && (
-                            <button 
-                              onClick={() => handleMarkAsRead(n.id)} 
-                              className="shrink-0 bg-[#87be00] p-2 md:p-2.5 rounded-xl text-white active:scale-95 transition-all shadow-lg shadow-[#87be00]/20 hover:bg-[#76a600]"
-                            >
-                              <Check size={14} strokeWidth={4} />
-                            </button>
-                          )}
-                        </div>
-
-                        <p className={`text-[10px] md:text-[11px] font-medium leading-relaxed mb-3 ${!n.is_read ? 'text-gray-600' : 'text-gray-400'}`}>
-                          {n.message}
-                        </p>
-
-                        <div className="flex items-center gap-2 border-t border-gray-100 pt-3">
-                          <span className="text-[8px] font-black text-gray-300 uppercase italic">
-                            {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(n.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </motion.div>
-                    ))}
+                  <div className="space-y-3">
+                    {visibleNotifications.map(
+                      (
+                        notification,
+                      ) => (
+                        <NotificationPreview
+                          key={
+                            notification.id
+                          }
+                          notification={
+                            notification
+                          }
+                          onMarkRead={
+                            handleMarkAsRead
+                          }
+                          marking={
+                            markingId ===
+                            notification.id
+                          }
+                        />
+                      ),
+                    )}
                   </div>
                 )}
               </div>
-              
-              {/* Relleno visual en móviles para que los últimos avisos no queden debajo de las barras de navegación de iOS/Android */}
-              <div className="h-6 md:hidden bg-[#F8FAFC]"></div>
-            </motion.div>
+
+              {/* FOOTER */}
+              <footer className="shrink-0 border-t border-slate-200 bg-white p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:p-3">
+                <button
+                  type="button"
+                  onClick={
+                    handleOpenAll
+                  }
+                  className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 text-[8px] font-black uppercase tracking-wider text-white transition hover:bg-[#87be00]"
+                >
+                  Ver todas las notificaciones
+                  <ChevronRight
+                    size={14}
+                  />
+                </button>
+              </footer>
+            </motion.section>
           </>
         )}
       </AnimatePresence>
     </div>
+  );
+};
+
+const NotificationPreview = ({
+  notification,
+  onMarkRead,
+  marking,
+}) => {
+  const unread =
+    !isRead(notification);
+
+  const config =
+    getTypeConfig(
+      notification.type,
+    );
+
+  const TypeIcon =
+    config.icon;
+
+  return (
+    <motion.article
+      layout
+      className={`
+        relative overflow-hidden
+        rounded-[1.5rem] border
+        p-4 transition-all
+
+        ${
+          unread
+            ? `
+              border-slate-200
+              bg-white
+              shadow-sm
+            `
+            : `
+              border-slate-200/80
+              bg-white/65
+            `
+        }
+      `}
+    >
+      {unread && (
+        <span
+          className={`absolute bottom-4 left-0 top-4 w-1 rounded-r-full ${config.dotClasses}`}
+        />
+      )}
+
+      <div className="flex items-start gap-3">
+        <div
+          className={`
+            flex h-10 w-10
+            shrink-0 items-center
+            justify-center
+            rounded-2xl
+
+            ${
+              unread
+                ? config.iconClasses
+                : "bg-slate-100 text-slate-400"
+            }
+          `}
+        >
+          <TypeIcon
+            size={17}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span
+                className={`
+                  inline-flex items-center
+                  rounded-lg border px-2
+                  py-1 text-[7px]
+                  font-black uppercase
+                  tracking-wider
+                  ${config.badgeClasses}
+                `}
+              >
+                {config.label}
+              </span>
+
+              <h3
+                className={`
+                  mt-2 break-words
+                  text-[11px] font-black
+                  leading-snug
+
+                  ${
+                    unread
+                      ? "text-slate-900"
+                      : "text-slate-500"
+                  }
+                `}
+              >
+                {notification.title ||
+                  "Notificación sin título"}
+              </h3>
+            </div>
+
+            {unread && (
+              <button
+                type="button"
+                onClick={() =>
+                  onMarkRead(
+                    notification.id,
+                  )
+                }
+                disabled={
+                  marking
+                }
+                aria-label="Marcar como leída"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#87be00] text-white shadow-lg shadow-[#87be00]/20 transition hover:bg-[#76a600] active:scale-95 disabled:cursor-wait disabled:opacity-60"
+              >
+                {marking ? (
+                  <RefreshCcw
+                    size={13}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Check
+                    size={14}
+                    strokeWidth={3}
+                  />
+                )}
+              </button>
+            )}
+          </div>
+
+          <p
+            className={`
+              mt-3 line-clamp-3
+              text-[10px] leading-relaxed
+
+              ${
+                unread
+                  ? "text-slate-600"
+                  : "text-slate-400"
+              }
+            `}
+          >
+            {notification.message ||
+              "Sin contenido disponible"}
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <span className="text-[7px] font-black uppercase tracking-wider text-slate-400">
+              {formatTime(
+                notification.created_at,
+              )}
+            </span>
+
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+
+            <span className="text-[7px] font-black uppercase tracking-wider text-slate-400">
+              {formatDate(
+                notification.created_at,
+              )}
+            </span>
+
+            {notification.scope ===
+              "local" && (
+              <>
+                <span className="h-1 w-1 rounded-full bg-slate-300" />
+
+                <span className="inline-flex items-center gap-1 text-[7px] font-black uppercase tracking-wider text-amber-600">
+                  <MapPin
+                    size={9}
+                  />
+                  Local
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.article>
   );
 };
 

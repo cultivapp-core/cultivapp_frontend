@@ -1,27 +1,40 @@
 import { Outlet } from "react-router-dom";
-import UserSidebar from "../..UserSidebar";
-import Topbar from "../Topbar"; // ⚠️ Ajusta esta ruta de importación según dónde esté tu archivo Topbar.jsx
+
+import UserSidebar from "./UserSidebar";
+import UserTopbar from "./UserTopbar";
 
 const UserLayout = () => {
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-gray-50/50 font-[Outfit]">
-      
-      {/* SIDEBAR DE MERCADERISTA AUTOMÁTICO */}
+    <div className="flex h-dvh w-full overflow-hidden bg-slate-100 font-[Outfit] text-slate-900">
       <UserSidebar />
 
-      {/* ÁREA DE CONTENIDO PRINCIPAL */}
-      <main className="flex-1 h-full overflow-y-auto custom-scrollbar relative flex flex-col">
-        
-        {/* BARRA SUPERIOR (TOPBAR) */}
-        <Topbar />
+      <main className="relative flex h-dvh min-w-0 flex-1 overflow-hidden">
+        <div
+          className="
+            mx-auto flex h-full w-full
+            max-w-[480px] flex-col
+            overflow-hidden bg-slate-50
+            shadow-[0_0_40px_rgba(15,23,42,0.08)]
+            md:max-w-none md:shadow-none
+          "
+        >
+          <UserTopbar />
 
-        {/* CONTENIDO DE LAS PÁGINAS (OUTLET) */}
-        <div className="flex-1 flex flex-col relative">
-          <Outlet />
+          <div
+            id="user-main-content"
+            className="
+              custom-scrollbar min-h-0
+              flex-1 overflow-x-hidden
+              overflow-y-auto
+              overscroll-contain
+            "
+          >
+            <div className="min-h-full w-full">
+              <Outlet />
+            </div>
+          </div>
         </div>
-        
       </main>
-      
     </div>
   );
 };
