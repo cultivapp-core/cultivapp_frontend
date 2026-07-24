@@ -13,7 +13,7 @@ import api from "../api/apiClient";
 import toast from "react-hot-toast";
 import {
   OFFLINE_SYNC_EVENTS,
-} from "../services/OfflineManager";
+} from "../services/offlineManager";
 
 const base64ToFile = (
   value,
