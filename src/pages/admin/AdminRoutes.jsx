@@ -158,17 +158,84 @@ const AdminRoutes = () => {
 
   const confirmDelete = async () => {
     if (!groupToDelete) return;
-    const routeIds = groupToDelete.route_ids || [groupToDelete.id];
-    if (routeIds.length === 0) return;
 
-    const toastId = toast.loading("Eliminando planificación...");
+    const representativeRouteId =
+      groupToDelete.id ||
+      groupToDelete.route_ids?.find(Boolean) ||
+      groupToDelete.scheduled_items?.find(
+        (item) => item?.route_id
+      )?.route_id ||
+      Object.values(
+        groupToDelete.route_ids_by_user || {}
+      ).find(Boolean);
+
+    if (!representativeRouteId) {
+      toast.error(
+        "No fue posible identificar la planificación."
+      );
+      setGroupToDelete(null);
+      return;
+    }
+
+    const toastId = toast.loading(
+      "Eliminando planificación..."
+    );
+
     try {
-      await Promise.all(routeIds.map(id => api.delete(`/routes/${id}`)));
-      toast.success("Planificación eliminada correctamente", { id: toastId });
-      fetchData();
+      const params = new URLSearchParams();
+
+      if (groupToDelete.company_id) {
+        params.set(
+          "company_id",
+          String(groupToDelete.company_id)
+        );
+      }
+
+      if (groupToDelete.local_id) {
+        params.set(
+          "local_id",
+          String(groupToDelete.local_id)
+        );
+      }
+
+      const query = params.toString();
+
+      /*
+       * Se envía un solo DELETE utilizando una ruta representativa.
+       * El backend elimina únicamente el schedule_group_id asociado
+       * a la empresa y al local seleccionados.
+       *
+       * No se debe enviar un DELETE por cada route_id porque la primera
+       * solicitud ya elimina el grupo y las siguientes pueden afectar
+       * registros relacionados o responder "Ruta no encontrada".
+       */
+      await api.delete(
+        `/routes/${representativeRouteId}${
+          query ? `?${query}` : ""
+        }`
+      );
+
+      toast.success(
+        "Planificación eliminada correctamente",
+        { id: toastId }
+      );
+
+      await fetchData();
     } catch (error) {
-      console.error("❌ Error al eliminar rutas:", error);
-      toast.error("Error al eliminar la planificación", { id: toastId });
+      console.error(
+        "❌ Error al eliminar planificación:",
+        error?.response?.data ||
+          error?.data ||
+          error
+      );
+
+      toast.error(
+        error?.response?.data?.message ||
+          error?.data?.message ||
+          error?.message ||
+          "Error al eliminar la planificación",
+        { id: toastId }
+      );
     } finally {
       setGroupToDelete(null);
     }
