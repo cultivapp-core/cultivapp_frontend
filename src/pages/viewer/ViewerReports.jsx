@@ -47,6 +47,19 @@ const EMPTY_OPTIONS = {
   locales: [],
 };
 
+const EMPTY_INVENTORY_SUMMARY = {
+  available: false,
+  totalLines: 0,
+  validLines: 0,
+  inStockLines: 0,
+  outOfStockLines: 0,
+  zeroLines: 0,
+  negativeLines: 0,
+  blankLines: 0,
+  inStockPercentage: 0,
+  outOfStockPercentage: 0,
+};
+
 const getNumericValue = (value) => {
   if (
     value === null ||
@@ -159,18 +172,216 @@ const normalizeOptions = (
   };
 };
 
-const normalizeReportData = (
+const normalizeInventorySummary = (
+  rawSummary,
+) => {
+  if (
+    !rawSummary ||
+    typeof rawSummary !==
+      "object"
+  ) {
+    return {
+      ...EMPTY_INVENTORY_SUMMARY,
+    };
+  }
+
+  const totalLines =
+    Math.max(
+      0,
+      Math.trunc(
+        getNumericValue(
+          rawSummary.total_lines ??
+            rawSummary.totalLines ??
+            0,
+        ),
+      ),
+    );
+
+  const inStockLines =
+    Math.max(
+      0,
+      Math.trunc(
+        getNumericValue(
+          rawSummary.in_stock_lines ??
+            rawSummary.inStockLines ??
+            rawSummary.positive_lines ??
+            rawSummary.positiveLines ??
+            0,
+        ),
+      ),
+    );
+
+  const zeroLines =
+    Math.max(
+      0,
+      Math.trunc(
+        getNumericValue(
+          rawSummary.zero_lines ??
+            rawSummary.zeroLines ??
+            0,
+        ),
+      ),
+    );
+
+  const negativeLines =
+    Math.max(
+      0,
+      Math.trunc(
+        getNumericValue(
+          rawSummary.negative_lines ??
+            rawSummary.negativeLines ??
+            0,
+        ),
+      ),
+    );
+
+  const blankLines =
+    Math.max(
+      0,
+      Math.trunc(
+        getNumericValue(
+          rawSummary.blank_lines ??
+            rawSummary.blankLines ??
+            0,
+        ),
+      ),
+    );
+
+  const outOfStockLines =
+    Math.max(
+      0,
+      Math.trunc(
+        getNumericValue(
+          rawSummary.out_of_stock_lines ??
+            rawSummary.outOfStockLines ??
+            zeroLines +
+              negativeLines,
+        ),
+      ),
+    );
+
+  const validLines =
+    Math.max(
+      0,
+      Math.trunc(
+        getNumericValue(
+          rawSummary.valid_lines ??
+            rawSummary.validLines ??
+            inStockLines +
+              outOfStockLines,
+        ),
+      ),
+    );
+
+  const calculatedTotal =
+    validLines +
+    blankLines;
+
+  const safeTotalLines =
+    totalLines > 0
+      ? totalLines
+      : calculatedTotal;
+
+  const inStockPercentage =
+    validLines > 0
+      ? (
+          inStockLines /
+          validLines
+        ) *
+        100
+      : 0;
+
+  const outOfStockPercentage =
+    validLines > 0
+      ? (
+          outOfStockLines /
+          validLines
+        ) *
+        100
+      : 0;
+
+  return {
+    available:
+      safeTotalLines > 0,
+    totalLines:
+      safeTotalLines,
+    validLines,
+    inStockLines,
+    outOfStockLines,
+    zeroLines,
+    negativeLines,
+    blankLines,
+    inStockPercentage:
+      getNumericValue(
+        rawSummary.in_stock_percentage ??
+          rawSummary.inStockPercentage ??
+          inStockPercentage,
+      ),
+    outOfStockPercentage:
+      getNumericValue(
+        rawSummary.out_of_stock_percentage ??
+          rawSummary.outOfStockPercentage ??
+          outOfStockPercentage,
+      ),
+  };
+};
+
+const normalizeReportResponse = (
   response,
 ) => {
-  const raw =
-    response?.data?.data ??
+  const firstLevel =
     response?.data ??
     response ??
-    [];
+    {};
 
-  return Array.isArray(raw)
-    ? raw
-    : [];
+  if (
+    Array.isArray(
+      firstLevel,
+    )
+  ) {
+    return {
+      rows: firstLevel,
+      inventorySummary: {
+        ...EMPTY_INVENTORY_SUMMARY,
+      },
+    };
+  }
+
+  const envelope =
+    firstLevel?.data &&
+    !Array.isArray(
+      firstLevel.data,
+    ) &&
+    typeof firstLevel.data ===
+      "object"
+      ? firstLevel.data
+      : firstLevel;
+
+  const rows =
+    Array.isArray(
+      envelope?.data,
+    )
+      ? envelope.data
+      : Array.isArray(
+            firstLevel?.data,
+          )
+        ? firstLevel.data
+        : [];
+
+  const meta =
+    envelope?.meta ??
+    firstLevel?.meta ??
+    response?.meta ??
+    {};
+
+  return {
+    rows,
+    inventorySummary:
+      normalizeInventorySummary(
+        meta.inventory_summary ??
+          meta.inventorySummary,
+      ),
+  };
 };
 
 const FIELD_ALIASES = {
@@ -509,6 +720,14 @@ const FilterField = ({
 const ViewerReports = () => {
   const [data, setData] =
     useState([]);
+
+  const [
+    inventorySummary,
+    setInventorySummary,
+  ] = useState(
+    EMPTY_INVENTORY_SUMMARY,
+  );
+
   const [loading, setLoading] =
     useState(true);
   const [
@@ -581,10 +800,17 @@ const ViewerReports = () => {
             },
           );
 
-        setData(
-          normalizeReportData(
+        const normalized =
+          normalizeReportResponse(
             response,
-          ),
+          );
+
+        setData(
+          normalized.rows,
+        );
+
+        setInventorySummary(
+          normalized.inventorySummary,
         );
       } catch (requestError) {
         console.error(
@@ -601,6 +827,11 @@ const ViewerReports = () => {
           "Error al cargar reportes";
 
         setError(message);
+
+        setInventorySummary(
+          EMPTY_INVENTORY_SUMMARY,
+        );
+
         toast.error(message);
       } finally {
         setLoading(false);
@@ -665,7 +896,7 @@ const ViewerReports = () => {
       [preparedData],
     );
 
-  const inventoryRecordsCount =
+  const aggregatedInventoryRecordsCount =
     useMemo(
       () =>
         preparedData.filter(
@@ -792,59 +1023,129 @@ const ViewerReports = () => {
         .slice(0, 8);
     }, [preparedData]);
 
-  const stockBreakStockData =
+  const stockStatistics =
     useMemo(() => {
-      let inStock = 0;
-      let outOfStock = 0;
+      if (
+        inventorySummary.available
+      ) {
+        return {
+          ...inventorySummary,
+        };
+      }
+
+      let inStockLines = 0;
+      let zeroLines = 0;
+      let negativeLines = 0;
+      let blankLines = 0;
 
       preparedData.forEach(
         (item) => {
-          /*
-           * Un inventario ausente no se considera quiebre.
-           * Así evitamos mostrar 100% de quiebre cuando el
-           * endpoint no incluyó inventario_unidades.
-           */
           if (
             item.inventory === null
           ) {
+            blankLines += 1;
             return;
           }
 
           if (
-            item.inventory <= 0
+            item.inventory > 0
           ) {
-            outOfStock += 1;
+            inStockLines += 1;
+          } else if (
+            item.inventory < 0
+          ) {
+            negativeLines += 1;
           } else {
-            inStock += 1;
+            zeroLines += 1;
           }
         },
       );
 
-      return [
+      const outOfStockLines =
+        zeroLines +
+        negativeLines;
+
+      const validLines =
+        inStockLines +
+        outOfStockLines;
+
+      const totalLines =
+        validLines +
+        blankLines;
+
+      return {
+        available:
+          totalLines > 0,
+        totalLines,
+        validLines,
+        inStockLines,
+        outOfStockLines,
+        zeroLines,
+        negativeLines,
+        blankLines,
+        inStockPercentage:
+          validLines > 0
+            ? (
+                inStockLines /
+                validLines
+              ) *
+              100
+            : 0,
+        outOfStockPercentage:
+          validLines > 0
+            ? (
+                outOfStockLines /
+                validLines
+              ) *
+              100
+            : 0,
+      };
+    }, [
+      inventorySummary,
+      preparedData,
+    ]);
+
+  const stockBreakStockData =
+    useMemo(
+      () => [
         {
           name: "Con stock",
-          value: inStock,
+          value:
+            stockStatistics.inStockLines,
+          percentage:
+            stockStatistics.inStockPercentage,
         },
         {
           name:
             "Quiebre de stock",
-          value: outOfStock,
+          value:
+            stockStatistics.outOfStockLines,
+          percentage:
+            stockStatistics.outOfStockPercentage,
         },
-      ];
-    }, [preparedData]);
+      ],
+      [stockStatistics],
+    );
 
   const hasStockData =
-    inventoryRecordsCount > 0 &&
-    stockBreakStockData.some(
-      (item) => item.value > 0,
-    );
+    stockStatistics.validLines >
+    0;
+
+  const inventoryRecordsCount =
+    inventorySummary.available
+      ? stockStatistics.validLines
+      : aggregatedInventoryRecordsCount;
 
   const reportFieldsWarning =
     data.length > 0 &&
     (
       productDescriptionRecordsCount ===
         0 ||
-      inventoryRecordsCount === 0
+      (
+        !inventorySummary.available &&
+        aggregatedInventoryRecordsCount ===
+          0
+      )
     );
 
   const filteredComunas =
@@ -1626,14 +1927,30 @@ const ViewerReports = () => {
                       paddingAngle={3}
                       label={({
                         name,
-                        percent,
-                      }) =>
-                        `${name} (${(
-                          percent * 100
-                        ).toFixed(
-                          0,
-                        )}%)`
-                      }
+                      }) => {
+                        const item =
+                          stockBreakStockData.find(
+                            (
+                              stockItem,
+                            ) =>
+                              stockItem.name ===
+                              name,
+                          );
+
+                        const percentage =
+                          item?.percentage ??
+                          0;
+
+                        return `${name} (${percentage.toLocaleString(
+                          "es-CL",
+                          {
+                            minimumFractionDigits:
+                              1,
+                            maximumFractionDigits:
+                              1,
+                          },
+                        )}%)`;
+                      }}
                     >
                       {stockBreakStockData.map(
                         (
@@ -1657,14 +1974,31 @@ const ViewerReports = () => {
                     <Tooltip
                       formatter={(
                         value,
-                      ) => [
-                        Number(
-                          value,
-                        ).toLocaleString(
-                          "es-CL",
-                        ),
-                        "Registros",
-                      ]}
+                        name,
+                        entry,
+                      ) => {
+                        const percentage =
+                          entry?.payload
+                            ?.percentage ??
+                          0;
+
+                        return [
+                          `${Number(
+                            value,
+                          ).toLocaleString(
+                            "es-CL",
+                          )} registros (${percentage.toLocaleString(
+                            "es-CL",
+                            {
+                              minimumFractionDigits:
+                                2,
+                              maximumFractionDigits:
+                                2,
+                            },
+                          )}%)`,
+                          name,
+                        ];
+                      }}
                       contentStyle={{
                         borderRadius:
                           "14px",
@@ -1685,6 +2019,79 @@ const ViewerReports = () => {
                 message={data.length > 0 && inventoryRecordsCount === 0 ? "La API no está entregando inventario_unidades" : "Sin información de inventario"}
               />
             )}
+
+            {!loading &&
+              hasStockData && (
+                <div className="mt-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-2xl border border-[#87be00]/20 bg-[#87be00]/10 p-3">
+                      <p className="text-[8px] font-black uppercase tracking-wider text-[#6e9e00]">
+                        Con stock
+                      </p>
+
+                      <p className="mt-1 text-lg font-black text-slate-900">
+                        {stockStatistics.inStockLines.toLocaleString(
+                          "es-CL",
+                        )}
+                      </p>
+
+                      <p className="text-[8px] font-black text-[#6e9e00]">
+                        {stockStatistics.inStockPercentage.toLocaleString(
+                          "es-CL",
+                          {
+                            minimumFractionDigits:
+                              2,
+                            maximumFractionDigits:
+                              2,
+                          },
+                        )}
+                        %
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-red-100 bg-red-50 p-3">
+                      <p className="text-[8px] font-black uppercase tracking-wider text-red-600">
+                        Quiebre de stock
+                      </p>
+
+                      <p className="mt-1 text-lg font-black text-slate-900">
+                        {stockStatistics.outOfStockLines.toLocaleString(
+                          "es-CL",
+                        )}
+                      </p>
+
+                      <p className="text-[8px] font-black text-red-600">
+                        {stockStatistics.outOfStockPercentage.toLocaleString(
+                          "es-CL",
+                          {
+                            minimumFractionDigits:
+                              2,
+                            maximumFractionDigits:
+                              2,
+                          },
+                        )}
+                        %
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[8px] font-bold leading-relaxed text-slate-500">
+                    Quiebre = inventario igual a cero (
+                    {stockStatistics.zeroLines.toLocaleString(
+                      "es-CL",
+                    )}
+                    ) más inventario negativo (
+                    {stockStatistics.negativeLines.toLocaleString(
+                      "es-CL",
+                    )}
+                    ). Los registros sin inventario (
+                    {stockStatistics.blankLines.toLocaleString(
+                      "es-CL",
+                    )}
+                    ) se excluyen del porcentaje.
+                  </p>
+                </div>
+              )}
           </article>
         </section>
       </div>
