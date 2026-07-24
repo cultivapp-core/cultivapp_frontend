@@ -36,7 +36,7 @@ import toast from "react-hot-toast";
 import api from "../../api/apiClient";
 import Scanner from "../../components/Scanner";
 import QuestionRenderer from "../../components/modals/QuestionRenderer";
-import offlineManager, {
+import OfflineManager, {
   OFFLINE_SYNC_EVENTS,
 } from "../../services/offlineManager";
 import {
