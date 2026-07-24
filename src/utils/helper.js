@@ -1,41 +1,69 @@
+/**
+ * Genera las semanas operativas del mes:
+ *
+ * S1: días 1 al 7
+ * S2: días 8 al 14
+ * S3: días 15 al 21
+ * S4: días 22 al 28
+ * S5: días 29 al último día
+ *
+ * Devuelve siempre cuatro o cinco semanas.
+ */
 export const getWeeksOfMonthCalendar = (date) => {
-  const year = date.getFullYear();
-  const month = date.getMonth();
+  const sourceDate =
+    date instanceof Date &&
+    !Number.isNaN(date.getTime())
+      ? date
+      : new Date();
 
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
+  const year = sourceDate.getFullYear();
+  const monthIndex = sourceDate.getMonth();
 
-  // 👉 lunes de la semana del día 1
-  const start = new Date(firstDay);
-  const dayOfWeek = start.getDay(); // 0 dom ... 6 sab
-  const diffToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-  start.setDate(start.getDate() + diffToMonday);
+  const daysInMonth = new Date(
+    year,
+    monthIndex + 1,
+    0,
+  ).getDate();
 
-  // 👉 domingo de la semana del último día del mes
-  const end = new Date(lastDay);
-  const endDay = end.getDay();
-  const diffToSunday = (endDay === 0 ? 0 : 7 - endDay);
-  end.setDate(end.getDate() + diffToSunday);
+  const weekCount = Math.ceil(
+    daysInMonth / 7,
+  );
 
-  const weeks = [];
-  let current = new Date(start);
-  let weekIndex = 1;
+  return Array.from(
+    { length: weekCount },
+    (_, index) => {
+      const id = index + 1;
+      const startDay = index * 7 + 1;
+      const endDay = Math.min(
+        startDay + 6,
+        daysInMonth,
+      );
 
-  while (current <= end) {
-    const weekStart = new Date(current);
-    const weekEnd = new Date(current);
-    weekEnd.setDate(weekStart.getDate() + 6);
-
-    weeks.push({
-      id: weekIndex,
-      start: weekStart,
-      end: weekEnd,
-      key: `${year}-${month + 1}-W${weekIndex}`, // 🔥 CLAVE ESTABLE
-    });
-
-    current.setDate(current.getDate() + 7);
-    weekIndex++;
-  }
-
-  return weeks;
+      return {
+        id,
+        start: new Date(
+          year,
+          monthIndex,
+          startDay,
+          12,
+          0,
+          0,
+          0,
+        ),
+        end: new Date(
+          year,
+          monthIndex,
+          endDay,
+          12,
+          0,
+          0,
+          0,
+        ),
+        key:
+          `${year}-${String(
+            monthIndex + 1,
+          ).padStart(2, "0")}-W${id}`,
+      };
+    },
+  );
 };

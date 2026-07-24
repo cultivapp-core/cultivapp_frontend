@@ -21,10 +21,111 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button, IconButton } from "../../components/ui";
 
 // ─────────────────────────────────────────────────────────────
+// 📅 SEMANAS DE PLANIFICACIÓN DEL MES
+// S1: días 1-7, S2: 8-14, S3: 15-21, S4: 22-28,
+// S5: 29 hasta el último día del mes.
+// De esta forma un mes tiene siempre 4 o 5 semanas operativas.
+// ─────────────────────────────────────────────────────────────
+const getMonthWeekCount = (year, month) => {
+  const daysInMonth = new Date(
+    year,
+    month,
+    0,
+  ).getDate();
+
+  return Math.ceil(
+    daysInMonth / 7,
+  );
+};
+
+const buildMonthWeekRanges = (
+  year,
+  month,
+) => {
+  const monthIndex = month - 1;
+  const daysInMonth = new Date(
+    year,
+    month,
+    0,
+  ).getDate();
+  const weekCount =
+    getMonthWeekCount(
+      year,
+      month,
+    );
+  const monthLabels = [
+    "Ene",
+    "Feb",
+    "Mar",
+    "Abr",
+    "May",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dic",
+  ];
+
+  return Array.from(
+    {
+      length: weekCount,
+    },
+    (_, index) => {
+      const weekNum =
+        index + 1;
+      const startDay =
+        index * 7 + 1;
+      const endDay =
+        Math.min(
+          startDay + 6,
+          daysInMonth,
+        );
+      const rawStart =
+        new Date(
+          year,
+          monthIndex,
+          startDay,
+          12,
+          0,
+          0,
+        );
+      const rawEnd =
+        new Date(
+          year,
+          monthIndex,
+          endDay,
+          12,
+          0,
+          0,
+        );
+
+      return {
+        weekNum,
+        label: `S${weekNum}`,
+        dates: `${startDay} ${monthLabels[monthIndex]} - ${endDay} ${monthLabels[monthIndex]}`,
+        rawStart,
+        rawEnd,
+      };
+    },
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 // 📅 VISUALIZADOR MENSUAL CON TOOLTIP FLOTANTE Y COLORES DINÁMICOS
 // ─────────────────────────────────────────────────────────────
-const MonthlyStatus = ({ scheduledDays = [] }) => {
-  const weeks = [1, 2, 3, 4];
+const MonthlyStatus = ({
+  scheduledDays = [],
+  weekCount = 4,
+}) => {
+  const weeks = Array.from(
+    {
+      length: weekCount,
+    },
+    (_, index) =>
+      index + 1,
+  );
   const days = [
     { id: 1, label: "L" },
     { id: 2, label: "M" },
@@ -191,33 +292,43 @@ const Planificacion = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Rangos de semanas del mes actual
-  const weekRanges = useMemo(() => {
-    const today      = new Date();
-    const year       = today.getFullYear();
-    const month      = today.getMonth();
-    let firstDay     = new Date(year, month, 1);
-    let dow          = firstDay.getDay() === 0 ? 7 : firstDay.getDay();
-    let firstMonday  = new Date(firstDay);
-    if (dow !== 1) firstMonday.setDate(1 + (8 - dow));
+  // Periodo de planificación: utiliza el mes de la fecha filtrada
+  // y, si no hay filtro, el mes calendario actual.
+  const planningPeriod =
+    useMemo(() => {
+      const baseDate =
+        filterDate
+          ? new Date(
+              `${filterDate}T12:00:00`,
+            )
+          : new Date();
 
-    const mesesAbr = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-    const ranges = [];
-    for (let i = 0; i < 4; i++) {
-      let start = new Date(firstMonday);
-      start.setDate(firstMonday.getDate() + i * 7);
-      let end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      ranges.push({
-        weekNum: i + 1,
-        label: `S${i + 1}`,
-        dates: `${start.getDate()} ${mesesAbr[start.getMonth()]} - ${end.getDate()} ${mesesAbr[end.getMonth()]}`,
-        rawStart: start,
-        rawEnd: end
-      });
-    }
-    return ranges;
-  }, []);
+      return {
+        year:
+          baseDate.getFullYear(),
+        month:
+          baseDate.getMonth() + 1,
+      };
+    }, [filterDate]);
+
+  const weeksInPlanningMonth =
+    useMemo(
+      () =>
+        getMonthWeekCount(
+          planningPeriod.year,
+          planningPeriod.month,
+        ),
+      [planningPeriod],
+    );
+
+  const weekRanges = useMemo(
+    () =>
+      buildMonthWeekRanges(
+        planningPeriod.year,
+        planningPeriod.month,
+      ),
+    [planningPeriod],
+  );
 
   const activeWeekByDate = useMemo(() => {
     if (!filterDate) return null;
@@ -228,52 +339,414 @@ const Planificacion = () => {
 
   // Import Excel
   const handleImportExcel = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader  = new FileReader();
+    const file = e.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
     const toastId = toast.loading("Analizando Excel...");
 
-    reader.onload = async (evt) => {
-      try {
-        const data      = new Uint8Array(evt.target.result);
-        const workbook  = XLSX.read(data, { type: "array" });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rawJson   = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+    const normalizeHeader = (value) =>
+      String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
 
-        const finalData = rawJson.map((row) => {
-          const obj = {};
-          Object.keys(row).forEach((key) => {
-            const k   = String(key).toLowerCase().trim();
-            const val = String(row[key]).trim();
-            if (k.includes("rut"))                                obj.Rut_Mercaderista = val;
-            else if (k.includes("cod"))                           obj.Codigo = val;
-            else if (k.includes("semana") || k.includes("turno")) obj[key.trim()] = val;
-          });
-          return obj;
-        }).filter((f) => f.Rut_Mercaderista && f.Codigo);
+    const getWeekNumber = (header) => {
+      const normalized = String(header || "")
+        .toLowerCase()
+        .trim();
 
-        if (finalData.length === 0) {
-          toast.error("Excel sin datos válidos", { id: toastId });
-          return;
-        }
+      const match = normalized.match(
+        /(?:semana|turno)[^\d]*(\d+)/,
+      );
 
-        const today    = new Date();
-        const payload  = { month: today.getMonth() + 1, year: today.getFullYear(), routes: finalData };
-        const response = await api.post("/routes/bulk-create", payload);
-        const resData  = response.data || response;
-
-        if (resData.success) {
-          toast.success(`¡Éxito! ${resData.count} rutas creadas.`, { id: toastId });
-          fetchData();
-        } else {
-          toast.error(resData.message || "Error en la carga masiva", { id: toastId });
-        }
-      } catch {
-        toast.error("Error al procesar el archivo", { id: toastId });
-      }
+      return match
+        ? Number.parseInt(match[1], 10)
+        : null;
     };
-    reader.readAsArrayBuffer(file);
-    e.target.value = "";
+
+    const getBackendMessage = (error) => {
+      const backendData =
+        error?.response?.data ??
+        error?.data ??
+        null;
+
+      const message =
+        backendData?.message ||
+        error?.message ||
+        "Error al procesar el archivo";
+
+      const details = Array.isArray(
+        backendData?.errors,
+      )
+        ? backendData.errors
+        : [];
+
+      return {
+        message,
+        details,
+        backendData,
+      };
+    };
+
+    try {
+      const arrayBuffer =
+        await file.arrayBuffer();
+
+      const workbook = XLSX.read(
+        arrayBuffer,
+        {
+          type: "array",
+          cellDates: true,
+        },
+      );
+
+      const sheetName =
+        workbook.SheetNames?.[0];
+
+      if (!sheetName) {
+        throw new Error(
+          "El archivo no contiene hojas para procesar.",
+        );
+      }
+
+      const worksheet =
+        workbook.Sheets[sheetName];
+
+      const rawJson =
+        XLSX.utils.sheet_to_json(
+          worksheet,
+          {
+            defval: "",
+            raw: false,
+            blankrows: false,
+          },
+        );
+
+      if (
+        !Array.isArray(rawJson) ||
+        rawJson.length === 0
+      ) {
+        throw new Error(
+          "El Excel no contiene filas de planificación.",
+        );
+      }
+
+      const headers =
+        Object.keys(rawJson[0] || {});
+
+      const rutHeader =
+        headers.find((header) => {
+          const normalized =
+            normalizeHeader(header);
+
+          return (
+            normalized ===
+              "rutmercaderista" ||
+            normalized === "rut"
+          );
+        });
+
+      const codeHeader =
+        headers.find((header) => {
+          const normalized =
+            normalizeHeader(header);
+
+          return [
+            "codigo",
+            "codigolocal",
+            "cod",
+          ].includes(normalized);
+        });
+
+      const weekHeaders = headers
+        .map((header) => ({
+          header,
+          week:
+            getWeekNumber(header),
+        }))
+        .filter(
+          ({ week }) =>
+            Number.isInteger(week),
+        )
+        .sort(
+          (first, second) =>
+            first.week - second.week,
+        );
+
+      if (!rutHeader) {
+        throw new Error(
+          "Falta la columna Rut_Mercaderista en el Excel.",
+        );
+      }
+
+      if (!codeHeader) {
+        throw new Error(
+          "Falta la columna Codigo en el Excel.",
+        );
+      }
+
+      if (weekHeaders.length === 0) {
+        throw new Error(
+          "No se encontraron columnas de turnos por semana.",
+        );
+      }
+
+      const invalidWeekHeaders =
+        weekHeaders.filter(
+          ({ week, header }) =>
+            (
+              week < 1 ||
+              week >
+                weeksInPlanningMonth
+            ) &&
+            rawJson.some(
+              (row) =>
+                String(
+                  row[header] || "",
+                ).trim() !== "",
+            ),
+        );
+
+      const supportedWeekHeaders =
+        weekHeaders.filter(
+          ({ week }) =>
+            week >= 1 &&
+            week <=
+              weeksInPlanningMonth,
+        );
+
+      const rowErrors = [];
+      const finalData = [];
+
+      rawJson.forEach(
+        (row, index) => {
+          const excelRow =
+            index + 2;
+
+          const rut = String(
+            row[rutHeader] || "",
+          ).trim();
+
+          const code = String(
+            row[codeHeader] || "",
+          ).trim();
+
+          const rowHasData =
+            rut ||
+            code ||
+            weekHeaders.some(
+              ({ header }) =>
+                String(
+                  row[header] || "",
+                ).trim() !== "",
+            );
+
+          if (!rowHasData) {
+            return;
+          }
+
+          if (!rut || !code) {
+            rowErrors.push(
+              `Fila ${excelRow}: faltan RUT o Código de Local.`,
+            );
+            return;
+          }
+
+          const route = {
+            Rut_Mercaderista: rut,
+            Codigo: code,
+          };
+
+          let configuredWeeks = 0;
+
+          supportedWeekHeaders.forEach(
+            ({ header, week }) => {
+              const shiftName =
+                String(
+                  row[header] || "",
+                ).trim();
+
+              if (
+                !shiftName ||
+                shiftName.toUpperCase() ===
+                  "NULL"
+              ) {
+                return;
+              }
+
+              route[
+                `Turno Semana ${week}`
+              ] = shiftName;
+
+              configuredWeeks += 1;
+            },
+          );
+
+          if (configuredWeeks === 0) {
+            rowErrors.push(
+              `Fila ${excelRow}: no contiene turnos válidos entre las semanas 1 y ${weeksInPlanningMonth}.`,
+            );
+            return;
+          }
+
+          finalData.push(route);
+        },
+      );
+
+      if (rowErrors.length > 0) {
+        console.warn(
+          "⚠️ Filas omitidas durante la lectura:",
+          rowErrors,
+        );
+      }
+
+      if (finalData.length === 0) {
+        throw new Error(
+          rowErrors[0] ||
+            "El Excel no contiene planificaciones válidas.",
+        );
+      }
+
+      const payload = {
+        month:
+          planningPeriod.month,
+        year:
+          planningPeriod.year,
+        routes: finalData,
+      };
+
+      console.log(
+        "📤 Payload carga masiva:",
+        {
+          rows:
+            finalData.length,
+          payload,
+        },
+      );
+
+      const response =
+        await api.post(
+          "/routes/bulk-create",
+          payload,
+        );
+
+      const resData =
+        response?.data ??
+        response;
+
+      if (!resData?.success) {
+        const requestError =
+          new Error(
+            resData?.message ||
+              "Error en la carga masiva",
+          );
+
+        requestError.data =
+          resData;
+
+        throw requestError;
+      }
+
+      const serverErrors =
+        Array.isArray(
+          resData.errors,
+        )
+          ? resData.errors
+          : [];
+
+      const serverWarnings =
+        Array.isArray(
+          resData.warnings,
+        )
+          ? resData.warnings
+          : [];
+
+      const warnings = [
+        ...rowErrors,
+        ...serverErrors,
+        ...serverWarnings,
+      ];
+
+      if (
+        invalidWeekHeaders.length >
+        0
+      ) {
+        const invalidWeeks = [
+          ...new Set(
+            invalidWeekHeaders.map(
+              ({ week }) => week,
+            ),
+          ),
+        ].join(", ");
+
+        warnings.push(
+          `Las semanas ${invalidWeeks} no corresponden al periodo ${planningPeriod.month}/${planningPeriod.year}, que tiene ${weeksInPlanningMonth} semanas de planificación.`,
+        );
+      }
+
+      if (warnings.length > 0) {
+        toast.success(
+          `${resData.count || 0} rutas creadas. Revisa las advertencias en la consola.`,
+          {
+            id: toastId,
+            duration: 6500,
+          },
+        );
+
+        console.warn(
+          "⚠️ Advertencias de carga masiva:",
+          warnings,
+        );
+      } else {
+        toast.success(
+          `¡Éxito! ${resData.count || 0} rutas creadas.`,
+          {
+            id: toastId,
+          },
+        );
+      }
+
+      await fetchData();
+    } catch (error) {
+      const {
+        message,
+        details,
+        backendData,
+      } = getBackendMessage(
+        error,
+      );
+
+      console.error(
+        "❌ Error carga masiva:",
+        {
+          message,
+          details,
+          backendData,
+          error,
+        },
+      );
+
+      const detailText =
+        details.length > 0
+          ? ` ${details
+              .slice(0, 2)
+              .join(" | ")}`
+          : "";
+
+      toast.error(
+        `${message}${detailText}`,
+        {
+          id: toastId,
+          duration: 9000,
+        },
+      );
+    } finally {
+      e.target.value = "";
+    }
   };
 
   // ── Agrupar rutas (ESTRICTO POR LOCAL PARA MANTENER MERCADERISTAS JUNTOS) ──────────────
@@ -507,7 +980,7 @@ const Planificacion = () => {
                       </div>
 
                       <div className="flex flex-col gap-1 pl-10">
-                        {[1, 2, 3, 4].map((wNum) => {
+                        {Array.from({ length: weeksInPlanningMonth }, (_, index) => index + 1).map((wNum) => {
                           const tName = r.turnosPorSemana?.[wNum];
                           return (
                             <div key={wNum} className="flex items-center gap-1.5">
@@ -530,7 +1003,7 @@ const Planificacion = () => {
 
                   <td className="px-7 py-6 align-top">
                     <div className="bg-gray-50 px-4 py-3 rounded-2xl inline-block overflow-visible">
-                      <MonthlyStatus scheduledDays={r.scheduled_items} />
+                      <MonthlyStatus scheduledDays={r.scheduled_items} weekCount={weeksInPlanningMonth} />
                     </div>
                   </td>
 
@@ -617,7 +1090,7 @@ const Planificacion = () => {
                     {r.users.join(' / ')}
                   </p>
                   <div className="flex flex-col gap-1">
-                    {[1, 2, 3, 4].map((wNum) => {
+                    {Array.from({ length: weeksInPlanningMonth }, (_, index) => index + 1).map((wNum) => {
                       const tName = r.turnosPorSemana?.[wNum];
                       return (
                         <div key={wNum} className="flex items-center gap-1.5">
@@ -639,7 +1112,7 @@ const Planificacion = () => {
               </div>
 
               <div className="bg-gray-50 px-4 py-3 rounded-2xl overflow-visible">
-                <MonthlyStatus scheduledDays={r.scheduled_items} />
+                <MonthlyStatus scheduledDays={r.scheduled_items} weekCount={weeksInPlanningMonth} />
               </div>
             </motion.div>
             ))}
