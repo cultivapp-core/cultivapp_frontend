@@ -38,7 +38,7 @@ import Scanner from "../../components/Scanner";
 import QuestionRenderer from "../../components/modals/QuestionRenderer";
 import OfflineManager, {
   OFFLINE_SYNC_EVENTS,
-} from "../../services/OfflineManager";
+} from "../../services/offlineManager";
 import {
   getVisitDraft,
   removeVisitDraft,
