@@ -26,8 +26,19 @@ import UploadLocalesModal from "../root/UploadLocalesModal";
 import EditLocalModal from "../root/EditLocalModal"; // 🚩 CORREGIDO: Ahora importa el modal correcto de locales
 import LocalesMap from "../../components/LocalesMap";
 import { motion } from "framer-motion";
+import { useAuth } from "../../context/AuthContext";
+
+const CULTIVA_COMPANY_ID = "0e342e01-d213-4353-b210-39a12ac335cf";
 
 const AdminLocales = () => {
+  const { user } = useAuth();
+  const hasGlobalCompanyAccess =
+    user?.role === "ROOT" ||
+    (user?.role === "ADMIN_CLIENTE" &&
+      user?.company_id === CULTIVA_COMPANY_ID);
+  const adminCompanyId = user?.company_id || "";
+  const adminCompanyName = user?.company_name || "Mi empresa";
+
   const [locales, setLocales] = useState([]);
   const [chains, setChains] = useState([]);
   const [regions, setRegions] = useState([]);
@@ -47,17 +58,37 @@ const AdminLocales = () => {
   const fetchLocalesAndCompanies = useCallback(async () => {
     // <-- MODIFICADO: Trae locales y empresas
     try {
+      if (!hasGlobalCompanyAccess && !adminCompanyId) {
+        setLocales([]);
+        setCompanies([]);
+        return;
+      }
+
+      const localesUrl = hasGlobalCompanyAccess
+        ? "/locales"
+        : `/locales?company_id=${encodeURIComponent(adminCompanyId)}`;
       const [localesData, companiesData] = await Promise.all([
-        api.get("/locales"),
-        api.get("/companies"),
+        api.get(localesUrl),
+        hasGlobalCompanyAccess
+          ? api.get("/companies")
+          : Promise.resolve([
+              {
+                id: adminCompanyId,
+                name: adminCompanyName
+              }
+            ])
       ]);
+      const scopedLocales = hasGlobalCompanyAccess
+        ? (localesData || [])
+        : (localesData || []).filter(
+            (local) => String(local.company_id) === String(adminCompanyId)
+          );
 
-      setLocales(localesData || []);
+      setLocales(scopedLocales);
       setCompanies(companiesData || []);
-
-      if (localesData) {
+      if (scopedLocales) {
         setChains(
-          [...new Set(localesData.map((local) => local.cadena))]
+          [...new Set(scopedLocales.map((local) => local.cadena))]
             .filter(Boolean)
             .sort(),
         );
@@ -65,7 +96,7 @@ const AdminLocales = () => {
         setRegions(
           [
             ...new Set(
-              localesData.map(
+              scopedLocales.map(
                 (local) => local.region_name || local.region,
               ),
             ),
@@ -77,7 +108,11 @@ const AdminLocales = () => {
     } catch (error) {
       toast.error("Error al cargar datos");
     }
-  }, []);
+  }, [
+    adminCompanyId,
+    adminCompanyName,
+    hasGlobalCompanyAccess,
+  ]);
 
   useEffect(() => {
     fetchLocalesAndCompanies();
@@ -474,6 +509,7 @@ const AdminLocales = () => {
         onClose={() => setOpenCreate(false)}
         onCreated={fetchLocalesAndCompanies}
         companies={companies}
+        autoCompany={hasGlobalCompanyAccess ? null : adminCompanyId}
       />
 
       <UploadLocalesModal
@@ -481,6 +517,7 @@ const AdminLocales = () => {
         onClose={() => setOpenUpload(false)}
         onUploaded={fetchLocalesAndCompanies}
         companies={companies}
+        companyId={hasGlobalCompanyAccess ? null : adminCompanyId}
       />
 
       {selectedLocal && (
@@ -493,6 +530,7 @@ const AdminLocales = () => {
           onUpdated={fetchLocalesAndCompanies}
           local={selectedLocal}
           companies={companies}
+          autoCompany={hasGlobalCompanyAccess ? null : adminCompanyId}
         />
       )}
     </div>

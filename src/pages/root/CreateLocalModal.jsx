@@ -135,6 +135,7 @@ const CreateLocalModal = ({
     try {
       const payload = {
         ...form,
+        company_id: autoCompany || form.company_id,
         lat: form.lat ? Number(form.lat) : null,
         lng: form.lng ? Number(form.lng) : null
       };
