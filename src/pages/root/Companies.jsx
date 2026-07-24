@@ -116,8 +116,13 @@ const Companies = () => {
     }, []);
 
   useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
+    if (hasFullAccess) {
+      fetchCompanies();
+    } else {
+      setLoading(false);
+      setCompanies([]);
+    }
+  }, [fetchCompanies, hasFullAccess]);
 
   const filteredCompanies =
     useMemo(() => {
@@ -294,6 +299,21 @@ const Companies = () => {
         </div>
       </div>
     );
+  }
+
+  if (!hasFullAccess) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4 font-[Outfit]">
+        <div className="max-w-md w-full rounded-3xl border border-amber-100 bg-amber-50 p-8 text-center">
+          <h2 className="text-xl font-black uppercase text-gray-900">
+            Acceso restringido
+          </h2>
+          <p className="mt-3 text-sm font-medium text-gray-600">
+            Solo ROOT y el administrador global de Cultiva pueden consultar empresas.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (

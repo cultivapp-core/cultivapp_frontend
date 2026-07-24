@@ -11,7 +11,8 @@ const EditLocalModal = ({
   onClose,
   onUpdated,
   local,
-  companies = []
+  companies = [],
+  autoCompany = null
 }) => {
   const [regions, setRegions] = useState([]);
   const [comunas, setComunas] = useState([]);
@@ -56,7 +57,7 @@ const EditLocalModal = ({
   useEffect(() => {
     if (local && isOpen) {
       setForm({
-        company_id: local.company_id || "",
+        company_id: autoCompany || local.company_id || "",
         codigo_local: local.codigo_local || "",
         cadena: local.cadena || "",
         region_id: local.region_id || "",
@@ -66,7 +67,7 @@ const EditLocalModal = ({
         telefono: local.telefono || ""
       });
     }
-  }, [local, isOpen]);
+  }, [autoCompany, local, isOpen]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -79,7 +80,10 @@ const EditLocalModal = ({
     setError("");
 
     try {
-      await api.put(`/locales/${local.id}`, form);
+      await api.put(`/locales/${local.id}`, {
+        ...form,
+        company_id: autoCompany || form.company_id
+      });
       toast.success("Local actualizado correctamente");
       onUpdated();
       onClose();
@@ -136,8 +140,9 @@ const EditLocalModal = ({
                   name="company_id" 
                   value={form.company_id} 
                   onChange={handleChange} 
+                  disabled={!!autoCompany}
                   required 
-                  className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-bold uppercase tracking-wide outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner text-gray-800 cursor-pointer h-12"
+                  className="w-full px-4 py-3.5 bg-gray-50 border-2 border-transparent rounded-2xl text-[11px] font-bold uppercase tracking-wide outline-none focus:bg-white focus:border-[#87be00]/20 transition-all shadow-inner text-gray-800 cursor-pointer h-12 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="">Seleccionar Empresa</option>
                   {companies.map(c => (
