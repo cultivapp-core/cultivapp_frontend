@@ -5,8 +5,9 @@ import {
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
+import { useAuth } from "../../context/AuthContext";
 
-const EMPTY_PRODUCT = { name: "", barcode: "", brand_id: "", category_id: "" };
+const EMPTY_PRODUCT = { name: "", barcode: "", brand_id: "", category_id: "", company_id: "" };
 
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message ||
@@ -15,9 +16,13 @@ const getErrorMessage = (error, fallback) =>
   fallback;
 
 const CatalogManager = () => {
+  const { user } = useAuth();
+  const isRoot = user?.role === "ROOT";
+
   const [brands, setBrands] = useState([]);
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+  const [companies, setCompanies] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -39,6 +44,8 @@ const CatalogManager = () => {
   const [productData, setProductData] = useState(EMPTY_PRODUCT);
   const [brandName, setBrandName] = useState("");
   const [categoryName, setCategoryName] = useState("");
+  const [brandCompanyId, setBrandCompanyId] = useState("");
+  const [categoryCompanyId, setCategoryCompanyId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -51,15 +58,17 @@ const CatalogManager = () => {
     try {
       setLoading(true);
 
-      const [resBrands, resProducts, resCategories] = await Promise.all([
+      const [resBrands, resProducts, resCategories, resCompanies] = await Promise.all([
         api.get("/routes/brands"),
         api.get("/routes/products"),
-        api.get("/routes/categories")
+        api.get("/routes/categories"),
+        isRoot ? api.get("/companies") : Promise.resolve([])
       ]);
 
       setBrands(Array.isArray(resBrands) ? resBrands : resBrands?.data || []);
       setProducts(Array.isArray(resProducts) ? resProducts : resProducts?.data || []);
       setCategories(Array.isArray(resCategories) ? resCategories : resCategories?.data || []);
+      setCompanies(Array.isArray(resCompanies) ? resCompanies : resCompanies?.data || []);
     } catch (error) {
       toast.error(getErrorMessage(error, "Error al sincronizar el catálogo"));
     } finally {
@@ -114,12 +123,14 @@ const CatalogManager = () => {
     setBrandModal(false);
     setEditingBrandId(null);
     setBrandName("");
+    setBrandCompanyId("");
   };
 
   const closeCategoryModal = () => {
     setCategoryModal(false);
     setEditingCategoryId(null);
     setCategoryName("");
+    setCategoryCompanyId("");
   };
 
   const openNewProduct = () => {
@@ -134,7 +145,8 @@ const CatalogManager = () => {
       name: product.name || "",
       barcode: product.barcode || "",
       brand_id: product.brand_id || "",
-      category_id: product.category_id || ""
+      category_id: product.category_id || "",
+      company_id: product.company_id || ""
     });
     setProductModal(true);
   };
@@ -142,24 +154,28 @@ const CatalogManager = () => {
   const openNewBrand = () => {
     setEditingBrandId(null);
     setBrandName("");
+    setBrandCompanyId("");
     setBrandModal(true);
   };
 
   const openEditBrand = (brand) => {
     setEditingBrandId(brand.id);
     setBrandName(brand.name || "");
+    setBrandCompanyId(brand.company_id || "");
     setBrandModal(true);
   };
 
   const openNewCategory = () => {
     setEditingCategoryId(null);
     setCategoryName("");
+    setCategoryCompanyId("");
     setCategoryModal(true);
   };
 
   const openEditCategory = (category) => {
     setEditingCategoryId(category.id);
     setCategoryName(category.name || "");
+    setCategoryCompanyId(category.company_id || "");
     setCategoryModal(true);
   };
 
@@ -190,10 +206,11 @@ const CatalogManager = () => {
       name: productData.name.trim(),
       barcode: productData.barcode.trim(),
       brand_id: productData.brand_id,
-      category_id: productData.category_id
+      category_id: productData.category_id,
+      ...(isRoot && !editingProductId ? { company_id: productData.company_id } : {})
     };
 
-    if (!payload.name || !payload.barcode || !payload.brand_id || !payload.category_id) {
+    if (!payload.name || !payload.barcode || !payload.brand_id || !payload.category_id || (isRoot && !editingProductId && !payload.company_id)) {
       toast.error("Completa todos los campos del producto");
       return;
     }
@@ -201,6 +218,7 @@ const CatalogManager = () => {
     const duplicate = products.some(
       (product) =>
         String(product.barcode).trim().toLowerCase() === payload.barcode.toLowerCase() &&
+        (!isRoot || editingProductId || String(product.company_id) === String(payload.company_id)) &&
         String(product.id) !== String(editingProductId)
     );
 
@@ -233,14 +251,15 @@ const CatalogManager = () => {
     event.preventDefault();
     const name = brandName.trim();
 
-    if (!name) {
-      toast.error("Ingresa el nombre de la marca");
+    if (!name || (isRoot && !editingBrandId && !brandCompanyId)) {
+      toast.error(isRoot && !editingBrandId ? "Ingresa el nombre y selecciona una empresa" : "Ingresa el nombre de la marca");
       return;
     }
 
     const duplicate = brands.some(
       (brand) =>
         brand.name?.trim().toLowerCase() === name.toLowerCase() &&
+        (!isRoot || editingBrandId || String(brand.company_id) === String(brandCompanyId)) &&
         String(brand.id) !== String(editingBrandId)
     );
 
@@ -256,7 +275,7 @@ const CatalogManager = () => {
         await api.put(`/routes/brands/${editingBrandId}`, { name });
         toast.success("Marca actualizada");
       } else {
-        await api.post("/routes/brands", { name });
+        await api.post("/routes/brands", { name, ...(isRoot ? { company_id: brandCompanyId } : {}) });
         toast.success("Marca creada");
       }
 
@@ -273,14 +292,15 @@ const CatalogManager = () => {
     event.preventDefault();
     const name = categoryName.trim();
 
-    if (!name) {
-      toast.error("Ingresa el nombre de la categoría");
+    if (!name || (isRoot && !editingCategoryId && !categoryCompanyId)) {
+      toast.error(isRoot && !editingCategoryId ? "Ingresa el nombre y selecciona una empresa" : "Ingresa el nombre de la categoría");
       return;
     }
 
     const duplicate = categories.some(
       (category) =>
         category.name?.trim().toLowerCase() === name.toLowerCase() &&
+        (!isRoot || editingCategoryId || String(category.company_id) === String(categoryCompanyId)) &&
         String(category.id) !== String(editingCategoryId)
     );
 
@@ -296,7 +316,7 @@ const CatalogManager = () => {
         await api.put(`/routes/categories/${editingCategoryId}`, { name });
         toast.success("Categoría actualizada");
       } else {
-        await api.post("/routes/categories", { name });
+        await api.post("/routes/categories", { name, ...(isRoot ? { company_id: categoryCompanyId } : {}) });
         toast.success("Categoría creada");
       }
 
@@ -341,7 +361,7 @@ const CatalogManager = () => {
   return (
     <div className="min-h-screen bg-slate-50/50 pb-16 pt-20 md:pt-6 font-[Outfit]">
       <div className="max-w-7xl mx-auto px-4 md:px-6 space-y-6">
-        <header className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 md:p-8">
+        <header className="bg-white rounded-4xl border border-slate-100 shadow-sm p-6 md:p-8">
           <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#87be00] mb-2">
@@ -392,7 +412,7 @@ const CatalogManager = () => {
           <StatCard label="Categorías" value={categories.length} icon={<FiTag />} />
         </section>
 
-        <section className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+        <section className="bg-white rounded-4xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="p-4 md:p-5 border-b border-slate-100 bg-slate-50/50">
             <div className="flex flex-col lg:flex-row gap-4 justify-between">
               <div className="flex gap-2 overflow-x-auto">
@@ -505,12 +525,32 @@ const CatalogManager = () => {
       {productModal && (
         <Modal title={editingProductId ? "Editar producto" : "Nuevo producto"} onClose={closeProductModal}>
           <form onSubmit={handleProductSubmit} className="space-y-4">
+            {isRoot && !editingProductId && (
+              <SelectField
+                label="Empresa"
+                value={productData.company_id}
+                onChange={(value) => setProductData({ ...productData, company_id: value, brand_id: "", category_id: "" })}
+                options={companies}
+              />
+            )}
             <InputField label="Nombre" value={productData.name} onChange={(value) => setProductData({ ...productData, name: value })} />
             <InputField label="EAN" value={productData.barcode} onChange={(value) => setProductData({ ...productData, barcode: value })} />
 
             <div className="grid md:grid-cols-2 gap-4">
-              <SelectField label="Marca" value={productData.brand_id} onChange={(value) => setProductData({ ...productData, brand_id: value })} options={brands} />
-              <SelectField label="Categoría" value={productData.category_id} onChange={(value) => setProductData({ ...productData, category_id: value })} options={categories} />
+              <SelectField
+                label="Marca"
+                value={productData.brand_id}
+                onChange={(value) => setProductData({ ...productData, brand_id: value })}
+                options={isRoot && !editingProductId ? brands.filter((item) => String(item.company_id) === String(productData.company_id)) : brands}
+                disabled={isRoot && !editingProductId && !productData.company_id}
+              />
+              <SelectField
+                label="Categoría"
+                value={productData.category_id}
+                onChange={(value) => setProductData({ ...productData, category_id: value })}
+                options={isRoot && !editingProductId ? categories.filter((item) => String(item.company_id) === String(productData.company_id)) : categories}
+                disabled={isRoot && !editingProductId && !productData.company_id}
+              />
             </div>
 
             <ModalActions loading={saving} onCancel={closeProductModal} />
@@ -521,6 +561,9 @@ const CatalogManager = () => {
       {brandModal && (
         <Modal title={editingBrandId ? "Editar marca" : "Nueva marca"} onClose={closeBrandModal}>
           <form onSubmit={handleBrandSubmit} className="space-y-4">
+            {isRoot && !editingBrandId && (
+              <SelectField label="Empresa" value={brandCompanyId} onChange={setBrandCompanyId} options={companies} />
+            )}
             <InputField label="Nombre de la marca" value={brandName} onChange={setBrandName} />
             <ModalActions loading={saving} onCancel={closeBrandModal} />
           </form>
@@ -530,6 +573,9 @@ const CatalogManager = () => {
       {categoryModal && (
         <Modal title={editingCategoryId ? "Editar categoría" : "Nueva categoría"} onClose={closeCategoryModal}>
           <form onSubmit={handleCategorySubmit} className="space-y-4">
+            {isRoot && !editingCategoryId && (
+              <SelectField label="Empresa" value={categoryCompanyId} onChange={setCategoryCompanyId} options={companies} />
+            )}
             <InputField label="Nombre de la categoría" value={categoryName} onChange={setCategoryName} />
             <ModalActions loading={saving} onCancel={closeCategoryModal} />
           </form>
@@ -612,8 +658,8 @@ const CatalogCard = ({ icon, title, subtitle, badges = [], onEdit, onDelete }) =
 );
 
 const Modal = ({ title, onClose, children }) => (
-  <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-    <div className="bg-white w-full max-w-xl rounded-[2rem] shadow-2xl overflow-hidden">
+  <div className="fixed inset-0 z-200 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+    <div className="bg-white w-full max-w-xl rounded-4xl shadow-2xl overflow-hidden">
       <div className="p-6 border-b border-slate-100 flex items-center justify-between">
         <h2 className="text-lg font-black uppercase italic text-slate-900">{title}</h2>
         <button type="button" onClick={onClose} className="p-2 rounded-lg bg-slate-50 text-slate-400"><FiX /></button>
@@ -630,10 +676,10 @@ const InputField = ({ label, value, onChange }) => (
   </label>
 );
 
-const SelectField = ({ label, value, onChange, options }) => (
+const SelectField = ({ label, value, onChange, options, disabled = false }) => (
   <label className="block">
     <span className="block text-[9px] font-black uppercase tracking-wider text-slate-500 mb-2">{label}</span>
-    <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full catalog-input bg-slate-50">
+    <select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="w-full catalog-input bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed">
       <option value="">Seleccionar</option>
       {options.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
     </select>
@@ -650,8 +696,8 @@ const ModalActions = ({ loading, onCancel }) => (
 );
 
 const ConfirmDelete = ({ item, onClose, onConfirm }) => (
-  <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-    <div className="bg-white w-full max-w-md rounded-[2rem] p-7 text-center">
+  <div className="fixed inset-0 z-220 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+    <div className="bg-white w-full max-w-md rounded-4xl p-7 text-center">
       <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center"><FiTrash2 size={22} /></div>
       <h2 className="text-lg font-black uppercase italic text-slate-900 mt-5">Confirmar eliminación</h2>
       <p className="text-xs text-slate-500 mt-3">¿Eliminar “{item.name}”? Esta acción no se puede revertir.</p>
