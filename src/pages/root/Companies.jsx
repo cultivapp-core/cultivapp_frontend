@@ -20,7 +20,14 @@ const Companies = () => {
   const isCultivaAdmin = user?.role === "ADMIN_CLIENTE" && user?.company_id === ID_CULTIVA;
   const hasFullAccess = isRoot || isCultivaAdmin;
 
-  useEffect(() => { fetchCompanies() }, [])
+  useEffect(() => {
+    if (hasFullAccess) {
+      fetchCompanies()
+    } else {
+      setLoading(false)
+      setCompanies([])
+    }
+  }, [hasFullAccess])
 
   const fetchCompanies = async () => {
     try { setLoading(true); const data = await api.get("/companies"); setCompanies(data || []) }
@@ -34,6 +41,21 @@ const Companies = () => {
         try { await api.delete(`/companies/${company.id}`); toast.success("Eliminado"); fetchCompanies() }
         catch (err) { toast.error("Error al eliminar") }
     }
+  }
+
+  if (!hasFullAccess) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4 font-[Outfit]">
+        <div className="max-w-md w-full rounded-3xl border border-amber-100 bg-amber-50 p-8 text-center">
+          <h2 className="text-xl font-black uppercase text-gray-900">
+            Acceso restringido
+          </h2>
+          <p className="mt-3 text-sm font-medium text-gray-600">
+            Solo ROOT y el administrador global de Cultiva pueden consultar empresas.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (

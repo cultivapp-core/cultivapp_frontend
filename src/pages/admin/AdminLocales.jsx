@@ -10,8 +10,19 @@ import UploadLocalesModal from "../root/UploadLocalesModal";
 import EditLocalModal from "../root/EditLocalModal"; // 🚩 CORREGIDO: Ahora importa el modal correcto de locales
 import LocalesMap from "../../components/LocalesMap";
 import { motion } from "framer-motion";
+import { useAuth } from "../../context/AuthContext";
+
+const CULTIVA_COMPANY_ID = "0e342e01-d213-4353-b210-39a12ac335cf";
 
 const AdminLocales = () => {
+  const { user } = useAuth();
+  const hasGlobalCompanyAccess =
+    user?.role === "ROOT" ||
+    (user?.role === "ADMIN_CLIENTE" &&
+      user?.company_id === CULTIVA_COMPANY_ID);
+  const adminCompanyId = user?.company_id || "";
+  const adminCompanyName = user?.company_name || "Mi empresa";
+
   const [locales, setLocales] = useState([]);
   const [chains, setChains] = useState([]); 
   const [regions, setRegions] = useState([]); 
@@ -30,22 +41,47 @@ const AdminLocales = () => {
 
   const fetchLocalesAndCompanies = useCallback(async () => { // <-- MODIFICADO: Trae locales y empresas
     try {
-      const [localesData, companiesData] = await Promise.all([
-        api.get(`/locales`),
-        api.get(`/companies`)
-      ]);
+      if (!hasGlobalCompanyAccess && !adminCompanyId) {
+        setLocales([]);
+        setCompanies([]);
+        return;
+      }
 
-      setLocales(localesData || []);
+      const localesUrl = hasGlobalCompanyAccess
+        ? "/locales"
+        : `/locales?company_id=${encodeURIComponent(adminCompanyId)}`;
+      const [localesData, companiesData] = await Promise.all([
+        api.get(localesUrl),
+        hasGlobalCompanyAccess
+          ? api.get("/companies")
+          : Promise.resolve([
+              {
+                id: adminCompanyId,
+                name: adminCompanyName
+              }
+            ])
+      ]);
+      const scopedLocales = hasGlobalCompanyAccess
+        ? (localesData || [])
+        : (localesData || []).filter(
+            (local) => String(local.company_id) === String(adminCompanyId)
+          );
+
+      setLocales(scopedLocales);
       setCompanies(companiesData || []);
       
-      if (localesData) {
-        setChains([...new Set(localesData.map(l => l.cadena))].filter(Boolean).sort());
-        setRegions([...new Set(localesData.map(l => l.region_name || l.region))].filter(Boolean).sort());
+      if (scopedLocales) {
+        setChains([...new Set(scopedLocales.map(l => l.cadena))].filter(Boolean).sort());
+        setRegions([...new Set(scopedLocales.map(l => l.region_name || l.region))].filter(Boolean).sort());
       }
     } catch (error) {
       toast.error("Error al cargar datos");
     }
-  }, []);
+  }, [
+    adminCompanyId,
+    adminCompanyName,
+    hasGlobalCompanyAccess,
+  ]);
 
   useEffect(() => {
     fetchLocalesAndCompanies();
@@ -164,9 +200,9 @@ const AdminLocales = () => {
         ))}
       </div>
 
-      <CreateLocalModal isOpen={openCreate} onClose={() => setOpenCreate(false)} onCreated={fetchLocalesAndCompanies} companies={companies} />
-      <UploadLocalesModal isOpen={openUpload} onClose={() => setOpenUpload(false)} onUploaded={fetchLocalesAndCompanies} companies={companies} />
-      {selectedLocal && <EditLocalModal isOpen={openEdit} onClose={() => { setOpenEdit(false); setSelectedLocal(null); }} onUpdated={fetchLocalesAndCompanies} local={selectedLocal} companies={companies} />}
+      <CreateLocalModal isOpen={openCreate} onClose={() => setOpenCreate(false)} onCreated={fetchLocalesAndCompanies} companies={companies} autoCompany={hasGlobalCompanyAccess ? null : adminCompanyId} />
+      <UploadLocalesModal isOpen={openUpload} onClose={() => setOpenUpload(false)} onUploaded={fetchLocalesAndCompanies} companies={companies} companyId={hasGlobalCompanyAccess ? null : adminCompanyId} />
+      {selectedLocal && <EditLocalModal isOpen={openEdit} onClose={() => { setOpenEdit(false); setSelectedLocal(null); }} onUpdated={fetchLocalesAndCompanies} local={selectedLocal} companies={companies} autoCompany={hasGlobalCompanyAccess ? null : adminCompanyId} />}
     </div>
   );
 };
