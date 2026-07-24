@@ -476,6 +476,11 @@ const VisitFlow = () => {
   const previewUrlsRef =
     useRef(new Set());
 
+  const previousOnlineStateRef =
+    useRef(
+      navigator.onLine,
+    );
+
   const BASE_URL =
     import.meta.env
       .VITE_API_URL ||
@@ -485,6 +490,22 @@ const VisitFlow = () => {
     useState(
       navigator.onLine,
     );
+
+  const [
+    showOfflineModal,
+    setShowOfflineModal,
+  ] = useState(
+    !navigator.onLine,
+  );
+
+  const [
+    offlineDetectedAt,
+    setOfflineDetectedAt,
+  ] = useState(
+    !navigator.onLine
+      ? new Date()
+      : null,
+  );
 
   const visitSessionKey =
     `cultivapp_visit_started_${id}`;
@@ -778,11 +799,38 @@ const VisitFlow = () => {
     );
 
   useEffect(() => {
-    const handleOnline = () =>
-      setIsOnline(true);
+    const handleOnline = () => {
+      const wasOffline =
+        previousOnlineStateRef.current ===
+        false;
 
-    const handleOffline = () =>
+      previousOnlineStateRef.current =
+        true;
+
+      setIsOnline(true);
+      setShowOfflineModal(false);
+      setOfflineDetectedAt(null);
+
+      if (wasOffline) {
+        toast.success(
+          "Conexión restablecida. Ya puedes sincronizar y continuar.",
+          {
+            duration: 3500,
+          },
+        );
+      }
+    };
+
+    const handleOffline = () => {
+      previousOnlineStateRef.current =
+        false;
+
       setIsOnline(false);
+      setOfflineDetectedAt(
+        new Date(),
+      );
+      setShowOfflineModal(true);
+    };
 
     window.addEventListener(
       "online",
@@ -2255,6 +2303,276 @@ const VisitFlow = () => {
     );
   };
 
+  const pendingPhotoCount =
+    Object.values(
+      photoSync,
+    ).filter(
+      (status) =>
+        status ===
+          PHOTO_STATUS.PENDING ||
+        status ===
+          PHOTO_STATUS.ERROR,
+    ).length;
+
+  const formattedOfflineTime =
+    offlineDetectedAt
+      ? offlineDetectedAt.toLocaleTimeString(
+          "es-CL",
+          {
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+        )
+      : null;
+
+  const handleConnectionRetry =
+    () => {
+      const connectionAvailable =
+        navigator.onLine;
+
+      setIsOnline(
+        connectionAvailable,
+      );
+
+      if (connectionAvailable) {
+        previousOnlineStateRef.current =
+          true;
+
+        setShowOfflineModal(
+          false,
+        );
+
+        setOfflineDetectedAt(
+          null,
+        );
+
+        toast.success(
+          "Conexión disponible.",
+        );
+
+        return;
+      }
+
+      toast.error(
+        "La conexión todavía no está disponible.",
+      );
+    };
+
+  const renderOfflineModal =
+    () => {
+      if (
+        !showOfflineModal ||
+        isOnline
+      ) {
+        return null;
+      }
+
+      return (
+        <div
+          className="fixed inset-0 z-[20000] flex items-end justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:items-center sm:p-5"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="offline-modal-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-white/10 bg-white shadow-2xl">
+            <div className="relative overflow-hidden bg-slate-950 px-5 pb-5 pt-6 text-white">
+              <div className="absolute -right-12 -top-14 h-36 w-36 rounded-full bg-amber-400/15 blur-2xl" />
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowOfflineModal(
+                    false,
+                  )
+                }
+                aria-label="Cerrar aviso sin conexión"
+                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white transition hover:bg-white/20"
+              >
+                <FiX
+                  size={17}
+                />
+              </button>
+
+              <div className="relative flex items-start gap-4 pr-12">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem] bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/20">
+                  <FiWifiOff
+                    size={25}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-[8px] font-black uppercase tracking-[0.22em] text-amber-300">
+                    Estado de conexión
+                  </p>
+
+                  <h2
+                    id="offline-modal-title"
+                    className="mt-1 text-xl font-black tracking-tight"
+                  >
+                    Estás trabajando sin conexión
+                  </h2>
+
+                  <p className="mt-2 text-xs leading-relaxed text-slate-300">
+                    Algunas acciones quedarán bloqueadas hasta recuperar internet.
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative mt-5 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-[8px] font-black uppercase tracking-wider text-white">
+                  <FiClock
+                    size={12}
+                  />
+                  {formattedOfflineTime
+                    ? `Sin conexión desde ${formattedOfflineTime}`
+                    : "Sin conexión"}
+                </span>
+
+                {pendingPhotoCount >
+                  0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400/15 px-3 py-2 text-[8px] font-black uppercase tracking-wider text-amber-200">
+                    <FiCamera
+                      size={12}
+                    />
+                    {pendingPhotoCount} foto
+                    {pendingPhotoCount ===
+                    1
+                      ? ""
+                      : "s"}{" "}
+                    pendiente
+                    {pendingPhotoCount ===
+                    1
+                      ? ""
+                      : "s"}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4 p-5">
+              {!visitStarted ? (
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <FiMapPin
+                      className="mt-0.5 shrink-0 text-red-500"
+                      size={17}
+                    />
+
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-wider text-red-600">
+                        Inicio de visita bloqueado
+                      </p>
+
+                      <p className="mt-1 text-xs leading-relaxed text-red-700">
+                        La validación GPS de 300 metros necesita conexión con el servidor. No podrás iniciar la visita hasta recuperar internet.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <FiAlertCircle
+                      className="mt-0.5 shrink-0 text-amber-500"
+                      size={17}
+                    />
+
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-wider text-amber-700">
+                        Visita en modo limitado
+                      </p>
+
+                      <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                        Puedes mantener abierta la visita y capturar fotografías, pero el escaneo, registro de productos, sincronización y cierre necesitan conexión.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
+                    <FiCamera
+                      size={15}
+                    />
+                  </span>
+
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black text-slate-700">
+                      Fotografías
+                    </p>
+
+                    <p className="mt-0.5 text-[8px] leading-relaxed text-slate-500">
+                      Se mantienen en esta pantalla como pendientes mientras la visita siga abierta.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
+                    <FiSend
+                      size={15}
+                    />
+                  </span>
+
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black text-slate-700">
+                      Envíos al servidor
+                    </p>
+
+                    <p className="mt-0.5 text-[8px] leading-relaxed text-slate-500">
+                      Permanecen bloqueados hasta que la conexión vuelva.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <p className="text-[8px] font-black uppercase tracking-wider text-blue-600">
+                  Importante
+                </p>
+
+                <p className="mt-1 text-xs leading-relaxed text-blue-700">
+                  No cierres ni recargues esta pantalla mientras tengas fotografías pendientes, porque actualmente se conservan solo durante esta sesión.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowOfflineModal(
+                      false,
+                    )
+                  }
+                  className={secondaryButtonClass}
+                >
+                  <FiCheck
+                    size={15}
+                  />
+                  Entendido
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleConnectionRetry
+                  }
+                  className={primaryButtonClass}
+                >
+                  <FiRefreshCw
+                    size={15}
+                  />
+                  Verificar conexión
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
   const isGpsBusy =
     gpsStatus ===
       GPS_STATUS.LOCATING ||
@@ -2277,13 +2595,23 @@ const VisitFlow = () => {
         `}
       >
         {!isOnline && (
-          <div className="fixed inset-x-0 top-0 z-[10000] flex min-h-8 items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-center text-[8px] font-black uppercase tracking-wider text-white shadow-lg">
+          <button
+            type="button"
+            onClick={() =>
+              setShowOfflineModal(
+                true,
+              )
+            }
+            className="fixed inset-x-3 top-3 z-[10000] mx-auto flex min-h-11 max-w-[560px] items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-2 text-center text-[8px] font-black uppercase tracking-wider text-white shadow-xl shadow-amber-500/20"
+          >
             <FiWifiOff
               size={13}
             />
-            Sin conexión: no es posible validar el GPS
-          </div>
+            Sin conexión · Ver información
+          </button>
         )}
+
+        {renderOfflineModal()}
 
         <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4">
           <header className="rounded-[2rem] border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur-xl">
@@ -2558,13 +2886,23 @@ const VisitFlow = () => {
       `}
     >
       {!isOnline && (
-        <div className="fixed inset-x-0 top-0 z-[10000] flex min-h-8 items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-center text-[8px] font-black uppercase tracking-wider text-white shadow-lg">
+        <button
+          type="button"
+          onClick={() =>
+            setShowOfflineModal(
+              true,
+            )
+          }
+          className="fixed inset-x-3 top-3 z-[10000] mx-auto flex min-h-11 max-w-[560px] items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-2 text-center text-[8px] font-black uppercase tracking-wider text-white shadow-xl shadow-amber-500/20"
+        >
           <FiWifiOff
             size={13}
           />
-          Sin conexión: las acciones que requieren servidor quedarán bloqueadas
-        </div>
+          Modo offline · Ver restricciones
+        </button>
       )}
+
+      {renderOfflineModal()}
 
       <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4">
         {/* CABECERA DEL FLUJO */}
@@ -2914,7 +3252,7 @@ const VisitFlow = () => {
                       </div>
                     )}
                   </>
-                )}
+                  )}
               </div>
             )}
 
