@@ -9,7 +9,7 @@ import { getDeviceInfo } from "./utils/deviceInfo"
 
 // --- HOOKS ---
 import { useOfflineSync } from "./hooks/useOfflineSync"
-import { FiCloudOff, FiRefreshCw } from "react-icons/fi"
+import { FiRefreshCw } from "react-icons/fi"
 
 // --- AUTH PAGES ---
 import Login from "./pages/Login"
@@ -285,21 +285,23 @@ const HeartbeatMonitor = () => {
 };
 
 const OfflineMonitor = () => {
-  const { isOnline, syncing } = useOfflineSync();
+  const { syncing } = useOfflineSync();
+
+  if (!syncing) {
+    return null;
+  }
+
   return (
-    <>
-      {!isOnline && (
-        <div className="fixed top-0 left-0 w-full bg-orange-500 text-white text-[10px] font-black py-1.5 flex items-center justify-center gap-2 z-[9999] shadow-lg uppercase tracking-widest animate-pulse">
-          <FiCloudOff size={14} /> Modo Offline
-        </div>
-      )}
-      {syncing && (
-        <div className="fixed bottom-6 right-6 bg-black text-white px-4 py-3 rounded-2xl shadow-2xl z-[9999] flex items-center gap-3 border border-white/10 animate-bounce">
-          <FiRefreshCw size={18} className="animate-spin text-[#87be00]" />
-          <span className="text-[10px] font-black uppercase tracking-tighter">Sincronizando...</span>
-        </div>
-      )}
-    </>
+    <div className="fixed bottom-6 right-6 bg-black text-white px-4 py-3 rounded-2xl shadow-2xl z-[9999] flex items-center gap-3 border border-white/10 animate-bounce">
+      <FiRefreshCw
+        size={18}
+        className="animate-spin text-[#87be00]"
+      />
+
+      <span className="text-[10px] font-black uppercase tracking-tighter">
+        Sincronizando...
+      </span>
+    </div>
   );
 };
 
