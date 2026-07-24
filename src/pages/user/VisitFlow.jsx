@@ -36,6 +36,14 @@ import toast from "react-hot-toast";
 import api from "../../api/apiClient";
 import Scanner from "../../components/Scanner";
 import QuestionRenderer from "../../components/modals/QuestionRenderer";
+import OfflineManager, {
+  OFFLINE_SYNC_EVENTS,
+} from "../../services/OfflineManager";
+import {
+  getVisitDraft,
+  removeVisitDraft,
+  saveVisitDraft,
+} from "../../utils/db";
 
 const FLOW_STEPS = [
   1,
@@ -110,6 +118,7 @@ const PHOTO_STATUS = {
   IDLE: "idle",
   UPLOADING: "uploading",
   SUCCESS: "success",
+  QUEUED: "queued",
   PENDING: "pending",
   ERROR: "error",
 };
@@ -460,6 +469,13 @@ const getGpsErrorMessage = (
   );
 };
 
+const isNetworkError = (
+  error,
+) =>
+  !error?.response ||
+  error?.code === "ERR_NETWORK" ||
+  error?.message === "Network Error";
+
 const VisitFlow = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -480,6 +496,9 @@ const VisitFlow = () => {
     useRef(
       navigator.onLine,
     );
+
+  const draftSaveTimerRef =
+    useRef(null);
 
   const BASE_URL =
     import.meta.env
@@ -506,6 +525,26 @@ const VisitFlow = () => {
       ? new Date()
       : null,
   );
+
+  const [
+    draftLoaded,
+    setDraftLoaded,
+  ] = useState(false);
+
+  const [
+    visitPendingSync,
+    setVisitPendingSync,
+  ] = useState(false);
+
+  const [
+    photoQueueIds,
+    setPhotoQueueIds,
+  ] = useState({});
+
+  const [
+    scanQueueItems,
+    setScanQueueItems,
+  ] = useState([]);
 
   const visitSessionKey =
     `cultivapp_visit_started_${id}`;
@@ -756,15 +795,22 @@ const VisitFlow = () => {
   const canContinueFromSurvey =
     isSurveyComplete;
 
-  const productPhotosSynced =
-    photoSync[2] ===
-      PHOTO_STATUS.SUCCESS &&
-    photoSync[5] ===
-      PHOTO_STATUS.SUCCESS;
+  const isPhotoReady = (
+    stepKey,
+  ) =>
+    [
+      PHOTO_STATUS.SUCCESS,
+      PHOTO_STATUS.QUEUED,
+    ].includes(
+      photoSync[stepKey],
+    );
 
-  const exitPhotoSynced =
-    photoSync[7] ===
-    PHOTO_STATUS.SUCCESS;
+  const productPhotosReady =
+    isPhotoReady(2) &&
+    isPhotoReady(5);
+
+  const exitPhotoReady =
+    isPhotoReady(7);
 
   const formatImageUrl =
     useCallback(
@@ -855,6 +901,430 @@ const VisitFlow = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    const restoreDraft =
+      async () => {
+        try {
+          const draft =
+            await getVisitDraft(
+              id,
+            );
+
+          if (
+            !active ||
+            !draft
+          ) {
+            return;
+          }
+
+          if (
+            draft.visitStarted ===
+            true
+          ) {
+            sessionStorage.setItem(
+              visitSessionKey,
+              "true",
+            );
+
+            setVisitStarted(
+              true,
+            );
+          }
+
+          setStep(
+            Number(
+              draft.step,
+            ) || 1,
+          );
+
+          setSelectedBrand(
+            draft.selectedBrand ||
+              "",
+          );
+
+          setSelectedProduct(
+            draft.selectedProduct ||
+              "",
+          );
+
+          setProductStartTime(
+            draft.productStartTime ||
+              null,
+          );
+
+          setScannedCodes(
+            Array.isArray(
+              draft.scannedCodes,
+            )
+              ? draft.scannedCodes
+              : [],
+          );
+
+          setAnswers(
+            draft.answers &&
+              typeof draft.answers ===
+                "object"
+              ? draft.answers
+              : {},
+          );
+
+          setComment(
+            draft.comment ||
+              "",
+          );
+
+          setPhotoSync(
+            draft.photoSync &&
+              typeof draft.photoSync ===
+                "object"
+              ? draft.photoSync
+              : {},
+          );
+
+          setPhotoServerUrls(
+            draft.photoServerUrls &&
+              typeof draft.photoServerUrls ===
+                "object"
+              ? draft.photoServerUrls
+              : {},
+          );
+
+          setPhotoQueueIds(
+            draft.photoQueueIds &&
+              typeof draft.photoQueueIds ===
+                "object"
+              ? draft.photoQueueIds
+              : {},
+          );
+
+          setScanQueueItems(
+            Array.isArray(
+              draft.scanQueueItems,
+            )
+              ? draft.scanQueueItems
+              : [],
+          );
+
+          setVisitPendingSync(
+            draft.visitPendingSync ===
+              true,
+          );
+
+          const restoredFiles =
+            draft.photoFiles &&
+            typeof draft.photoFiles ===
+              "object"
+              ? draft.photoFiles
+              : {};
+
+          setPhotoFiles(
+            restoredFiles,
+          );
+
+          Object.entries(
+            restoredFiles,
+          ).forEach(
+            ([
+              stepKey,
+              file,
+            ]) => {
+              if (
+                !file ||
+                !(file instanceof Blob)
+              ) {
+                return;
+              }
+
+              const previewUrl =
+                URL.createObjectURL(
+                  file,
+                );
+
+              previewUrlsRef.current.add(
+                previewUrl,
+              );
+
+              const numericStep =
+                Number(stepKey);
+
+              if (
+                numericStep === 1
+              ) {
+                setFachadaPhoto(
+                  previewUrl,
+                );
+              } else if (
+                numericStep === 2
+              ) {
+                setGondolaInicialPhoto(
+                  previewUrl,
+                );
+              } else if (
+                numericStep === 5
+              ) {
+                setGondolaTerminoPhoto(
+                  previewUrl,
+                );
+              } else if (
+                numericStep === 7
+              ) {
+                setExitPhoto(
+                  previewUrl,
+                );
+              }
+            },
+          );
+
+          toast(
+            "Se recuperó el avance guardado de la visita.",
+            {
+              icon: "📲",
+              duration: 2500,
+            },
+          );
+        } catch (error) {
+          console.error(
+            "Error restaurando borrador offline:",
+            error,
+          );
+        } finally {
+          if (active) {
+            setDraftLoaded(
+              true,
+            );
+          }
+        }
+      };
+
+    restoreDraft();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    id,
+    visitSessionKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      !draftLoaded ||
+      !id
+    ) {
+      return undefined;
+    }
+
+    if (
+      step === 8 &&
+      !visitPendingSync
+    ) {
+      removeVisitDraft(
+        id,
+      ).catch(
+        (error) =>
+          console.error(
+            "Error eliminando borrador:",
+            error,
+          ),
+      );
+
+      return undefined;
+    }
+
+    if (
+      !visitStarted &&
+      !visitPendingSync
+    ) {
+      return undefined;
+    }
+
+    window.clearTimeout(
+      draftSaveTimerRef.current,
+    );
+
+    draftSaveTimerRef.current =
+      window.setTimeout(
+        () => {
+          saveVisitDraft({
+            routeId: id,
+            visitStarted,
+            visitPendingSync,
+            step,
+            selectedBrand,
+            selectedProduct,
+            productStartTime,
+            scannedCodes,
+            answers,
+            comment,
+            photoFiles,
+            photoSync,
+            photoServerUrls,
+            photoQueueIds,
+            scanQueueItems,
+            status:
+              visitPendingSync
+                ? "pending_sync"
+                : "in_progress",
+            updatedAt:
+              new Date().toISOString(),
+          }).catch(
+            (error) =>
+              console.error(
+                "Error guardando borrador offline:",
+                error,
+              ),
+          );
+        },
+        350,
+      );
+
+    return () => {
+      window.clearTimeout(
+        draftSaveTimerRef.current,
+      );
+    };
+  }, [
+    id,
+    draftLoaded,
+    visitStarted,
+    visitPendingSync,
+    step,
+    selectedBrand,
+    selectedProduct,
+    productStartTime,
+    scannedCodes,
+    answers,
+    comment,
+    photoFiles,
+    photoSync,
+    photoServerUrls,
+    photoQueueIds,
+    scanQueueItems,
+  ]);
+
+  useEffect(() => {
+    const handleSyncSuccess =
+      (event) => {
+        const item =
+          event?.detail?.item;
+
+        if (
+          !item ||
+          String(
+            item.routeId,
+          ) !== String(id)
+        ) {
+          return;
+        }
+
+        if (
+          item.type === "PHOTO"
+        ) {
+          const stepKey =
+            Number(
+              item.metadata
+                ?.stepKey,
+            );
+
+          if (
+            Number.isFinite(
+              stepKey,
+            )
+          ) {
+            setPhotoSync(
+              (current) => ({
+                ...current,
+                [stepKey]:
+                  PHOTO_STATUS.SUCCESS,
+              }),
+            );
+
+            const uploadedUrl =
+              extractUploadedUrl(
+                event?.detail
+                  ?.response,
+              );
+
+            if (uploadedUrl) {
+              setPhotoServerUrls(
+                (current) => ({
+                  ...current,
+                  [stepKey]:
+                    uploadedUrl,
+                }),
+              );
+            }
+
+            setPhotoQueueIds(
+              (current) => {
+                const next = {
+                  ...current,
+                };
+
+                delete next[
+                  stepKey
+                ];
+
+                return next;
+              },
+            );
+          }
+        }
+
+        if (
+          item.type === "SCAN"
+        ) {
+          setScanQueueItems(
+            (current) =>
+              current.filter(
+                (queuedItem) =>
+                  queuedItem.queueId !==
+                  item.id,
+              ),
+          );
+        }
+
+        if (
+          item.type === "FINISH"
+        ) {
+          setVisitPendingSync(
+            false,
+          );
+
+          sessionStorage.removeItem(
+            visitSessionKey,
+          );
+
+          removeVisitDraft(
+            id,
+          ).catch(
+            (error) =>
+              console.error(
+                "Error eliminando visita sincronizada:",
+                error,
+              ),
+          );
+        }
+      };
+
+    window.addEventListener(
+      OFFLINE_SYNC_EVENTS.ITEM_SUCCESS,
+      handleSyncSuccess,
+    );
+
+    return () => {
+      window.removeEventListener(
+        OFFLINE_SYNC_EVENTS.ITEM_SUCCESS,
+        handleSyncSuccess,
+      );
+    };
+  }, [
+    id,
+    visitSessionKey,
+  ]);
+
   useEffect(
     () => () => {
       previewUrlsRef.current.forEach(
@@ -888,15 +1358,35 @@ const VisitFlow = () => {
             ),
           ]);
 
-        setBrands(
+        const brandRows =
           extractRows(
             brandsResponse,
-          ),
+          );
+
+        const productRows =
+          extractRows(
+            productsResponse,
+          );
+
+        setBrands(
+          brandRows,
         );
 
         setProducts(
-          extractRows(
-            productsResponse,
+          productRows,
+        );
+
+        localStorage.setItem(
+          "cultivapp_brands_cache",
+          JSON.stringify(
+            brandRows,
+          ),
+        );
+
+        localStorage.setItem(
+          "cultivapp_products_cache",
+          JSON.stringify(
+            productRows,
           ),
         );
       } catch (error) {
@@ -905,12 +1395,67 @@ const VisitFlow = () => {
           error,
         );
 
-        setMasterError(
-          error?.response?.data
-            ?.message ??
-            error?.data?.message ??
+        try {
+          const cachedBrands =
+            JSON.parse(
+              localStorage.getItem(
+                "cultivapp_brands_cache",
+              ) || "[]",
+            );
+
+          const cachedProducts =
+            JSON.parse(
+              localStorage.getItem(
+                "cultivapp_products_cache",
+              ) || "[]",
+            );
+
+          if (
+            Array.isArray(
+              cachedBrands,
+            ) &&
+            Array.isArray(
+              cachedProducts,
+            ) &&
+            (
+              cachedBrands.length >
+                0 ||
+              cachedProducts.length >
+                0
+            )
+          ) {
+            setBrands(
+              cachedBrands,
+            );
+
+            setProducts(
+              cachedProducts,
+            );
+
+            setMasterError(
+              null,
+            );
+
+            toast(
+              "Se utilizó el catálogo guardado en el dispositivo.",
+              {
+                icon: "📦",
+              },
+            );
+          } else {
+            setMasterError(
+              error?.response?.data
+                ?.message ??
+                error?.data
+                  ?.message ??
+                "No fue posible cargar marcas y productos.",
+            );
+          }
+        } catch {
+          setMasterError(
             "No fue posible cargar marcas y productos.",
-        );
+          );
+        }
       } finally {
         setMasterLoading(false);
       }
@@ -1057,6 +1602,19 @@ const VisitFlow = () => {
     loadQuestions,
   ]);
 
+  useEffect(() => {
+    if (
+      isOnline &&
+      questions.length === 0
+    ) {
+      loadQuestions();
+    }
+  }, [
+    isOnline,
+    questions.length,
+    loadQuestions,
+  ]);
+
   const getEvidenceLabel = (
     stepKey,
   ) => {
@@ -1102,24 +1660,103 @@ const VisitFlow = () => {
           return false;
         }
 
-        if (
-          !navigator.onLine
-        ) {
-          setPhotoSync(
-            (current) => ({
-              ...current,
-              [stepKey]:
-                PHOTO_STATUS.PENDING,
-            }),
+        const photoType =
+          getEvidenceLabel(
+            stepKey,
           );
 
-          if (showToast) {
-            toast.error(
-              "Foto pendiente: necesitas conexión para sincronizarla.",
-            );
-          }
+        const buildFormData =
+          () => {
+            const formData =
+              new FormData();
 
-          return false;
+            formData.append(
+              "photo_type",
+              photoType,
+            );
+
+            formData.append(
+              "foto",
+              file,
+            );
+
+            return formData;
+          };
+
+        const queuePhoto =
+          async () => {
+            try {
+              const queued =
+                await OfflineManager.save(
+                  `/routes/${id}/photo`,
+                  "POST",
+                  buildFormData(),
+                  {
+                    metadata: {
+                      stepKey,
+                      photoType,
+                    },
+                  },
+                );
+
+              setPhotoQueueIds(
+                (current) => ({
+                  ...current,
+                  [stepKey]:
+                    queued.id,
+                }),
+              );
+
+              setPhotoSync(
+                (current) => ({
+                  ...current,
+                  [stepKey]:
+                    PHOTO_STATUS.QUEUED,
+                }),
+              );
+
+              if (showToast) {
+                toast.success(
+                  "Fotografía guardada en el dispositivo.",
+                );
+              }
+
+              return true;
+            } catch (error) {
+              console.error(
+                "Error guardando fotografía offline:",
+                error,
+              );
+
+              setPhotoSync(
+                (current) => ({
+                  ...current,
+                  [stepKey]:
+                    PHOTO_STATUS.ERROR,
+                }),
+              );
+
+              if (showToast) {
+                toast.error(
+                  error?.message ||
+                    "No fue posible guardar la fotografía en el dispositivo.",
+                );
+              }
+
+              return false;
+            }
+          };
+
+        const hasPendingRouteOperations =
+          await OfflineManager.hasPendingForRoute(
+            id,
+          );
+
+        if (
+          !navigator.onLine ||
+          hasPendingRouteOperations
+        ) {
+          return queuePhoto();
         }
 
         setPhotoSync(
@@ -1138,25 +1775,10 @@ const VisitFlow = () => {
             : null;
 
         try {
-          const formData =
-            new FormData();
-
-          formData.append(
-            "photo_type",
-            getEvidenceLabel(
-              stepKey,
-            ),
-          );
-
-          formData.append(
-            "foto",
-            file,
-          );
-
           const response =
             await api.post(
               `/routes/${id}/photo`,
-              formData,
+              buildFormData(),
             );
 
           const uploadedUrl =
@@ -1171,6 +1793,31 @@ const VisitFlow = () => {
                 [stepKey]:
                   uploadedUrl,
               }),
+            );
+          }
+
+          const queuedId =
+            photoQueueIds[
+              stepKey
+            ];
+
+          if (queuedId) {
+            await OfflineManager.remove(
+              queuedId,
+            );
+
+            setPhotoQueueIds(
+              (current) => {
+                const next = {
+                  ...current,
+                };
+
+                delete next[
+                  stepKey
+                ];
+
+                return next;
+              },
             );
           }
 
@@ -1201,6 +1848,22 @@ const VisitFlow = () => {
             error,
           );
 
+          if (
+            isNetworkError(
+              error,
+            )
+          ) {
+            if (
+              toastId !== null
+            ) {
+              toast.dismiss(
+                toastId,
+              );
+            }
+
+            return queuePhoto();
+          }
+
           setPhotoSync(
             (current) => ({
               ...current,
@@ -1230,6 +1893,7 @@ const VisitFlow = () => {
       [
         id,
         selectedProduct,
+        photoQueueIds,
       ],
     );
 
@@ -1325,28 +1989,20 @@ const VisitFlow = () => {
           }),
         );
 
-        setPhotoSync(
-          (current) => ({
-            ...current,
-            [stepKey]:
-              navigator.onLine
-                ? PHOTO_STATUS.UPLOADING
-                : PHOTO_STATUS.PENDING,
-          }),
-        );
-
         setCapturing(false);
 
+        const photoReady =
+          await uploadPhoto(
+            stepKey,
+            processedFile,
+          );
+
         if (
-          stepKey === 1
+          stepKey === 1 &&
+          photoReady
         ) {
           setStep(2);
         }
-
-        await uploadPhoto(
-          stepKey,
-          processedFile,
-        );
       } catch (error) {
         console.error(
           "Error procesando imagen:",
@@ -1368,6 +2024,9 @@ const VisitFlow = () => {
   const removePhoto = (
     photoUrl,
     stepKey,
+    {
+      cancelQueued = true,
+    } = {},
   ) => {
     if (
       photoUrl?.startsWith(
@@ -1382,6 +2041,40 @@ const VisitFlow = () => {
         photoUrl,
       );
     }
+
+    const queuedId =
+      photoQueueIds[
+        stepKey
+      ];
+
+    if (
+      cancelQueued &&
+      queuedId
+    ) {
+      OfflineManager.remove(
+        queuedId,
+      ).catch(
+        (error) =>
+          console.error(
+            "Error eliminando fotografía de la cola:",
+            error,
+          ),
+      );
+    }
+
+    setPhotoQueueIds(
+      (current) => {
+        const next = {
+          ...current,
+        };
+
+        delete next[
+          stepKey
+        ];
+
+        return next;
+      },
+    );
 
     setPhotoByStep(
       stepKey,
@@ -1473,49 +2166,112 @@ const VisitFlow = () => {
         return;
       }
 
-      if (!navigator.onLine) {
-        toast.error(
-          "Necesitas conexión para registrar el código.",
-          {
-            position:
-              "bottom-center",
-          },
-        );
-        return;
-      }
-
       isProcessingScan.current =
         true;
 
-      try {
-        await api.post(
-          `/routes/${id}/scans`,
-          {
-            barcode:
+      const saveQueuedScan =
+        async () => {
+          const queued =
+            await OfflineManager.save(
+              `/routes/${id}/scans`,
+              "POST",
+              {
+                barcode:
+                  cleanCode,
+              },
+              {
+                metadata: {
+                  barcode:
+                    cleanCode,
+                },
+              },
+            );
+
+          setScanQueueItems(
+            (current) => [
+              ...current,
+              {
+                code:
+                  cleanCode,
+                queueId:
+                  queued.id,
+              },
+            ],
+          );
+
+          setScannedCodes(
+            (current) => [
               cleanCode,
-          },
-        );
+              ...current,
+            ],
+          );
 
-        setScannedCodes(
-          (current) => [
-            cleanCode,
-            ...current,
-          ],
-        );
+          toast.success(
+            "EAN guardado para sincronización.",
+            {
+              duration: 1100,
+              position:
+                "bottom-center",
+            },
+          );
+        };
 
-        toast.success(
-          "EAN registrado",
-          {
-            duration: 900,
-            position:
-              "bottom-center",
-          },
-        );
+      try {
+        const hasPendingRouteOperations =
+          await OfflineManager.hasPendingForRoute(
+            id,
+          );
+
+        if (
+          !navigator.onLine ||
+          hasPendingRouteOperations
+        ) {
+          await saveQueuedScan();
+          return;
+        }
+
+        try {
+          await api.post(
+            `/routes/${id}/scans`,
+            {
+              barcode:
+                cleanCode,
+            },
+          );
+
+          setScannedCodes(
+            (current) => [
+              cleanCode,
+              ...current,
+            ],
+          );
+
+          toast.success(
+            "EAN registrado",
+            {
+              duration: 900,
+              position:
+                "bottom-center",
+            },
+          );
+        } catch (error) {
+          if (
+            isNetworkError(
+              error,
+            )
+          ) {
+            await saveQueuedScan();
+            return;
+          }
+
+          throw error;
+        }
       } catch (error) {
         toast.error(
           error?.response?.data
             ?.message ??
             error?.data?.message ??
+            error?.message ??
             "No fue posible registrar el código.",
           {
             position:
@@ -1558,6 +2314,52 @@ const VisitFlow = () => {
         );
 
         return next;
+      },
+    );
+
+    setScanQueueItems(
+      (current) => {
+        const index =
+          [...current]
+            .reverse()
+            .findIndex(
+              (item) =>
+                item.code ===
+                code,
+            );
+
+        if (index < 0) {
+          return current;
+        }
+
+        const realIndex =
+          current.length -
+          1 -
+          index;
+
+        const queuedItem =
+          current[
+            realIndex
+          ];
+
+        OfflineManager.remove(
+          queuedItem.queueId,
+        ).catch(
+          (error) =>
+            console.error(
+              "Error eliminando escaneo de la cola:",
+              error,
+            ),
+        );
+
+        return current.filter(
+          (
+            _,
+            itemIndex,
+          ) =>
+            itemIndex !==
+            realIndex,
+        );
       },
     );
   };
@@ -1609,7 +2411,10 @@ const VisitFlow = () => {
     };
 
   const resetProductFlow =
-    () => {
+    ({
+      preserveQueuedOperations =
+        false,
+    } = {}) => {
       setScannedCodes([]);
       setAnswers({});
       setComment("");
@@ -1617,12 +2422,40 @@ const VisitFlow = () => {
       removePhoto(
         gondolaInicialPhoto,
         2,
+        {
+          cancelQueued:
+            !preserveQueuedOperations,
+        },
       );
 
       removePhoto(
         gondolaTerminoPhoto,
         5,
+        {
+          cancelQueued:
+            !preserveQueuedOperations,
+        },
       );
+
+      if (
+        !preserveQueuedOperations
+      ) {
+        scanQueueItems.forEach(
+          (item) => {
+            OfflineManager.remove(
+              item.queueId,
+            ).catch(
+              (error) =>
+                console.error(
+                  "Error eliminando escaneo pendiente:",
+                  error,
+                ),
+            );
+          },
+        );
+      }
+
+      setScanQueueItems([]);
 
       setProductStartTime(
         null,
@@ -1711,17 +2544,10 @@ const VisitFlow = () => {
       }
 
       if (
-        !productPhotosSynced
+        !productPhotosReady
       ) {
         toast.error(
-          "Espera o reintenta la sincronización de las fotografías.",
-        );
-        return;
-      }
-
-      if (!navigator.onLine) {
-        toast.error(
-          "Necesitas conexión para registrar la gestión.",
+          "Las fotografías deben estar sincronizadas o guardadas en el dispositivo.",
         );
         return;
       }
@@ -1730,7 +2556,9 @@ const VisitFlow = () => {
 
       const toastId =
         toast.loading(
-          "Registrando gestión...",
+          navigator.onLine
+            ? "Registrando gestión..."
+            : "Guardando gestión localmente...",
         );
 
       const taskData = {
@@ -1752,34 +2580,99 @@ const VisitFlow = () => {
           null,
       };
 
+      const completeLocalFlow =
+        (
+          pendingSync,
+        ) => {
+          resetProductFlow({
+            preserveQueuedOperations:
+              pendingSync,
+          });
+
+          if (
+            nextAction ===
+            "NUEVO"
+          ) {
+            setStep(2);
+          } else {
+            setStep(7);
+          }
+        };
+
+      const queueTask =
+        async () => {
+          await OfflineManager.save(
+            `/routes/${id}/task`,
+            "POST",
+            taskData,
+            {
+              metadata: {
+                productId:
+                  selectedProduct,
+              },
+            },
+          );
+
+          toast.success(
+            "Gestión guardada para sincronización.",
+            {
+              id: toastId,
+            },
+          );
+
+          completeLocalFlow(
+            true,
+          );
+        };
+
       try {
-        await api.post(
-          `/routes/${id}/task`,
-          taskData,
-        );
-
-        toast.success(
-          "Producto registrado",
-          {
-            id: toastId,
-          },
-        );
-
-        resetProductFlow();
+        const hasPendingRouteOperations =
+          await OfflineManager.hasPendingForRoute(
+            id,
+          );
 
         if (
-          nextAction ===
-          "NUEVO"
+          !navigator.onLine ||
+          hasPendingRouteOperations
         ) {
-          setStep(2);
-        } else {
-          setStep(7);
+          await queueTask();
+          return;
+        }
+
+        try {
+          await api.post(
+            `/routes/${id}/task`,
+            taskData,
+          );
+
+          toast.success(
+            "Producto registrado",
+            {
+              id: toastId,
+            },
+          );
+
+          completeLocalFlow(
+            false,
+          );
+        } catch (error) {
+          if (
+            isNetworkError(
+              error,
+            )
+          ) {
+            await queueTask();
+            return;
+          }
+
+          throw error;
         }
       } catch (error) {
         toast.error(
           error?.response?.data
             ?.message ??
             error?.data?.message ??
+            error?.message ??
             "No fue posible registrar la gestión.",
           {
             id: toastId,
@@ -2000,16 +2893,11 @@ const VisitFlow = () => {
         return;
       }
 
-      if (!exitPhotoSynced) {
+      if (
+        !exitPhotoReady
+      ) {
         toast.error(
-          "La fotografía de salida aún no está sincronizada.",
-        );
-        return;
-      }
-
-      if (!navigator.onLine) {
-        toast.error(
-          "Necesitas conexión para finalizar la visita.",
+          "La fotografía de salida debe estar sincronizada o guardada en el dispositivo.",
         );
         return;
       }
@@ -2018,39 +2906,105 @@ const VisitFlow = () => {
 
       const toastId =
         toast.loading(
-          "Finalizando visita...",
+          navigator.onLine
+            ? "Finalizando visita..."
+            : "Guardando cierre localmente...",
         );
+
+      const finishData = {
+        status:
+          "completed",
+        comment,
+        exit_photo:
+          photoServerUrls[7] ||
+          null,
+      };
+
+      const queueFinish =
+        async () => {
+          await OfflineManager.save(
+            `/routes/${id}/finish`,
+            "POST",
+            finishData,
+            {
+              metadata: {
+                finalStep: true,
+              },
+            },
+          );
+
+          setVisitPendingSync(
+            true,
+          );
+
+          setStep(8);
+
+          toast.success(
+            "Visita guardada. Se sincronizará al recuperar conexión.",
+            {
+              id: toastId,
+            },
+          );
+        };
 
       try {
-        await api.post(
-          `/routes/${id}/finish`,
-          {
-            status:
-              "completed",
-            comment,
-            exit_photo:
-              photoServerUrls[7] ||
-              null,
-          },
-        );
+        const hasPendingRouteOperations =
+          await OfflineManager.hasPendingForRoute(
+            id,
+          );
 
-        toast.success(
-          "Visita finalizada",
-          {
-            id: toastId,
-          },
-        );
+        if (
+          !navigator.onLine ||
+          hasPendingRouteOperations
+        ) {
+          await queueFinish();
+          return;
+        }
 
-        sessionStorage.removeItem(
-          visitSessionKey,
-        );
+        try {
+          await api.post(
+            `/routes/${id}/finish`,
+            finishData,
+          );
 
-        setStep(8);
+          toast.success(
+            "Visita finalizada",
+            {
+              id: toastId,
+            },
+          );
+
+          sessionStorage.removeItem(
+            visitSessionKey,
+          );
+
+          await removeVisitDraft(
+            id,
+          );
+
+          setVisitPendingSync(
+            false,
+          );
+
+          setStep(8);
+        } catch (error) {
+          if (
+            isNetworkError(
+              error,
+            )
+          ) {
+            await queueFinish();
+            return;
+          }
+
+          throw error;
+        }
       } catch (error) {
         toast.error(
           error?.response?.data
             ?.message ??
             error?.data?.message ??
+            error?.message ??
             "No fue posible cerrar la visita.",
           {
             id: toastId,
@@ -2106,6 +3060,20 @@ const VisitFlow = () => {
             size={10}
           />
           Sincronizada
+        </span>
+      );
+    }
+
+    if (
+      status ===
+      PHOTO_STATUS.QUEUED
+    ) {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-[7px] font-black uppercase tracking-wider text-amber-700">
+          <FiCheck
+            size={10}
+          />
+          Guardada localmente
         </span>
       );
     }
@@ -2309,6 +3277,8 @@ const VisitFlow = () => {
     ).filter(
       (status) =>
         status ===
+          PHOTO_STATUS.QUEUED ||
+        status ===
           PHOTO_STATUS.PENDING ||
         status ===
           PHOTO_STATUS.ERROR,
@@ -2369,13 +3339,17 @@ const VisitFlow = () => {
 
       return (
         <div
-          className="fixed inset-0 z-[20000] flex items-end justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:items-center sm:p-5"
+          className="fixed inset-0 z-[20000] flex items-end justify-center bg-slate-950/70 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-20 backdrop-blur-sm sm:items-center sm:p-5"
           role="dialog"
           aria-modal="true"
           aria-labelledby="offline-modal-title"
         >
-          <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-white/10 bg-white shadow-2xl">
-            <div className="relative overflow-hidden bg-slate-950 px-5 pb-5 pt-6 text-white">
+          <div className="flex max-h-[calc(100dvh-5rem)] w-full max-w-md flex-col overflow-hidden rounded-t-[2rem] border border-white/10 bg-white shadow-2xl sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem]">
+            <div className="shrink-0 bg-white pb-2 pt-3 sm:hidden">
+              <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-300" />
+            </div>
+
+            <div className="relative shrink-0 overflow-hidden bg-slate-950 px-5 pb-5 pt-5 text-white sm:pt-6">
               <div className="absolute -right-12 -top-14 h-36 w-36 rounded-full bg-amber-400/15 blur-2xl" />
 
               <button
@@ -2394,9 +3368,9 @@ const VisitFlow = () => {
               </button>
 
               <div className="relative flex items-start gap-4 pr-12">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.25rem] bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/20">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.1rem] bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/20 sm:h-14 sm:w-14">
                   <FiWifiOff
-                    size={25}
+                    size={23}
                   />
                 </div>
 
@@ -2407,24 +3381,24 @@ const VisitFlow = () => {
 
                   <h2
                     id="offline-modal-title"
-                    className="mt-1 text-xl font-black tracking-tight"
+                    className="mt-1 text-lg font-black tracking-tight sm:text-xl"
                   >
                     Estás trabajando sin conexión
                   </h2>
 
                   <p className="mt-2 text-xs leading-relaxed text-slate-300">
-                    Algunas acciones quedarán bloqueadas hasta recuperar internet.
+                    El avance se guardará en este dispositivo y se enviará cuando vuelva internet.
                   </p>
                 </div>
               </div>
 
-              <div className="relative mt-5 flex flex-wrap gap-2">
+              <div className="relative mt-4 flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-[8px] font-black uppercase tracking-wider text-white">
                   <FiClock
                     size={12}
                   />
                   {formattedOfflineTime
-                    ? `Sin conexión desde ${formattedOfflineTime}`
+                    ? `Desde ${formattedOfflineTime}`
                     : "Sin conexión"}
                 </span>
 
@@ -2434,12 +3408,7 @@ const VisitFlow = () => {
                     <FiCamera
                       size={12}
                     />
-                    {pendingPhotoCount} foto
-                    {pendingPhotoCount ===
-                    1
-                      ? ""
-                      : "s"}{" "}
-                    pendiente
+                    {pendingPhotoCount} pendiente
                     {pendingPhotoCount ===
                     1
                       ? ""
@@ -2449,7 +3418,7 @@ const VisitFlow = () => {
               </div>
             </div>
 
-            <div className="space-y-4 p-5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
               {!visitStarted ? (
                 <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
                   <div className="flex items-start gap-3">
@@ -2460,30 +3429,30 @@ const VisitFlow = () => {
 
                     <div>
                       <p className="text-[8px] font-black uppercase tracking-wider text-red-600">
-                        Inicio de visita bloqueado
+                        Inicio bloqueado
                       </p>
 
                       <p className="mt-1 text-xs leading-relaxed text-red-700">
-                        La validación GPS de 300 metros necesita conexión con el servidor. No podrás iniciar la visita hasta recuperar internet.
+                        El check-in necesita conexión para validar el GPS y la distancia máxima de 300 metros.
                       </p>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                <div className="rounded-2xl border border-[#87be00]/20 bg-[#87be00]/10 p-4">
                   <div className="flex items-start gap-3">
-                    <FiAlertCircle
-                      className="mt-0.5 shrink-0 text-amber-500"
+                    <FiCheckCircle
+                      className="mt-0.5 shrink-0 text-[#6e9e00]"
                       size={17}
                     />
 
                     <div>
-                      <p className="text-[8px] font-black uppercase tracking-wider text-amber-700">
-                        Visita en modo limitado
+                      <p className="text-[8px] font-black uppercase tracking-wider text-[#6e9e00]">
+                        Flujo offline habilitado
                       </p>
 
-                      <p className="mt-1 text-xs leading-relaxed text-amber-800">
-                        Puedes mantener abierta la visita y capturar fotografías, pero el escaneo, registro de productos, sincronización y cierre necesitan conexión.
+                      <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                        Puedes tomar fotos, escanear códigos, responder la encuesta, registrar productos y completar la visita.
                       </p>
                     </div>
                   </div>
@@ -2491,82 +3460,97 @@ const VisitFlow = () => {
               )}
 
               <div className="space-y-2">
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
-                    <FiCamera
-                      size={15}
-                    />
-                  </span>
+                {[
+                  {
+                    icon: FiCamera,
+                    title:
+                      "Fotografías",
+                    text:
+                      "Se guardan en IndexedDB hasta ser sincronizadas.",
+                  },
+                  {
+                    icon: FiPackage,
+                    title:
+                      "Escaneos y productos",
+                    text:
+                      "Quedan en cola respetando el orden del flujo.",
+                  },
+                  {
+                    icon: FiSend,
+                    title:
+                      "Cierre de visita",
+                    text:
+                      "Puede completarse localmente y quedará pendiente de envío.",
+                  },
+                ].map(
+                  ({
+                    icon: ItemIcon,
+                    title,
+                    text,
+                  }) => (
+                    <div
+                      key={title}
+                      className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
+                        <ItemIcon
+                          size={15}
+                        />
+                      </span>
 
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-black text-slate-700">
-                      Fotografías
-                    </p>
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-black text-slate-700">
+                          {title}
+                        </p>
 
-                    <p className="mt-0.5 text-[8px] leading-relaxed text-slate-500">
-                      Se mantienen en esta pantalla como pendientes mientras la visita siga abierta.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500">
-                    <FiSend
-                      size={15}
-                    />
-                  </span>
-
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-black text-slate-700">
-                      Envíos al servidor
-                    </p>
-
-                    <p className="mt-0.5 text-[8px] leading-relaxed text-slate-500">
-                      Permanecen bloqueados hasta que la conexión vuelva.
-                    </p>
-                  </div>
-                </div>
+                        <p className="mt-0.5 text-[8px] leading-relaxed text-slate-500">
+                          {text}
+                        </p>
+                      </div>
+                    </div>
+                  ),
+                )}
               </div>
 
               <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
                 <p className="text-[8px] font-black uppercase tracking-wider text-blue-600">
-                  Importante
+                  Recomendación
                 </p>
 
                 <p className="mt-1 text-xs leading-relaxed text-blue-700">
-                  No cierres ni recargues esta pantalla mientras tengas fotografías pendientes, porque actualmente se conservan solo durante esta sesión.
+                  Mantén la sesión iniciada. El avance se recuperará incluso si la pantalla se recarga.
                 </p>
               </div>
+            </div>
 
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowOfflineModal(
-                      false,
-                    )
-                  }
-                  className={secondaryButtonClass}
-                >
-                  <FiCheck
-                    size={15}
-                  />
-                  Entendido
-                </button>
+            <div className="grid shrink-0 grid-cols-1 gap-2 border-t border-slate-100 bg-white p-4 sm:grid-cols-2 sm:p-5">
+              <button
+                type="button"
+                onClick={() =>
+                  setShowOfflineModal(
+                    false,
+                  )
+                }
+                className={secondaryButtonClass}
+              >
+                <FiCheck
+                  size={15}
+                />
+                Continuar offline
+              </button>
 
-                <button
-                  type="button"
-                  onClick={
-                    handleConnectionRetry
-                  }
-                  className={primaryButtonClass}
-                >
-                  <FiRefreshCw
-                    size={15}
-                  />
-                  Verificar conexión
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={
+                  handleConnectionRetry
+                }
+                className={primaryButtonClass}
+              >
+                <FiRefreshCw
+                  size={15}
+                />
+                Verificar conexión
+              </button>
             </div>
           </div>
         </div>
@@ -3235,7 +4219,10 @@ const VisitFlow = () => {
                           2,
                         )}
 
-                        {gondolaInicialPhoto && (
+                        {gondolaInicialPhoto &&
+                          isPhotoReady(
+                            2,
+                          ) && (
                           <button
                             type="button"
                             onClick={() =>
@@ -3626,7 +4613,10 @@ const VisitFlow = () => {
                   />
                 </label>
 
-                {!gondolaTerminoPhoto && (
+                {(!gondolaTerminoPhoto ||
+                  !isPhotoReady(
+                    5,
+                  )) && (
                   <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
                     <p className="text-[8px] font-black uppercase tracking-wider text-amber-600">
                       La fotografía final es obligatoria
@@ -3640,7 +4630,10 @@ const VisitFlow = () => {
                     setStep(6)
                   }
                   disabled={
-                    !gondolaTerminoPhoto
+                    !gondolaTerminoPhoto ||
+                    !isPhotoReady(
+                      5,
+                    )
                   }
                   className={primaryButtonClass}
                 >
@@ -3692,7 +4685,7 @@ const VisitFlow = () => {
                   </div>
                 </div>
 
-                {!productPhotosSynced && (
+                {!productPhotosReady && (
                   <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
                     <p className="text-[8px] font-black uppercase tracking-wider text-amber-600">
                       Las fotografías deben estar sincronizadas antes de registrar el producto
@@ -3720,7 +4713,7 @@ const VisitFlow = () => {
                     }
                     disabled={
                       loading ||
-                      !productPhotosSynced
+                      !productPhotosReady
                     }
                     className={primaryButtonClass}
                   >
@@ -3751,7 +4744,7 @@ const VisitFlow = () => {
                     }
                     disabled={
                       loading ||
-                      !productPhotosSynced
+                      !productPhotosReady
                     }
                     className={secondaryButtonClass}
                   >
@@ -3793,7 +4786,7 @@ const VisitFlow = () => {
                 </label>
 
                 {exitPhoto &&
-                  !exitPhotoSynced && (
+                  !exitPhotoReady && (
                     <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
                       <p className="text-[8px] font-black uppercase tracking-wider text-amber-600">
                         Sincroniza la fotografía antes de finalizar
@@ -3808,7 +4801,7 @@ const VisitFlow = () => {
                   }
                   disabled={
                     loading ||
-                    !exitPhotoSynced
+                    !exitPhotoReady
                   }
                   className={primaryButtonClass}
                 >
@@ -3842,12 +4835,28 @@ const VisitFlow = () => {
                 </div>
 
                 <h2 className="mt-6 text-2xl font-black tracking-tight text-slate-900">
-                  ¡Visita completada!
+                  {visitPendingSync
+                    ? "Visita guardada"
+                    : "¡Visita completada!"}
                 </h2>
 
                 <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-slate-500">
-                  La información de la visita fue registrada correctamente.
+                  {visitPendingSync
+                    ? "La visita quedó guardada en el dispositivo y se sincronizará automáticamente cuando vuelva la conexión."
+                    : "La información de la visita fue registrada correctamente."}
                 </p>
+
+                {visitPendingSync && (
+                  <div className="mx-auto mt-5 max-w-sm rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                    <p className="text-[8px] font-black uppercase tracking-wider text-amber-700">
+                      Pendiente de sincronización
+                    </p>
+
+                    <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                      Puedes volver al inicio. No cierres tu sesión hasta que la aplicación confirme el envío.
+                    </p>
+                  </div>
+                )}
 
                 <button
                   type="button"
