@@ -5,9 +5,11 @@ import {
   useState,
 } from "react";
 import {
+  FiAlertTriangle,
   FiBriefcase,
   FiEdit3,
   FiPlus,
+  FiPower,
   FiRefreshCw,
   FiSearch,
   FiTrash2,
@@ -59,6 +61,14 @@ const Companies = () => {
   ] = useState(null);
   const [deleting, setDeleting] =
     useState(false);
+  const [
+    companyToDisable,
+    setCompanyToDisable,
+  ] = useState(null);
+  const [
+    changingCompanyId,
+    setChangingCompanyId,
+  ] = useState(null);
 
   const [searchTerm, setSearchTerm] =
     useState("");
@@ -201,6 +211,128 @@ const Companies = () => {
     setEditingCompany(null);
     setOpenModal(false);
   };
+
+  const changeCompanyStatus = async (
+    company,
+  ) => {
+    if (
+      !company ||
+      !hasFullAccess ||
+      changingCompanyId
+    ) {
+      return;
+    }
+
+    const companyName =
+      company.name ||
+      company.nombre ||
+      "La empresa";
+
+    const nextIsActive =
+      !Boolean(company.is_active);
+
+    const toastId = toast.loading(
+      nextIsActive
+        ? "Habilitando empresa..."
+        : "Deshabilitando empresa...",
+    );
+
+    try {
+      setChangingCompanyId(company.id);
+
+      const response = await api.patch(
+        `/companies/${company.id}/toggle`,
+      );
+
+      const responseData =
+        getResponseData(response, null);
+
+      const resolvedIsActive =
+        typeof responseData?.is_active ===
+        "boolean"
+          ? responseData.is_active
+          : nextIsActive;
+
+      setCompanies((current) =>
+        current.map((item) =>
+          item.id === company.id
+            ? {
+                ...item,
+                ...(
+                  responseData &&
+                  typeof responseData ===
+                    "object"
+                    ? responseData
+                    : {}
+                ),
+                is_active:
+                  resolvedIsActive,
+              }
+            : item,
+        ),
+      );
+
+      toast.success(
+        resolvedIsActive
+          ? `${companyName} fue habilitada correctamente`
+          : `${companyName} fue deshabilitada correctamente`,
+        { id: toastId },
+      );
+
+      setCompanyToDisable(null);
+    } catch (requestError) {
+      console.error(
+        "Error cambiando estado de empresa:",
+        requestError,
+      );
+
+      toast.error(
+        requestError?.response?.data
+          ?.message ||
+          requestError?.message ||
+          "No se pudo cambiar el estado de la empresa",
+        { id: toastId },
+      );
+    } finally {
+      setChangingCompanyId(null);
+    }
+  };
+
+  const requestCompanyStatusChange = (
+    company,
+  ) => {
+    if (
+      !company ||
+      !hasFullAccess ||
+      changingCompanyId
+    ) {
+      return;
+    }
+
+    /*
+     * Deshabilitar requiere confirmación porque bloquea
+     * el acceso de toda la empresa.
+     *
+     * Volver a habilitar se realiza directamente.
+     */
+    if (company.is_active) {
+      setCompanyToDisable(company);
+      return;
+    }
+
+    changeCompanyStatus(company);
+  };
+
+  const confirmDisableCompany =
+    async () => {
+      if (!companyToDisable) {
+        return;
+      }
+
+      await changeCompanyStatus(
+        companyToDisable,
+      );
+    };
 
   const confirmDelete = async () => {
     if (!companyToDelete || !isRoot) {
@@ -497,11 +629,39 @@ const Companies = () => {
                             "Empresa sin nombre"}
                         </p>
 
-                        <CompanyStatus
-                          isActive={
-                            company.is_active
-                          }
-                        />
+                        <div className="mt-2 flex flex-wrap items-center gap-3">
+                          <CompanyStatus
+                            isActive={
+                              company.is_active
+                            }
+                          />
+
+                          {hasFullAccess && (
+                            <CompanyStatusSwitch
+                              isActive={
+                                company.is_active
+                              }
+                              disabled={
+                                changingCompanyId ===
+                                company.id
+                              }
+                              onChange={() =>
+                                requestCompanyStatusChange(
+                                  company,
+                                )
+                              }
+                              label={`${
+                                company.is_active
+                                  ? "Deshabilitar"
+                                  : "Habilitar"
+                              } ${
+                                company.name ||
+                                company.nombre ||
+                                "empresa"
+                              }`}
+                            />
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -633,11 +793,39 @@ const Companies = () => {
                         </td>
 
                         <td className="p-6">
-                          <CompanyStatus
-                            isActive={
-                              company.is_active
-                            }
-                          />
+                          <div className="flex items-center gap-3">
+                            <CompanyStatus
+                              isActive={
+                                company.is_active
+                              }
+                            />
+
+                            {hasFullAccess && (
+                              <CompanyStatusSwitch
+                                isActive={
+                                  company.is_active
+                                }
+                                disabled={
+                                  changingCompanyId ===
+                                  company.id
+                                }
+                                onChange={() =>
+                                  requestCompanyStatusChange(
+                                    company,
+                                  )
+                                }
+                                label={`${
+                                  company.is_active
+                                    ? "Deshabilitar"
+                                    : "Habilitar"
+                                } ${
+                                  company.name ||
+                                  company.nombre ||
+                                  "empresa"
+                                }`}
+                              />
+                            )}
+                          </div>
                         </td>
 
                         <td className="p-6">
@@ -717,6 +905,22 @@ const Companies = () => {
         editingCompany={editingCompany}
       />
 
+      {companyToDisable && (
+        <DisableCompanyModal
+          company={companyToDisable}
+          changing={
+            changingCompanyId ===
+            companyToDisable.id
+          }
+          onClose={() =>
+            setCompanyToDisable(null)
+          }
+          onConfirm={
+            confirmDisableCompany
+          }
+        />
+      )}
+
       {companyToDelete && (
         <DeleteCompanyModal
           company={companyToDelete}
@@ -730,6 +934,132 @@ const Companies = () => {
     </div>
   );
 };
+
+const CompanyStatusSwitch = ({
+  isActive,
+  disabled = false,
+  onChange,
+  label,
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={Boolean(isActive)}
+    aria-label={label}
+    title={label}
+    disabled={disabled}
+    onClick={(event) => {
+      event.stopPropagation();
+      onChange?.();
+    }}
+    className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-[#87be00]/15 disabled:cursor-not-allowed disabled:opacity-50 ${
+      isActive
+        ? "bg-[#87be00]"
+        : "bg-gray-200"
+    }`}
+  >
+    <span
+      className={`h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+        isActive
+          ? "translate-x-6"
+          : "translate-x-0"
+      }`}
+    />
+  </button>
+);
+
+const DisableCompanyModal = ({
+  company,
+  changing,
+  onClose,
+  onConfirm,
+}) => (
+  <div
+    className="fixed inset-0 z-[9999] bg-black/65 backdrop-blur-sm p-4 flex items-center justify-center"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="disable-company-title"
+  >
+    <div className="relative w-full max-w-md bg-white rounded-3xl border border-gray-100 shadow-2xl p-6 sm:p-7">
+      <IconButton
+        label="Cerrar advertencia"
+        size="sm"
+        onClick={onClose}
+        disabled={changing}
+        className="absolute top-4 right-4"
+      >
+        <FiX size={16} />
+      </IconButton>
+
+      <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center">
+        <FiAlertTriangle size={22} />
+      </div>
+
+      <h2
+        id="disable-company-title"
+        className="mt-4 text-xl font-black text-gray-900"
+      >
+        ¿Deshabilitar empresa?
+      </h2>
+
+      <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+        Estás a punto de deshabilitar{" "}
+        <strong className="text-gray-800">
+          {company.name ||
+            company.nombre ||
+            "esta empresa"}
+        </strong>
+        .
+      </p>
+
+      <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700">
+          Consecuencias de esta acción
+        </p>
+
+        <div className="mt-3 space-y-2 text-xs font-medium leading-relaxed text-amber-800">
+          <p>
+            • La empresa quedará marcada como inactiva.
+          </p>
+          <p>
+            • Sus usuarios perderán el acceso mientras permanezca deshabilitada.
+          </p>
+          <p>
+            • Sus usuarios, locales, planificaciones y reportes no serán eliminados.
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-4 text-xs text-gray-400 leading-relaxed">
+        Podrás volver a habilitarla desde este mismo interruptor.
+      </p>
+
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Button
+          type="button"
+          variant="secondary"
+          fullWidth
+          disabled={changing}
+          onClick={onClose}
+        >
+          Cancelar
+        </Button>
+
+        <Button
+          type="button"
+          variant="danger"
+          fullWidth
+          loading={changing}
+          loadingText="Deshabilitando..."
+          leftIcon={<FiPower size={14} />}
+          onClick={onConfirm}
+        >
+          Deshabilitar
+        </Button>
+      </div>
+    </div>
+  </div>
+);
 
 const SummaryPill = ({
   label,
