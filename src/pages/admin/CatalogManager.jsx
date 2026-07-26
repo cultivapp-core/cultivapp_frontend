@@ -329,9 +329,9 @@ const CatalogManager = () => {
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 font-[Outfit]">
-        <div className="w-10 h-10 border-2 border-[#87be00] border-t-transparent rounded-full animate-spin" />
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 px-4 text-center font-[Outfit]">
+        <div className="h-11 w-11 animate-spin rounded-full border-[3px] border-[#87be00]/20 border-t-[#87be00]" />
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">
           Sincronizando catálogo...
         </p>
       </div>
@@ -339,23 +339,23 @@ const CatalogManager = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 pb-16 pt-20 md:pt-6 font-[Outfit]">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 space-y-6">
-        <header className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 md:p-8">
-          <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
+    <div className="min-h-screen bg-gray-50/60 pb-20 pt-20 font-[Outfit] md:pt-6">
+      <div className="mx-auto max-w-7xl space-y-5 px-3 sm:px-5 md:px-8">
+        <header className="relative overflow-hidden rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm sm:p-7 md:p-8">
+          <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-center">
             <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#87be00] mb-2">
+              <p className="mb-2 text-[9px] font-black uppercase tracking-[0.28em] text-[#87be00]">
                 Cultivapp · Catálogo maestro
               </p>
-              <h1 className="text-3xl md:text-5xl font-black text-slate-900 uppercase italic tracking-tight leading-none">
+              <h1 className="text-3xl font-black leading-none tracking-tight text-gray-900 md:text-5xl">
                 Productos SKU
               </h1>
-              <p className="text-xs text-slate-500 mt-3">
+              <p className="mt-3 text-xs font-medium leading-relaxed text-gray-500">
                 Administra productos, marcas y categorías desde un solo módulo.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 md:flex gap-2 w-full xl:w-auto">
+            <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 xl:flex xl:w-auto">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -377,7 +377,7 @@ const CatalogManager = () => {
               <button
                 type="button"
                 onClick={openNewProduct}
-                className="flex items-center justify-center gap-2 bg-slate-900 text-[#87be00] px-5 py-3.5 rounded-xl font-black uppercase text-[9px] tracking-wider hover:bg-[#87be00] hover:text-white transition-all shadow-lg"
+                className="flex items-center justify-center gap-2 rounded-2xl bg-gray-900 px-5 py-3.5 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-lg shadow-gray-200 transition-all hover:bg-[#87be00]"
               >
                 <FiPlus size={15} />
                 Nuevo producto
@@ -386,32 +386,32 @@ const CatalogManager = () => {
           </div>
         </header>
 
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <StatCard label="Productos" value={products.length} icon={<FiPackage />} />
           <StatCard label="Marcas" value={brands.length} icon={<FiAward />} />
           <StatCard label="Categorías" value={categories.length} icon={<FiTag />} />
         </section>
 
-        <section className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-4 md:p-5 border-b border-slate-100 bg-slate-50/50">
-            <div className="flex flex-col lg:flex-row gap-4 justify-between">
-              <div className="flex gap-2 overflow-x-auto">
+        <section className="overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm">
+          <div className="border-b border-gray-100 bg-gray-50/60 p-4 md:p-5">
+            <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
+              <div className="custom-scrollbar flex gap-2 overflow-x-auto pb-1">
                 <TabButton active={activeTab === "products"} onClick={() => setActiveTab("products")} icon={<FiPackage />} label="Productos" count={products.length} />
                 <TabButton active={activeTab === "brands"} onClick={() => setActiveTab("brands")} icon={<FiAward />} label="Marcas" count={brands.length} />
                 <TabButton active={activeTab === "categories"} onClick={() => setActiveTab("categories")} icon={<FiTag />} label="Categorías" count={categories.length} />
               </div>
 
-              <div className="flex flex-col md:flex-row gap-3">
-                <div className="relative min-w-[250px]">
-                  <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <div className="flex flex-col gap-3 lg:flex-row">
+                <div className="relative min-w-0 flex-1 lg:min-w-[260px]">
+                  <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
                     placeholder="Buscar..."
-                    className="w-full bg-white border border-slate-200 pl-11 pr-10 py-3 rounded-xl text-xs outline-none focus:border-[#87be00]"
+                    className="h-12 w-full rounded-2xl border border-gray-100 bg-white pl-11 pr-10 text-xs font-bold text-gray-700 outline-none shadow-inner transition-all placeholder:text-gray-300 focus:border-[#87be00]/50 focus:ring-4 focus:ring-[#87be00]/10"
                   />
                   {searchTerm && (
-                    <button type="button" onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <button type="button" onClick={() => setSearchTerm("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-red-500">
                       <FiX />
                     </button>
                   )}
@@ -434,7 +434,7 @@ const CatalogManager = () => {
             </div>
           </div>
 
-          <div className="p-4 md:p-6">
+          <div className="p-4 sm:p-5 md:p-6">
             {activeTab === "products" && (
               <GridList
                 items={filteredProducts}
@@ -546,65 +546,81 @@ const CatalogManager = () => {
 
       <style>{`
         .catalog-input {
-          border: 1px solid rgb(226 232 240);
-          background: white;
-          border-radius: 0.75rem;
+          min-height: 3rem;
+          border: 1px solid rgb(243 244 246);
+          background: rgb(249 250 251);
+          border-radius: 1rem;
           padding: 0.75rem 1rem;
           font-size: 0.75rem;
           font-weight: 700;
-          color: rgb(71 85 105);
+          color: rgb(55 65 81);
           outline: none;
+          box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.03);
+          transition:
+            border-color 160ms ease,
+            background-color 160ms ease,
+            box-shadow 160ms ease;
         }
-        .catalog-input:focus { border-color: #87be00; }
+
+        .catalog-input:focus {
+          border-color: rgb(135 190 0 / 0.5);
+          background: white;
+          box-shadow: 0 0 0 4px rgb(135 190 0 / 0.1);
+        }
+
+        .catalog-input:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
       `}</style>
     </div>
   );
 };
 
 const ActionButton = ({ icon, label, onClick, disabled }) => (
-  <button type="button" onClick={onClick} disabled={disabled} className="flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-3.5 rounded-xl font-black uppercase text-[9px] tracking-wider hover:border-[#87be00] hover:text-[#87be00] transition-all disabled:opacity-50">
+  <button type="button" onClick={onClick} disabled={disabled} className="flex items-center justify-center gap-2 rounded-2xl border border-gray-100 bg-white px-4 py-3.5 text-[9px] font-black uppercase tracking-[0.12em] text-gray-600 shadow-sm transition-all hover:border-[#87be00]/40 hover:bg-[#87be00]/5 hover:text-[#679300] disabled:cursor-not-allowed disabled:opacity-50">
     {icon}{label}
   </button>
 );
 
 const StatCard = ({ label, value, icon }) => (
-  <div className="bg-white border border-slate-100 shadow-sm rounded-2xl p-5 flex items-center justify-between">
+  <div className="flex items-center justify-between rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
     <div>
-      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</p>
-      <p className="text-3xl font-black text-slate-900 mt-2">{value}</p>
+      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">{label}</p>
+      <p className="mt-2 text-3xl font-black leading-none text-gray-900">{value}</p>
     </div>
-    <div className="w-11 h-11 rounded-xl bg-[#87be00]/10 text-[#87be00] flex items-center justify-center">{icon}</div>
+    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">{icon}</div>
   </div>
 );
 
 const TabButton = ({ active, onClick, icon, label, count }) => (
-  <button type="button" onClick={onClick} className={`flex items-center gap-2 px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap ${active ? "bg-[#87be00] text-white shadow-md" : "bg-white text-slate-500 border border-slate-200"}`}>
-    {icon}{label}<span className="px-2 py-0.5 rounded-full bg-black/10">{count}</span>
+  <button type="button" onClick={onClick} className={`flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-3 text-[9px] font-black uppercase tracking-[0.12em] transition-all ${active ? "bg-[#87be00] text-white shadow-md shadow-[#87be00]/20" : "border border-gray-100 bg-white text-gray-500 hover:border-[#87be00]/30 hover:text-[#679300]"}`}>
+    {icon}{label}<span className={`rounded-full px-2 py-0.5 ${active ? "bg-white/20" : "bg-gray-100 text-gray-400"}`}>{count}</span>
   </button>
 );
 
 const GridList = ({ items, empty, renderItem }) =>
   items.length ? (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{items.map(renderItem)}</div>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map(renderItem)}</div>
   ) : (
-    <div className="py-16 text-center text-sm font-bold text-slate-400">{empty}</div>
+    <div className="rounded-[1.5rem] border border-dashed border-gray-200 bg-gray-50/70 py-16 text-center text-sm font-bold text-gray-400">{empty}</div>
   );
 
 const CatalogCard = ({ icon, title, subtitle, badges = [], onEdit, onDelete }) => (
-  <article className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-[#87be00] hover:shadow-lg transition-all">
+  <article className="rounded-[1.5rem] border border-gray-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#87be00]/35 hover:shadow-lg">
     <div className="flex items-start justify-between gap-3">
-      <div className="w-11 h-11 rounded-xl bg-[#87be00]/10 text-[#87be00] flex items-center justify-center">{icon}</div>
-      <div className="flex gap-1.5">
-        <button type="button" onClick={onEdit} className="p-2.5 rounded-lg bg-slate-50 text-slate-500 hover:bg-[#87be00] hover:text-white"><FiEdit2 size={13} /></button>
-        <button type="button" onClick={onDelete} className="p-2.5 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-600 hover:text-white"><FiTrash2 size={13} /></button>
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">{icon}</div>
+      <div className="flex gap-2">
+        <button type="button" onClick={onEdit} className="rounded-xl border border-gray-100 bg-gray-50 p-2.5 text-gray-500 transition-all hover:border-[#87be00]/20 hover:bg-[#87be00] hover:text-white"><FiEdit2 size={13} /></button>
+        <button type="button" onClick={onDelete} className="rounded-xl border border-red-100 bg-red-50 p-2.5 text-red-500 transition-all hover:bg-red-600 hover:text-white"><FiTrash2 size={13} /></button>
       </div>
     </div>
-    <h3 className="text-sm font-black uppercase text-slate-900 mt-4 truncate">{title}</h3>
-    <p className="text-[10px] text-slate-400 mt-1">{subtitle}</p>
+    <h3 className="mt-4 truncate text-sm font-black uppercase tracking-tight text-gray-900">{title}</h3>
+    <p className="mt-1 text-[10px] font-medium text-gray-400">{subtitle}</p>
     {badges.length > 0 && (
-      <div className="flex flex-wrap gap-2 mt-4">
+      <div className="mt-4 flex flex-wrap gap-2">
         {badges.map((badge, index) => (
-          <span key={`${badge}-${index}`} className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[8px] font-black uppercase text-slate-500">{badge}</span>
+          <span key={`${badge}-${index}`} className="rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-wide text-gray-500">{badge}</span>
         ))}
       </div>
     )}
@@ -612,28 +628,28 @@ const CatalogCard = ({ icon, title, subtitle, badges = [], onEdit, onDelete }) =
 );
 
 const Modal = ({ title, onClose, children }) => (
-  <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-    <div className="bg-white w-full max-w-xl rounded-[2rem] shadow-2xl overflow-hidden">
-      <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-        <h2 className="text-lg font-black uppercase italic text-slate-900">{title}</h2>
-        <button type="button" onClick={onClose} className="p-2 rounded-lg bg-slate-50 text-slate-400"><FiX /></button>
+  <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#111111]/70 p-4 backdrop-blur-sm">
+    <div className="max-h-[92vh] w-full max-w-xl overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl">
+      <div className="relative flex items-center justify-between border-b border-gray-100 bg-white p-5 sm:p-6">
+        <h2 className="text-lg font-black tracking-tight text-gray-900">{title}</h2>
+        <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500"><FiX /></button>
       </div>
-      <div className="p-6">{children}</div>
+      <div className="custom-scrollbar max-h-[calc(92vh-78px)] overflow-y-auto p-5 sm:p-6">{children}</div>
     </div>
   </div>
 );
 
 const InputField = ({ label, value, onChange }) => (
   <label className="block">
-    <span className="block text-[9px] font-black uppercase tracking-wider text-slate-500 mb-2">{label}</span>
-    <input value={value} onChange={(event) => onChange(event.target.value)} className="w-full catalog-input bg-slate-50" />
+    <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.14em] text-gray-500">{label}</span>
+    <input value={value} onChange={(event) => onChange(event.target.value)} className="catalog-input w-full" />
   </label>
 );
 
 const SelectField = ({ label, value, onChange, options }) => (
   <label className="block">
-    <span className="block text-[9px] font-black uppercase tracking-wider text-slate-500 mb-2">{label}</span>
-    <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full catalog-input bg-slate-50">
+    <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.14em] text-gray-500">{label}</span>
+    <select value={value} onChange={(event) => onChange(event.target.value)} className="catalog-input w-full">
       <option value="">Seleccionar</option>
       {options.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
     </select>
@@ -641,23 +657,23 @@ const SelectField = ({ label, value, onChange, options }) => (
 );
 
 const ModalActions = ({ loading, onCancel }) => (
-  <div className="grid grid-cols-2 gap-3 pt-3">
-    <button type="button" onClick={onCancel} disabled={loading} className="py-3.5 rounded-xl bg-slate-100 text-slate-500 font-black uppercase text-[9px]">Cancelar</button>
-    <button type="submit" disabled={loading} className="py-3.5 rounded-xl bg-slate-900 text-[#87be00] font-black uppercase text-[9px] flex items-center justify-center gap-2">
+  <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2">
+    <button type="button" onClick={onCancel} disabled={loading} className="rounded-2xl border border-gray-100 bg-gray-50 py-3.5 text-[9px] font-black uppercase tracking-[0.12em] text-gray-500 transition-all hover:bg-gray-100 disabled:opacity-50">Cancelar</button>
+    <button type="submit" disabled={loading} className="flex items-center justify-center gap-2 rounded-2xl bg-gray-900 py-3.5 text-[9px] font-black uppercase tracking-[0.12em] text-white shadow-lg shadow-gray-200 transition-all hover:bg-[#87be00] disabled:opacity-50">
       {loading && <FiRotateCw className="animate-spin" />} {loading ? "Guardando..." : "Guardar"}
     </button>
   </div>
 );
 
 const ConfirmDelete = ({ item, onClose, onConfirm }) => (
-  <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-    <div className="bg-white w-full max-w-md rounded-[2rem] p-7 text-center">
-      <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center"><FiTrash2 size={22} /></div>
-      <h2 className="text-lg font-black uppercase italic text-slate-900 mt-5">Confirmar eliminación</h2>
-      <p className="text-xs text-slate-500 mt-3">¿Eliminar “{item.name}”? Esta acción no se puede revertir.</p>
-      <div className="grid grid-cols-2 gap-3 mt-6">
-        <button type="button" onClick={onClose} className="py-3 rounded-xl bg-slate-100 text-slate-500 font-black uppercase text-[9px]">Cancelar</button>
-        <button type="button" onClick={onConfirm} className="py-3 rounded-xl bg-rose-600 text-white font-black uppercase text-[9px]">Eliminar</button>
+  <div className="fixed inset-0 z-[220] flex items-center justify-center bg-[#111111]/70 p-4 backdrop-blur-sm">
+    <div className="w-full max-w-md rounded-[2rem] border border-white/60 bg-white p-6 text-center shadow-2xl sm:p-7">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600"><FiTrash2 size={22} /></div>
+      <h2 className="mt-5 text-lg font-black tracking-tight text-gray-900">Confirmar eliminación</h2>
+      <p className="mt-3 text-xs font-medium leading-relaxed text-gray-500">¿Eliminar “{item.name}”? Esta acción no se puede revertir.</p>
+      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button type="button" onClick={onClose} className="rounded-2xl border border-gray-100 bg-gray-50 py-3 text-[9px] font-black uppercase tracking-[0.12em] text-gray-500 transition-all hover:bg-gray-100">Cancelar</button>
+        <button type="button" onClick={onConfirm} className="rounded-2xl bg-red-600 py-3 text-[9px] font-black uppercase tracking-[0.12em] text-white transition-all hover:bg-red-700">Eliminar</button>
       </div>
     </div>
   </div>
