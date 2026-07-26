@@ -1,5 +1,17 @@
 import { useState, useEffect } from "react";
-import { FiX, FiMapPin, FiHash, FiCheckCircle, FiLoader } from "react-icons/fi";
+import {
+  FiX,
+  FiMapPin,
+  FiHash,
+  FiLoader,
+  FiBriefcase,
+  FiMap,
+  FiNavigation,
+  FiUser,
+  FiPhone,
+  FiAlertCircle,
+  FiCheckCircle
+} from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 
@@ -20,7 +32,7 @@ const CreateLocalModal = ({
 
   const [form, setForm] = useState({
     company_id: autoCompany || "",
-    codigo_local: "", // 🚩 Nuevo campo
+    codigo_local: "",
     cadena: "",
     region_id: "",
     comuna_id: "",
@@ -70,9 +82,12 @@ const CreateLocalModal = ({
       setComunas([]);
       return;
     }
+
     const loadComunas = async () => {
       try {
-        const data = await api.get(`/comunas?region_id=${form.region_id}`);
+        const data = await api.get(
+          `/comunas?region_id=${form.region_id}`
+        );
         setComunas(data);
       } catch (err) {
         console.error("Error cargando comunas");
@@ -93,29 +108,50 @@ const CreateLocalModal = ({
   ========================= */
   const geocodeAddress = async () => {
     if (!form.direccion || !form.comuna_id || !form.region_id) {
-      setError("Completa dirección, región y comuna para ubicar en el mapa");
+      setError(
+        "Completa dirección, región y comuna para ubicar en el mapa"
+      );
       return;
     }
 
     try {
       setGeoLoading(true);
       setError("");
-      const comuna = comunas.find(c => c.id === form.comuna_id)?.name;
-      const region = regions.find(r => r.id === form.region_id)?.name;
-      const address = `${form.direccion}, ${comuna}, ${region}, Chile`;
 
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_TOKEN}&limit=1&country=CL`;
+      const comuna = comunas.find(
+        c => c.id === form.comuna_id
+      )?.name;
+
+      const region = regions.find(
+        r => r.id === form.region_id
+      )?.name;
+
+      const address =
+        `${form.direccion}, ${comuna}, ${region}, Chile`;
+
+      const url =
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
+          address
+        )}.json?access_token=${MAPBOX_TOKEN}&limit=1&country=CL`;
 
       const res = await fetch(url);
       const data = await res.json();
 
       if (!data.features || data.features.length === 0) {
-        setError("No encontramos esa dirección exacta. Verifica o ingresa coordenadas manuales.");
+        setError(
+          "No encontramos esa dirección exacta. Verifica o ingresa coordenadas manuales."
+        );
         return;
       }
 
       const [lng, lat] = data.features[0].center;
-      setForm(prev => ({ ...prev, lat, lng }));
+
+      setForm(prev => ({
+        ...prev,
+        lat,
+        lng
+      }));
+
       toast.success("Ubicación encontrada");
     } catch (err) {
       setError("Error en el servicio de mapas");
@@ -144,171 +180,451 @@ const CreateLocalModal = ({
       onCreated();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.message || err.message);
+      setError(
+        err.response?.data?.message ||
+        err.message
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const inputClassName = `
+    w-full rounded-2xl border border-gray-100 bg-gray-50
+    px-4 py-3.5 text-[12px] font-bold text-gray-800
+    outline-none shadow-inner transition-all
+    placeholder:text-gray-300
+    focus:border-[#87be00]/40 focus:bg-white
+    focus:ring-4 focus:ring-[#87be00]/10
+    disabled:cursor-not-allowed disabled:opacity-50
+  `;
+
+  const labelClassName = `
+    ml-1 flex items-center gap-1.5
+    text-[9px] font-black uppercase tracking-[0.18em]
+    text-gray-400
+  `;
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-[Outfit]">
-      <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6 animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto scrollbar-hide">
-        
-        <div className="flex justify-between items-center border-b pb-4">
-          <div>
-            <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight">Crear Nuevo Local</h3>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Registro de punto de venta</p>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <FiX size={20} />
-          </button>
-        </div>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#111111]/70 p-3 font-[Outfit] backdrop-blur-sm sm:p-5">
+      <div className="relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-50 text-red-500 text-[10px] font-black uppercase p-3 rounded-xl border border-red-100">
-              {error}
+        {/* ENCABEZADO */}
+        <div className="relative border-b border-gray-100 bg-white px-5 py-5 sm:px-7 sm:py-6">
+          <div className="absolute inset-x-0 top-0 h-1 bg-[#87be00]" />
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+                <FiMapPin size={20} />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#87be00]">
+                  Gestión de locales
+                </p>
+
+                <h3 className="mt-1 text-xl font-black leading-none tracking-tight text-gray-900 sm:text-2xl">
+                  Crear nuevo local
+                </h3>
+
+                <p className="mt-2 text-[11px] font-medium text-gray-400">
+                  Registra un nuevo punto de venta y su ubicación.
+                </p>
+              </div>
             </div>
-          )}
 
-          {/* CÓDIGO DEL LOCAL */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-gray-400 ml-2 flex items-center gap-1">
-              <FiHash size={10}/> Código Interno
-            </label>
-            <input
-              type="text"
-              name="codigo_local"
-              placeholder="Ej: SUC-102"
-              value={form.codigo_local}
-              onChange={handleChange}
-              required
-              className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all font-bold"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-             <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Cadena</label>
-                <input
-                  type="text"
-                  name="cadena"
-                  placeholder="Ej: ALVI"
-                  value={form.cadena}
-                  onChange={handleChange}
-                  required
-                  className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#87be00]"
-                />
-             </div>
-
-             <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Empresa</label>
-                <select
-                  name="company_id"
-                  value={form.company_id}
-                  onChange={handleChange}
-                  disabled={!!autoCompany}
-                  required
-                  className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#87be00] disabled:opacity-50"
-                >
-                  <option value="">Seleccionar</option>
-                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <select
-              name="region_id"
-              value={form.region_id}
-              onChange={handleChange}
-              required
-              className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#87be00] outline-none"
-            >
-              <option value="">Región</option>
-              {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-
-            <select
-              name="comuna_id"
-              value={form.comuna_id}
-              onChange={handleChange}
-              required
-              className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#87be00] outline-none"
-            >
-              <option value="">Comuna</option>
-              {comunas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-
-          <div className="relative">
-            <input
-              type="text"
-              name="direccion"
-              placeholder="Dirección exacta"
-              value={form.direccion}
-              onChange={handleChange}
-              required
-              className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#87be00]"
-            />
             <button
               type="button"
-              onClick={geocodeAddress}
-              disabled={geoLoading}
-              className="mt-2 w-full flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest bg-gray-100 py-3 rounded-xl hover:bg-gray-200 transition-colors text-gray-600"
+              onClick={onClose}
+              aria-label="Cerrar formulario"
+              disabled={loading}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {geoLoading ? <FiLoader className="animate-spin" size={14}/> : <FiMapPin size={14}/>}
-              {geoLoading ? "Geocodificando..." : "Sugerir coordenadas por GPS"}
+              <FiX size={18} />
             </button>
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="number"
-              step="any"
-              name="lat"
-              placeholder="Latitud"
-              value={form.lat}
-              onChange={handleChange}
-              className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#87be00]"
-            />
-            <input
-              type="number"
-              step="any"
-              name="lng"
-              placeholder="Longitud"
-              value={form.lng}
-              onChange={handleChange}
-              className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#87be00]"
-            />
+        {/* CONTENIDO */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto bg-gray-50/40 px-5 py-5 sm:px-7 sm:py-6">
+
+            {error && (
+              <div className="flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 text-red-600">
+                <div className="mt-0.5 shrink-0">
+                  <FiAlertCircle size={16} />
+                </div>
+
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em]">
+                    No fue posible continuar
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold leading-relaxed">
+                    {error}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* IDENTIFICACIÓN */}
+            <section className="rounded-[1.6rem] border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
+                  <FiBriefcase size={16} />
+                </div>
+
+                <div>
+                  <h4 className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-800">
+                    Identificación
+                  </h4>
+                  <p className="mt-0.5 text-[10px] font-medium text-gray-400">
+                    Información principal del punto de venta.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    <FiHash size={11} />
+                    Código interno
+                  </label>
+
+                  <input
+                    type="text"
+                    name="codigo_local"
+                    placeholder="Ej: SUC-102"
+                    value={form.codigo_local}
+                    onChange={handleChange}
+                    required
+                    className={inputClassName}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    <FiBriefcase size={11} />
+                    Cadena
+                  </label>
+
+                  <input
+                    type="text"
+                    name="cadena"
+                    placeholder="Ej: ALVI"
+                    value={form.cadena}
+                    onChange={handleChange}
+                    required
+                    className={inputClassName}
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className={labelClassName}>
+                    <FiBriefcase size={11} />
+                    Empresa
+                  </label>
+
+                  <div className="relative">
+                    <select
+                      name="company_id"
+                      value={form.company_id}
+                      onChange={handleChange}
+                      disabled={!!autoCompany}
+                      required
+                      className={`${inputClassName} appearance-none pr-11`}
+                    >
+                      <option value="">Seleccionar empresa</option>
+                      {companies.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="3"
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* UBICACIÓN */}
+            <section className="rounded-[1.6rem] border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
+                  <FiMap size={16} />
+                </div>
+
+                <div>
+                  <h4 className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-800">
+                    Ubicación
+                  </h4>
+                  <p className="mt-0.5 text-[10px] font-medium text-gray-400">
+                    Dirección y coordenadas geográficas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    Región
+                  </label>
+
+                  <div className="relative">
+                    <select
+                      name="region_id"
+                      value={form.region_id}
+                      onChange={handleChange}
+                      required
+                      className={`${inputClassName} appearance-none pr-11`}
+                    >
+                      <option value="">Seleccionar región</option>
+                      {regions.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="3"
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    Comuna
+                  </label>
+
+                  <div className="relative">
+                    <select
+                      name="comuna_id"
+                      value={form.comuna_id}
+                      onChange={handleChange}
+                      required
+                      disabled={!form.region_id}
+                      className={`${inputClassName} appearance-none pr-11`}
+                    >
+                      <option value="">Seleccionar comuna</option>
+                      {comunas.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="3"
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className={labelClassName}>
+                    <FiMapPin size={11} />
+                    Dirección exacta
+                  </label>
+
+                  <input
+                    type="text"
+                    name="direccion"
+                    placeholder="Ej: Avenida Principal 1234"
+                    value={form.direccion}
+                    onChange={handleChange}
+                    required
+                    className={inputClassName}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <button
+                    type="button"
+                    onClick={geocodeAddress}
+                    disabled={geoLoading}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#87be00]/20 bg-[#87be00]/10 px-4 py-3.5 text-[9px] font-black uppercase tracking-[0.16em] text-[#679300] transition-all hover:border-[#87be00]/30 hover:bg-[#87be00]/15 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {geoLoading ? (
+                      <FiLoader className="animate-spin" size={15} />
+                    ) : (
+                      <FiNavigation size={15} />
+                    )}
+
+                    {geoLoading
+                      ? "Buscando ubicación..."
+                      : "Sugerir coordenadas con Mapbox"}
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    Latitud
+                  </label>
+
+                  <input
+                    type="number"
+                    step="any"
+                    name="lat"
+                    placeholder="-33.4489"
+                    value={form.lat}
+                    onChange={handleChange}
+                    className={inputClassName}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    Longitud
+                  </label>
+
+                  <input
+                    type="number"
+                    step="any"
+                    name="lng"
+                    placeholder="-70.6693"
+                    value={form.lng}
+                    onChange={handleChange}
+                    className={inputClassName}
+                  />
+                </div>
+
+                {form.lat && form.lng && (
+                  <div className="md:col-span-2">
+                    <div className="flex items-center gap-3 rounded-2xl border border-green-100 bg-green-50 p-3.5 text-green-700">
+                      <FiCheckCircle className="shrink-0" size={16} />
+                      <p className="text-[10px] font-bold">
+                        Coordenadas registradas: {form.lat}, {form.lng}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* CONTACTO */}
+            <section className="rounded-[1.6rem] border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
+                  <FiUser size={16} />
+                </div>
+
+                <div>
+                  <h4 className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-800">
+                    Contacto
+                  </h4>
+                  <p className="mt-0.5 text-[10px] font-medium text-gray-400">
+                    Información opcional del responsable del local.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    <FiUser size={11} />
+                    Gerente o jefe
+                  </label>
+
+                  <input
+                    type="text"
+                    name="gerente"
+                    placeholder="Nombre del responsable"
+                    value={form.gerente}
+                    onChange={handleChange}
+                    className={inputClassName}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    <FiPhone size={11} />
+                    Teléfono
+                  </label>
+
+                  <input
+                    type="text"
+                    name="telefono"
+                    placeholder="+56 9 1234 5678"
+                    value={form.telefono}
+                    onChange={handleChange}
+                    className={inputClassName}
+                  />
+                </div>
+              </div>
+            </section>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="text"
-              name="gerente"
-              placeholder="Gerente / Jefe"
-              value={form.gerente}
-              onChange={handleChange}
-              className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#87be00]"
-            />
-            <input
-              type="text"
-              name="telefono"
-              placeholder="Teléfono"
-              value={form.telefono}
-              onChange={handleChange}
-              className="w-full border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#87be00]"
-            />
-          </div>
+          {/* ACCIONES */}
+          <div className="grid grid-cols-1 gap-3 border-t border-gray-100 bg-white px-5 py-4 sm:grid-cols-[auto_1fr] sm:px-7">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="order-2 rounded-2xl border border-gray-100 bg-gray-50 px-6 py-3.5 text-[9px] font-black uppercase tracking-[0.16em] text-gray-500 transition-all hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
+            >
+              Cancelar
+            </button>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-black text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-[#87be00] transition-all shadow-lg shadow-gray-200"
-          >
-            {loading ? "Creando Punto de Venta..." : "Guardar Local"}
-          </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="order-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-900 px-6 py-3.5 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-gray-200 transition-all hover:bg-[#87be00] disabled:cursor-not-allowed disabled:opacity-60 sm:order-2"
+            >
+              {loading ? (
+                <>
+                  <FiLoader className="animate-spin" size={15} />
+                  Creando punto de venta...
+                </>
+              ) : (
+                <>
+                  <FiCheckCircle size={15} />
+                  Guardar local
+                </>
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>
