@@ -449,8 +449,8 @@ const CreateCompanyModal = ({
         }
       }}
     >
-      <div className="relative bg-white w-full sm:max-w-3xl h-[94vh] sm:h-auto sm:max-h-[92vh] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 sm:zoom-in duration-200">
-        <header className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-gray-100 px-5 py-5 sm:px-7 md:px-9">
+      <div className="relative flex h-[94vh] max-h-[94vh] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-200 sm:h-[92vh] sm:max-h-[92vh] sm:max-w-3xl sm:rounded-[2.5rem] sm:zoom-in">
+        <header className="relative z-20 shrink-0 border-b border-gray-100 bg-white/95 px-5 py-5 backdrop-blur sm:px-7 md:px-9">
           <div className="flex justify-between items-start gap-4 pr-12">
             <div className="flex items-start gap-3 min-w-0">
               <div className="w-11 h-11 rounded-2xl bg-[#87be00]/10 text-[#87be00] flex items-center justify-center shrink-0">
@@ -489,9 +489,9 @@ const CreateCompanyModal = ({
 
         <form
           onSubmit={handleSubmit}
-          className="h-[calc(94vh-86px)] sm:h-auto overflow-y-auto custom-scrollbar"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
-          <div className="p-5 sm:p-7 md:p-9 space-y-7 pb-32 sm:pb-8">
+          <div className="custom-scrollbar min-h-0 flex-1 space-y-7 overflow-y-auto overscroll-contain p-5 pb-8 sm:p-7 md:p-9">
             <section
               className={
                 isEditing
@@ -780,7 +780,7 @@ const CreateCompanyModal = ({
             )}
           </div>
 
-          <footer className="fixed sm:sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-gray-100 p-4 sm:px-7 md:px-9 z-20">
+          <footer className="z-20 shrink-0 border-t border-gray-100 bg-white/95 p-4 backdrop-blur sm:px-7 md:px-9">
             <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-3 max-w-3xl mx-auto">
               <Button
                 type="button"
