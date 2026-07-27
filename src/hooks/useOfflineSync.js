@@ -375,6 +375,59 @@ export const useOfflineSync =
           return;
         }
 
+        /*
+         * La cola offline de visitas solo debe sincronizarse
+         * cuando la sesión corresponde a un usuario de terreno.
+         *
+         * Esto evita que ROOT, ADMIN_CLIENTE, SUPERVISOR o VIEW
+         * intenten procesar operaciones guardadas anteriormente
+         * por un mercaderista en el mismo dispositivo.
+         */
+        const storedUser =
+          localStorage.getItem(
+            "user",
+          );
+
+        let currentUser =
+          null;
+
+        try {
+          currentUser =
+            storedUser
+              ? JSON.parse(
+                  storedUser,
+                )
+              : null;
+        } catch {
+          currentUser =
+            null;
+        }
+
+        const currentRole =
+          String(
+            currentUser
+              ?.role ||
+              "",
+          ).toUpperCase();
+
+        const canSyncOfflineVisits =
+          [
+            "USUARIO",
+            "MERCADERISTA",
+          ].includes(
+            currentRole,
+          );
+
+        if (
+          !canSyncOfflineVisits
+        ) {
+          toast.dismiss(
+            "offline-sync",
+          );
+
+          return;
+        }
+
         const pending =
           await getPendingSync();
 

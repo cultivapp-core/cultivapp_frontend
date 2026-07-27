@@ -26,6 +26,9 @@ import {
   IconButton,
 } from "../../components/ui";
 
+const CULTIVA_COMPANY_ID =
+  "0e342e01-d213-4353-b210-39a12ac335cf";
+
 const getResponseData = (
   response,
   fallback = [],
@@ -56,8 +59,38 @@ const TYPE_LABELS = {
 const QuestionsManager = () => {
   const { user } = useAuth();
 
+  const currentRole =
+    String(
+      user?.role || "",
+    ).toUpperCase();
+
   const isRoot =
-    user?.role === "ROOT";
+    currentRole === "ROOT";
+
+  const isCultivaAdmin =
+    [
+      "ADMIN",
+      "ADMIN_CLIENTE",
+    ].includes(currentRole) &&
+    String(
+      user?.company_id || "",
+    ) === CULTIVA_COMPANY_ID;
+
+  /*
+   * Solo ROOT y el administrador de Cultiva pueden
+   * cambiar de empresa dentro del módulo.
+   */
+  const canSelectCompany =
+    isRoot || isCultivaAdmin;
+
+  /*
+   * Para cualquier otro perfil administrativo, la empresa
+   * válida es exclusivamente la asociada a su sesión.
+   */
+  const sessionCompanyId =
+    String(
+      user?.company_id || "",
+    );
 
   const [questions, setQuestions] =
     useState([]);
@@ -67,9 +100,9 @@ const QuestionsManager = () => {
     selectedCompany,
     setSelectedCompany,
   ] = useState(
-    isRoot
+    canSelectCompany
       ? ""
-      : user?.company_id || "",
+      : sessionCompanyId,
   );
   const [createOpen, setCreateOpen] =
     useState(false);
@@ -91,22 +124,24 @@ const QuestionsManager = () => {
     useState("");
 
   useEffect(() => {
-    if (
-      !isRoot &&
-      user?.company_id
-    ) {
+    if (!canSelectCompany) {
       setSelectedCompany(
-        user.company_id,
+        sessionCompanyId,
       );
     }
   }, [
-    isRoot,
-    user?.company_id,
+    canSelectCompany,
+    sessionCompanyId,
   ]);
+
+  const effectiveCompanyId =
+    canSelectCompany
+      ? selectedCompany
+      : sessionCompanyId;
 
   const fetchCompanies =
     useCallback(async () => {
-      if (!isRoot) return;
+      if (!canSelectCompany) return;
 
       try {
         const response =
@@ -137,27 +172,42 @@ const QuestionsManager = () => {
           "No se pudieron cargar las empresas",
         );
       }
-    }, [isRoot]);
+    }, [canSelectCompany]);
 
   const loadQuestions =
     useCallback(async () => {
+      /*
+       * Nunca se consulta el endpoint sin una empresa efectiva.
+       * Para administradores normales se utiliza siempre la
+       * company_id presente en la sesión autenticada.
+       */
+      if (!effectiveCompanyId) {
+        setQuestions([]);
+        setLoading(false);
+
+        if (!canSelectCompany) {
+          setError(
+            "No se pudo identificar la empresa asociada a tu sesión.",
+          );
+        } else {
+          setError("");
+        }
+
+        return;
+      }
+
       try {
         setLoading(true);
         setError("");
-
-        const params =
-          selectedCompany
-            ? {
-                company_id:
-                  selectedCompany,
-              }
-            : undefined;
 
         const response =
           await api.get(
             "/questions",
             {
-              params,
+              params: {
+                company_id:
+                  effectiveCompanyId,
+              },
             },
           );
 
@@ -173,12 +223,52 @@ const QuestionsManager = () => {
           );
         }
 
-        setQuestions(data);
+        /*
+         * Protección visual adicional:
+         * cuando la API devuelve company_id, se descarta cualquier
+         * pregunta perteneciente a otro tenant.
+         *
+         * La autorización definitiva también debe aplicarse en el
+         * backend utilizando la empresa contenida en el token.
+         */
+        const includesCompanyMetadata =
+          data.some(
+            (question) =>
+              question?.company_id ||
+              question?.company?.id,
+          );
+
+        const tenantQuestions =
+          includesCompanyMetadata
+            ? data.filter(
+                (question) => {
+                  const questionCompanyId =
+                    question?.company_id ||
+                    question?.company?.id ||
+                    "";
+
+                  return (
+                    String(
+                      questionCompanyId,
+                    ) ===
+                    String(
+                      effectiveCompanyId,
+                    )
+                  );
+                },
+              )
+            : data;
+
+        setQuestions(
+          tenantQuestions,
+        );
       } catch (requestError) {
         console.error(
           "Error cargando preguntas:",
           requestError,
         );
+
+        setQuestions([]);
 
         setError(
           requestError?.response?.data
@@ -189,7 +279,10 @@ const QuestionsManager = () => {
       } finally {
         setLoading(false);
       }
-    }, [selectedCompany]);
+    }, [
+      effectiveCompanyId,
+      canSelectCompany,
+    ]);
 
   useEffect(() => {
     fetchCompanies();
@@ -264,6 +357,12 @@ const QuestionsManager = () => {
     try {
       await api.delete(
         `/questions/${question.id}`,
+        {
+          params: {
+            company_id:
+              effectiveCompanyId,
+          },
+        },
       );
 
       toast.success(
@@ -332,8 +431,8 @@ const QuestionsManager = () => {
               setCreateOpen(true)
             }
             disabled={
-              isRoot &&
-              !selectedCompany
+              canSelectCompany &&
+              !effectiveCompanyId
             }
             className="w-full md:w-auto"
           >
@@ -346,12 +445,12 @@ const QuestionsManager = () => {
         <section className="bg-white p-4 sm:p-5 rounded-[2rem] border border-gray-100 shadow-sm">
           <div
             className={`grid grid-cols-1 gap-3 ${
-              isRoot
+              canSelectCompany
                 ? "md:grid-cols-[260px_1fr]"
                 : ""
             }`}
           >
-            {isRoot && (
+            {canSelectCompany && (
               <div className="relative">
                 <FiBriefcase
                   size={16}
@@ -468,8 +567,8 @@ const QuestionsManager = () => {
           )}
         </section>
 
-        {isRoot &&
-        !selectedCompany ? (
+        {canSelectCompany &&
+        !effectiveCompanyId ? (
           <InformationMessage
             title="Selecciona una empresa"
             description="Elige una empresa para administrar sus preguntas."
@@ -580,8 +679,12 @@ const QuestionsManager = () => {
           setCreateOpen(false)
         }
         onCreated={loadQuestions}
-        companyId={selectedCompany}
-        companies={companies}
+        companyId={effectiveCompanyId}
+        companies={
+          canSelectCompany
+            ? companies
+            : []
+        }
       />
 
       <EditQuestionModal
@@ -594,7 +697,12 @@ const QuestionsManager = () => {
           selectedQuestion
         }
         onUpdated={loadQuestions}
-        companies={companies}
+        companyId={effectiveCompanyId}
+        companies={
+          canSelectCompany
+            ? companies
+            : []
+        }
       />
     </div>
   );

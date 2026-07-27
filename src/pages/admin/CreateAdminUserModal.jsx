@@ -13,9 +13,24 @@ import {
 import api from "../../api/apiClient";
 import { Button, IconButton } from "../../components/ui";
 
+const CULTIVA_COMPANY_ID =
+  "0e342e01-d213-4353-b210-39a12ac335cf";
+
 const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
   const storedUser = localStorage.getItem("user");
   const userAdmin = storedUser ? JSON.parse(storedUser) : null;
+
+  const isRoot = userAdmin?.role === "ROOT";
+
+  const isCultivaAdmin =
+    userAdmin?.role === "ADMIN_CLIENTE" &&
+    userAdmin?.company_id === CULTIVA_COMPANY_ID;
+
+  const canSelectCompany =
+    isRoot || isCultivaAdmin;
+
+  const loggedCompanyId =
+    userAdmin?.company_id || "";
 
   const initialForm = {
     first_name: "",
@@ -53,37 +68,52 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
 
   useEffect(() => {
     if (isOpen) {
-      setForm(initialForm);
+      setForm({
+        ...initialForm,
+        company_id: canSelectCompany
+          ? ""
+          : loggedCompanyId,
+      });
       setFoto(null);
       setPreview(null);
       setDocumentoContrato(null);
       setDocumentoAchs(null);
       setDocumentoOtro(null);
       setError("");
-      setRutError(""); 
-      
-      // Cargar empresas al abrir con protección
-     const fetchEmpresas = async () => {
-        try {
-          setLoadingEmpresas(true);
-          const response = await api.get("/companies");
-          const data = Array.isArray(response) ? response : (response.data || []);
-          if (Array.isArray(data)) {
-            setEmpresas(data);
-          } else {
+      setRutError("");
+      if (canSelectCompany) {
+        const fetchEmpresas = async () => {
+          try {
+            setLoadingEmpresas(true);
+            const response = await api.get("/companies");
+            const data = Array.isArray(response)
+              ? response
+              : (response.data || []);
+
+            if (Array.isArray(data)) {
+              setEmpresas(data);
+            } else {
+              setEmpresas([]);
+            }
+          } catch (err) {
+            console.error("Error al cargar empresas", err);
             setEmpresas([]);
+          } finally {
+            setLoadingEmpresas(false);
           }
-        } catch (err) {
-          console.error("Error al cargar empresas", err);
-          setEmpresas([]);
-        } finally {
-          setLoadingEmpresas(false);
-        }
-      };
-      
-      fetchEmpresas();
+        };
+
+        fetchEmpresas();
+      } else {
+        setEmpresas([]);
+        setLoadingEmpresas(false);
+      }
     }
-  }, [isOpen]);
+  }, [
+    isOpen,
+    canSelectCompany,
+    loggedCompanyId,
+  ]);
 
   const validarRutChileno = (rutCompleto) => {
     const rutLimpio = rutCompleto.replace(/[^0-9kK]/g, "").toUpperCase();
@@ -144,10 +174,27 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
     setError("");
 
     try {
+      const companyId = canSelectCompany
+        ? form.company_id
+        : loggedCompanyId;
+
+      if (!companyId) {
+        throw new Error(
+          canSelectCompany
+            ? "Debe seleccionar una empresa"
+            : "No se pudo identificar la empresa del administrador"
+        );
+      }
+
+      const payloadForm = {
+        ...form,
+        company_id: companyId,
+      };
+
       const formData = new FormData();
-      Object.keys(form).forEach((key) => formData.append(key, form[key]));
-      
-      if (!form.company_id) throw new Error("Debe seleccionar una empresa");
+      Object.keys(payloadForm).forEach((key) =>
+        formData.append(key, payloadForm[key])
+      );
       
       if (foto) formData.append("foto", foto);
       if (documentoContrato) formData.append("documento_contrato", documentoContrato);
@@ -263,29 +310,57 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                 <div className="space-y-3">
                   <input type="email" value={form.email} placeholder="Correo electrónico" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                     onChange={e => setForm({...form, email: e.target.value})} />
-                  
-                  {/* SELECTOR DE EMPRESA CON PROTECCIÓN DE ARREGLO */}
-                  <select 
-                    required 
-                    value={form.company_id} 
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all cursor-pointer"
-                    onChange={e => setForm({...form, company_id: e.target.value})}
-                  >
-                    <option value="" disabled>
-                      {loadingEmpresas ? "Cargando empresas..." : "Selecciona una empresa"}
-                    </option>
-                    {(empresas || []).map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.name}
+                  {canSelectCompany && (
+                    <select
+                      required
+                      value={form.company_id}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all cursor-pointer"
+                      onChange={e =>
+                        setForm({
+                          ...form,
+                          company_id: e.target.value
+                        })
+                      }
+                    >
+                      <option value="" disabled>
+                        {loadingEmpresas
+                          ? "Cargando empresas..."
+                          : "Selecciona una empresa"}
                       </option>
-                    ))}
-                  </select>
+
+                      {(empresas || []).map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <input type="password" value={form.password} placeholder="Contraseña" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] focus:border-transparent outline-none transition-all"
                       onChange={e => setForm({...form, password: e.target.value})} />
-                    <select required value={form.role} className="w-full bg-white border border-[#87be00]/30 text-[#87be00] font-bold rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all cursor-pointer"
-                      onChange={e => setForm({...form, role: e.target.value})}>
+                    <select
+                      required
+                      value={form.role}
+                      className="w-full bg-white border border-[#87be00]/30 text-[#87be00] font-bold rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#87be00] outline-none transition-all cursor-pointer"
+                      onChange={(e) => {
+                        const selectedRole =
+                          e.target.value;
+
+                        setForm((prev) => ({
+                          ...prev,
+                          role: selectedRole,
+                          supervisor_nombre:
+                            selectedRole === "USUARIO"
+                              ? prev.supervisor_nombre
+                              : "",
+                          supervisor_telefono:
+                            selectedRole === "USUARIO"
+                              ? prev.supervisor_telefono
+                              : "",
+                        }));
+                      }}
+                    >
                       <option value="" disabled>Perfil del sistema</option>
                       <option value="USUARIO">Mercaderista</option>
                       <option value="SUPERVISOR">Supervisor</option>
@@ -361,22 +436,13 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
         value={form.supervisor_nombre}
         placeholder="Nombre completo"
         className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-[#87be00] outline-none"
-        onChange={(e) => {
-  const selectedRole = e.target.value;
-
-  setForm((prev) => ({
-    ...prev,
-    role: selectedRole,
-    supervisor_nombre:
-      selectedRole === "USUARIO"
-        ? prev.supervisor_nombre
-        : "",
-    supervisor_telefono:
-      selectedRole === "USUARIO"
-        ? prev.supervisor_telefono
-        : "",
-  }));
-}}
+        onChange={(e) =>
+          setForm((prev) => ({
+            ...prev,
+            supervisor_nombre:
+              e.target.value,
+          }))
+        }
       />
 
       <input
