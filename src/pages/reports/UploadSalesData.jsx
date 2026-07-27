@@ -857,6 +857,17 @@ const SuccessState = ({
     result?.created ??
     result?.success_count;
 
+  const updated =
+    result?.updated ??
+    result?.updatedRows ??
+    0;
+
+  const processed =
+    result?.completed ??
+    result?.processed ??
+    (Number(inserted || 0) +
+      Number(updated || 0));
+
   const skipped =
     result?.skipped ??
     result?.duplicates ??
@@ -869,7 +880,9 @@ const SuccessState = ({
     result?.invalidRows;
 
   const hasSummary = [
+    processed,
     inserted,
+    updated,
     skipped,
     errors,
   ].some(
@@ -908,11 +921,23 @@ const SuccessState = ({
       )}
 
       {hasSummary && (
-        <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-7">
+        <div className="mt-7 grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
+          <ResultCard
+            label="Procesados"
+            value={processed ?? 0}
+            tone="info"
+          />
+
           <ResultCard
             label="Insertados"
             value={inserted ?? 0}
             tone="success"
+          />
+
+          <ResultCard
+            label="Actualizados"
+            value={updated ?? 0}
+            tone="updated"
           />
 
           <ResultCard
@@ -960,8 +985,12 @@ const ResultCard = ({
   tone,
 }) => {
   const tones = {
+    info:
+      "bg-blue-50 border-blue-100 text-blue-700",
     success:
       "bg-green-50 border-green-100 text-green-700",
+    updated:
+      "bg-violet-50 border-violet-100 text-violet-700",
     warning:
       "bg-amber-50 border-amber-100 text-amber-700",
     danger:
