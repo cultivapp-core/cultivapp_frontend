@@ -17,6 +17,9 @@ import toast from "react-hot-toast";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
+const CULTIVA_COMPANY_ID =
+  "0e342e01-d213-4353-b210-39a12ac335cf";
+
 const CreateLocalModal = ({
   isOpen,
   onClose,
@@ -24,6 +27,43 @@ const CreateLocalModal = ({
   companies = [],
   autoCompany = null
 }) => {
+  const storedUser =
+    localStorage.getItem("user");
+
+  let userAdmin = null;
+
+  try {
+    userAdmin = storedUser
+      ? JSON.parse(storedUser)
+      : null;
+  } catch {
+    userAdmin = null;
+  }
+
+  const isRoot =
+    userAdmin?.role === "ROOT";
+
+  const isCultivaAdmin =
+    userAdmin?.role === "ADMIN_CLIENTE" &&
+    userAdmin?.company_id ===
+      CULTIVA_COMPANY_ID;
+
+  /*
+   * Solo ROOT y ADMIN_CLIENTE de Cultiva pueden elegir
+   * una empresa distinta al crear un local.
+   */
+  const canSelectCompany =
+    isRoot || isCultivaAdmin;
+
+  /*
+   * Para cualquier otro administrador, la empresa se
+   * obtiene directamente desde su sesión.
+   */
+  const loggedCompanyId =
+    userAdmin?.company_id ||
+    autoCompany ||
+    "";
+
   const [regions, setRegions] = useState([]);
   const [comunas, setComunas] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -31,7 +71,9 @@ const CreateLocalModal = ({
   const [error, setError] = useState("");
 
   const [form, setForm] = useState({
-    company_id: autoCompany || "",
+    company_id: canSelectCompany
+      ? (autoCompany || "")
+      : loggedCompanyId,
     codigo_local: "",
     cadena: "",
     region_id: "",
@@ -48,7 +90,9 @@ const CreateLocalModal = ({
     if (isOpen) {
       setForm(prev => ({
         ...prev,
-        company_id: autoCompany || "",
+        company_id: canSelectCompany
+          ? (autoCompany || "")
+          : loggedCompanyId,
         codigo_local: "",
         cadena: "",
         direccion: "",
@@ -57,7 +101,12 @@ const CreateLocalModal = ({
       }));
       setError("");
     }
-  }, [isOpen, autoCompany]);
+  }, [
+    isOpen,
+    autoCompany,
+    canSelectCompany,
+    loggedCompanyId,
+  ]);
 
   /* =========================
      CARGAR REGIONES
@@ -169,8 +218,22 @@ const CreateLocalModal = ({
     setError("");
 
     try {
+      const companyId =
+        canSelectCompany
+          ? form.company_id
+          : loggedCompanyId;
+
+      if (!companyId) {
+        throw new Error(
+          canSelectCompany
+            ? "Debe seleccionar una empresa"
+            : "No se pudo identificar la empresa del administrador"
+        );
+      }
+
       const payload = {
         ...form,
+        company_id: companyId,
         lat: form.lat ? Number(form.lat) : null,
         lng: form.lng ? Number(form.lng) : null
       };
@@ -322,46 +385,48 @@ const CreateLocalModal = ({
                   />
                 </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <label className={labelClassName}>
-                    <FiBriefcase size={11} />
-                    Empresa
-                  </label>
+                {canSelectCompany && (
+                  <div className="space-y-2 md:col-span-2">
+                    <label className={labelClassName}>
+                      <FiBriefcase size={11} />
+                      Empresa
+                    </label>
 
-                  <div className="relative">
-                    <select
-                      name="company_id"
-                      value={form.company_id}
-                      onChange={handleChange}
-                      disabled={!!autoCompany}
-                      required
-                      className={`${inputClassName} appearance-none pr-11`}
-                    >
-                      <option value="">Seleccionar empresa</option>
-                      {companies.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-
-                    <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                      <svg
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    <div className="relative">
+                      <select
+                        name="company_id"
+                        value={form.company_id}
+                        onChange={handleChange}
+                        disabled={!!autoCompany}
+                        required
+                        className={`${inputClassName} appearance-none pr-11`}
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="3"
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
+                        <option value="">Seleccionar empresa</option>
+                        {companies.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                        <svg
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="3"
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </section>
 
