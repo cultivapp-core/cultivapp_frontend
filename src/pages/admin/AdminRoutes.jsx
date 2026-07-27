@@ -20,7 +20,10 @@ import {
   FiMapPin,
   FiTrash2,
   FiXCircle,
-  FiBriefcase
+  FiBriefcase,
+  FiHelpCircle,
+  FiDownload,
+  FiFileText
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
@@ -104,6 +107,9 @@ const AdminRoutes = () => {
 
   // NUEVO ESTADO PARA EL MODAL DE ELIMINACIÓN
   const [groupToDelete, setGroupToDelete] = useState(null);
+
+  // AYUDA PARA LA CARGA MASIVA
+  const [showBulkHelp, setShowBulkHelp] = useState(false);
 
   const CULTIVA_COMPANY_ID = "0e342e01-d213-4353-b210-39a12ac335cf";
 
@@ -513,6 +519,28 @@ const AdminRoutes = () => {
             >
               <FiRefreshCw size={18} />
             </IconButton>
+
+            <div className="relative group shrink-0">
+              <IconButton
+                label="Ver formato de carga masiva"
+                size="lg"
+                onClick={() => setShowBulkHelp(true)}
+                className="shrink-0"
+              >
+                <FiHelpCircle size={19} />
+              </IconButton>
+
+              <div className="pointer-events-none absolute right-0 top-[calc(100%+10px)] z-[200] hidden w-64 rounded-2xl border border-gray-100 bg-gray-900 px-4 py-3 text-left shadow-2xl group-hover:block">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#87be00]">
+                  Formato de carga
+                </p>
+                <p className="mt-1 text-[10px] font-medium leading-relaxed text-gray-300">
+                  Consulta las columnas requeridas y descarga la plantilla oficial para importar planificaciones.
+                </p>
+                <div className="absolute -top-1.5 right-4 h-3 w-3 rotate-45 bg-gray-900" />
+              </div>
+            </div>
+
             <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleImportExcel} />
             <Button
               type="button"
@@ -856,6 +884,12 @@ const AdminRoutes = () => {
         users={users} locales={locales} companies={companies} onCreated={fetchData} initialData={selectedRoute} 
       />
 
+      {showBulkHelp && (
+        <BulkPlanningHelpModal
+          onClose={() => setShowBulkHelp(false)}
+        />
+      )}
+
       {/* RENDER DEL MODAL DE ELIMINACIÓN */}
       {groupToDelete && (
         <DeleteRouteModal 
@@ -864,6 +898,288 @@ const AdminRoutes = () => {
           onConfirm={confirmDelete} 
         />
       )}
+    </div>
+  );
+};
+
+/* SUBCOMPONENTE: AYUDA Y PLANTILLA DE CARGA MASIVA */
+const BulkPlanningHelpModal = ({ onClose }) => {
+  /*
+   * La plantilla se genera con SheetJS al presionar el botón.
+   * De esta forma no depende de una ruta estática de Vercel
+   * que pueda devolver index.html con extensión .xlsx.
+   */
+  const handleDownloadTemplate = () => {
+    const templateRows = [
+      [
+        "Rut_Mercaderista",
+        "Codigo",
+        "Turno Semana 1",
+        "Turno Semana 2",
+        "Turno Semana 3",
+        "Turno Semana 4",
+        "Turno Semana 5",
+      ],
+      [
+        "16.925.489-3",
+        "HIPERSANJOAQUIN",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+      ],
+      [
+        "16.925.489-3",
+        "LIDERHIPERLIDERSANTAAMALIA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+      ],
+    ];
+
+    const worksheet =
+      XLSX.utils.aoa_to_sheet(
+        templateRows,
+      );
+
+    worksheet["!cols"] = [
+      { wch: 20 },
+      { wch: 34 },
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 22 },
+    ];
+
+    worksheet["!autofilter"] = {
+      ref: "A1:G3",
+    };
+
+    const workbook =
+      XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      "Planificacion",
+    );
+
+    XLSX.writeFile(
+      workbook,
+      "plantilla_planificacion_masiva.xlsx",
+      {
+        bookType: "xlsx",
+        compression: true,
+      },
+    );
+  };
+
+  const requiredColumns = [
+    {
+      name: "Rut_Mercaderista",
+      description:
+        "RUT del mercaderista con dígito verificador. Debe existir en CultivApp.",
+      example: "16.925.489-3",
+    },
+    {
+      name: "Codigo",
+      description:
+        "Código interno exacto del local registrado en CultivApp.",
+      example: "HIPERSANJOAQUIN",
+    },
+    {
+      name: "Turno Semana 1",
+      description:
+        "Nombre exacto del turno que se aplicará durante la semana 1.",
+      example: "TURNO YANIXSA",
+    },
+    {
+      name: "Turno Semana 2",
+      description:
+        "Nombre exacto del turno que se aplicará durante la semana 2.",
+      example: "TURNO YANIXSA",
+    },
+    {
+      name: "Turno Semana 3",
+      description:
+        "Nombre exacto del turno que se aplicará durante la semana 3.",
+      example: "TURNO YANIXSA",
+    },
+    {
+      name: "Turno Semana 4",
+      description:
+        "Nombre exacto del turno que se aplicará durante la semana 4.",
+      example: "TURNO YANIXSA",
+    },
+    {
+      name: "Turno Semana 5",
+      description:
+        "Utilízala en meses que tengan semana 5. En los demás meses puede quedar vacía.",
+      example: "TURNO YANIXSA",
+    },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#111111]/70 p-3 font-[Outfit] backdrop-blur-sm sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bulk-planning-help-title"
+    >
+      <div className="relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <header className="relative shrink-0 border-b border-gray-100 bg-white px-5 py-5 sm:px-7 sm:py-6">
+          <div className="absolute inset-x-0 top-0 h-1 bg-[#87be00]" />
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+                <FiFileText size={20} />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#87be00]">
+                  Carga masiva
+                </p>
+
+                <h2
+                  id="bulk-planning-help-title"
+                  className="mt-1 text-xl font-black leading-none tracking-tight text-gray-900 sm:text-2xl"
+                >
+                  Formato de planificaciones
+                </h2>
+
+                <p className="mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
+                  Descarga la plantilla oficial y conserva exactamente los nombres de sus columnas.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar ayuda de carga masiva"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+            >
+              <FiX size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div className="custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain bg-gray-50/40 px-5 py-5 sm:px-7 sm:py-6">
+          <section className="rounded-[1.6rem] border border-[#87be00]/20 bg-[#87be00]/5 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <FiAlertCircle
+                className="mt-0.5 shrink-0 text-[#679300]"
+                size={17}
+              />
+
+              <div>
+                <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-[#679300]">
+                  Reglas importantes
+                </h3>
+
+                <p className="mt-2 text-[11px] font-semibold leading-relaxed text-gray-600">
+                  No cambies, elimines ni agregues nombres en la fila de encabezados. Cada fila debe representar la planificación de un mercaderista para un local.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-[1.6rem] border border-gray-100 bg-white shadow-sm">
+            <div className="border-b border-gray-100 px-4 py-4 sm:px-5">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-800">
+                Leyenda de columnas
+              </h3>
+
+              <p className="mt-1 text-[10px] font-medium text-gray-400">
+                El RUT, código del local y nombres de turno deben coincidir con los registros existentes.
+              </p>
+            </div>
+
+            <div className="divide-y divide-gray-100">
+              {requiredColumns.map((column) => (
+                <div
+                  key={column.name}
+                  className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-[170px_1fr] sm:px-5"
+                >
+                  <div>
+                    <span className="inline-flex rounded-lg border border-[#87be00]/20 bg-[#87be00]/10 px-2.5 py-1 font-mono text-[9px] font-black text-[#679300]">
+                      {column.name}
+                    </span>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-semibold leading-relaxed text-gray-600">
+                      {column.description}
+                    </p>
+
+                    <p className="mt-1 text-[9px] font-medium text-gray-400">
+                      Ejemplo:{" "}
+                      <strong className="text-gray-600">
+                        {column.example}
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[1.6rem] border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-800">
+              Antes de importar
+            </h3>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                "Mantén una sola hoja llamada Planificacion.",
+                "No dejes filas vacías entre registros.",
+                "Usa el código exacto del local.",
+                "Usa el nombre exacto del turno.",
+                "No combines celdas.",
+                "Guarda el archivo en formato .xlsx.",
+              ].map((rule) => (
+                <div
+                  key={rule}
+                  className="flex items-start gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-3.5 py-3"
+                >
+                  <FiCheckCircle
+                    className="mt-0.5 shrink-0 text-[#87be00]"
+                    size={14}
+                  />
+
+                  <span className="text-[10px] font-semibold leading-relaxed text-gray-600">
+                    {rule}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <footer className="grid shrink-0 grid-cols-1 gap-3 border-t border-gray-100 bg-white px-5 py-4 sm:grid-cols-[auto_1fr] sm:px-7">
+          <button
+            type="button"
+            onClick={onClose}
+            className="order-2 rounded-2xl border border-gray-100 bg-gray-50 px-6 py-3.5 text-[9px] font-black uppercase tracking-[0.16em] text-gray-500 transition-all hover:bg-gray-100 sm:order-1"
+          >
+            Cerrar
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            className="order-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-900 px-6 py-3.5 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-gray-200 transition-all hover:bg-[#87be00] sm:order-2"
+          >
+            <FiDownload size={15} />
+            Descargar plantilla oficial
+          </button>
+        </footer>
+      </div>
     </div>
   );
 };

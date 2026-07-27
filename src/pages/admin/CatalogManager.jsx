@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FiPlus, FiAward, FiTrash2, FiEdit2, FiTag, FiX,
-  FiUploadCloud, FiRotateCw, FiPackage, FiSearch
+  FiUploadCloud, FiRotateCw, FiPackage, FiSearch,
+  FiHelpCircle, FiDownload, FiCheckCircle, FiAlertCircle
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
+import * as XLSX from "xlsx";
 
 const EMPTY_PRODUCT = { name: "", barcode: "", brand_id: "", category_id: "" };
 
@@ -29,6 +31,7 @@ const CatalogManager = () => {
   const [selectedCategory, setSelectedCategory] = useState("");
 
   const [productModal, setProductModal] = useState(false);
+  const [bulkHelpModal, setBulkHelpModal] = useState(false);
   const [brandModal, setBrandModal] = useState(false);
   const [categoryModal, setCategoryModal] = useState(false);
 
@@ -355,7 +358,7 @@ const CatalogManager = () => {
               </p>
             </div>
 
-            <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 xl:flex xl:w-auto">
+            <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 xl:flex xl:w-auto">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -363,6 +366,29 @@ const CatalogManager = () => {
                 accept=".xlsx,.xls,.csv"
                 onChange={handleBulkUpload}
               />
+
+              <div className="group relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setBulkHelpModal(true)}
+                  aria-label="Ver formato de carga masiva de productos"
+                  className="flex h-full min-h-[46px] w-full items-center justify-center rounded-2xl border border-gray-100 bg-white px-4 text-gray-500 shadow-sm transition-all hover:border-[#87be00]/40 hover:bg-[#87be00]/5 hover:text-[#679300] xl:w-[48px]"
+                >
+                  <FiHelpCircle size={19} />
+                </button>
+
+                <div className="pointer-events-none absolute left-0 top-[calc(100%+10px)] z-[300] hidden w-64 rounded-2xl border border-gray-100 bg-gray-900 px-4 py-3 text-left shadow-2xl group-hover:block">
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#87be00]">
+                    Formato de carga
+                  </p>
+
+                  <p className="mt-1 text-[10px] font-medium leading-relaxed text-gray-300">
+                    Revisa las columnas requeridas y descarga la plantilla oficial para productos.
+                  </p>
+
+                  <div className="absolute -top-1.5 left-4 h-3 w-3 rotate-45 bg-gray-900" />
+                </div>
+              </div>
 
               <ActionButton icon={<FiAward />} label="Nueva marca" onClick={openNewBrand} />
               <ActionButton icon={<FiTag />} label="Nueva categoría" onClick={openNewCategory} />
@@ -502,6 +528,12 @@ const CatalogManager = () => {
         </section>
       </div>
 
+      {bulkHelpModal && (
+        <BulkProductsHelpModal
+          onClose={() => setBulkHelpModal(false)}
+        />
+      )}
+
       {productModal && (
         <Modal title={editingProductId ? "Editar producto" : "Nuevo producto"} onClose={closeProductModal}>
           <form onSubmit={handleProductSubmit} className="space-y-4">
@@ -573,6 +605,294 @@ const CatalogManager = () => {
           opacity: 0.55;
         }
       `}</style>
+    </div>
+  );
+};
+
+const BulkProductsHelpModal = ({ onClose }) => {
+  const handleDownloadTemplate = () => {
+    const productsSheet =
+      XLSX.utils.aoa_to_sheet([
+        [
+          "Nombre",
+          "Ean",
+          "Marca",
+          "Categoria",
+        ],
+      ]);
+
+    productsSheet["!cols"] = [
+      { wch: 42 },
+      { wch: 22 },
+      { wch: 26 },
+      { wch: 30 },
+    ];
+
+    productsSheet["!autofilter"] = {
+      ref: "A1:D1",
+    };
+
+    const instructionsSheet =
+      XLSX.utils.aoa_to_sheet([
+        [
+          "Campo",
+          "Obligatorio",
+          "Descripción",
+          "Ejemplo",
+        ],
+        [
+          "Nombre",
+          "Sí",
+          "Nombre comercial completo del producto.",
+          "Cachantun + Citrus Limón 600 ml",
+        ],
+        [
+          "Ean",
+          "Sí",
+          "Código EAN único del producto. Mantén todos sus dígitos.",
+          "7801620009657",
+        ],
+        [
+          "Marca",
+          "Sí",
+          "Nombre de la marca. Si no existe, debe crearse antes de importar.",
+          "CCU",
+        ],
+        [
+          "Categoria",
+          "Sí",
+          "Nombre de la categoría. Debe coincidir con el catálogo.",
+          "Refrescos",
+        ],
+      ]);
+
+    instructionsSheet["!cols"] = [
+      { wch: 20 },
+      { wch: 14 },
+      { wch: 64 },
+      { wch: 38 },
+    ];
+
+    const workbook =
+      XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      productsSheet,
+      "Productos",
+    );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      instructionsSheet,
+      "Instrucciones",
+    );
+
+    XLSX.writeFile(
+      workbook,
+      "Carga_Masiva_Productos.xlsx",
+      {
+        bookType: "xlsx",
+        compression: true,
+      },
+    );
+  };
+
+  const columns = [
+    {
+      name: "Nombre",
+      description:
+        "Nombre comercial completo utilizado para identificar el producto.",
+      example:
+        "Cachantun + Citrus Limón 600 ml",
+    },
+    {
+      name: "Ean",
+      description:
+        "Código EAN único. Excel debe conservar todos los dígitos del código.",
+      example: "7801620009657",
+    },
+    {
+      name: "Marca",
+      description:
+        "Nombre exacto de la marca registrada dentro del catálogo.",
+      example: "CCU",
+    },
+    {
+      name: "Categoria",
+      description:
+        "Nombre exacto de la categoría registrada dentro del catálogo.",
+      example: "Refrescos",
+    },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#111111]/70 p-3 font-[Outfit] backdrop-blur-sm sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bulk-products-help-title"
+      onClick={onClose}
+    >
+      <div
+        className="relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl"
+        onClick={(event) =>
+          event.stopPropagation()
+        }
+      >
+        <header className="relative shrink-0 border-b border-gray-100 bg-white px-5 py-5 sm:px-7 sm:py-6">
+          <div className="absolute inset-x-0 top-0 h-1 bg-[#87be00]" />
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+                <FiPackage size={20} />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#87be00]">
+                  Carga masiva
+                </p>
+
+                <h2
+                  id="bulk-products-help-title"
+                  className="mt-1 text-xl font-black leading-none tracking-tight text-gray-900 sm:text-2xl"
+                >
+                  Formato de productos
+                </h2>
+
+                <p className="mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
+                  Conserva exactamente los encabezados de la plantilla oficial.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar ayuda de carga masiva"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+            >
+              <FiX size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div className="custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto bg-gray-50/40 px-5 py-5 sm:px-7 sm:py-6">
+          <section className="rounded-[1.6rem] border border-[#87be00]/20 bg-[#87be00]/5 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <FiAlertCircle
+                className="mt-0.5 shrink-0 text-[#679300]"
+                size={17}
+              />
+
+              <div>
+                <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-[#679300]">
+                  Validación del catálogo
+                </h3>
+
+                <p className="mt-2 text-[11px] font-semibold leading-relaxed text-gray-600">
+                  Las marcas y categorías escritas en el Excel deben existir en el catálogo y coincidir exactamente con sus nombres.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-[1.6rem] border border-gray-100 bg-white shadow-sm">
+            <div className="border-b border-gray-100 px-4 py-4 sm:px-5">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-800">
+                Leyenda de columnas
+              </h3>
+
+              <p className="mt-1 text-[10px] font-medium text-gray-400">
+                Todas las columnas son obligatorias.
+              </p>
+            </div>
+
+            <div className="divide-y divide-gray-100">
+              {columns.map((column) => (
+                <div
+                  key={column.name}
+                  className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-[155px_1fr] sm:px-5"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex rounded-lg border border-[#87be00]/20 bg-[#87be00]/10 px-2.5 py-1 font-mono text-[9px] font-black text-[#679300]">
+                      {column.name}
+                    </span>
+
+                    <span className="rounded-full border border-red-100 bg-red-50 px-2 py-1 text-[7px] font-black uppercase tracking-wider text-red-500">
+                      Obligatorio
+                    </span>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-semibold leading-relaxed text-gray-600">
+                      {column.description}
+                    </p>
+
+                    <p className="mt-1 text-[9px] font-medium text-gray-400">
+                      Ejemplo:{" "}
+                      <strong className="text-gray-600">
+                        {column.example}
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[1.6rem] border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-800">
+              Antes de importar
+            </h3>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                "Completa los productos en la hoja Productos.",
+                "No cambies los nombres de los encabezados.",
+                "Utiliza un EAN diferente para cada producto.",
+                "No uses notación científica en la columna Ean.",
+                "No dejes filas vacías entre registros.",
+                "Guarda el archivo en formato .xlsx.",
+              ].map((rule) => (
+                <div
+                  key={rule}
+                  className="flex items-start gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-3.5 py-3"
+                >
+                  <FiCheckCircle
+                    className="mt-0.5 shrink-0 text-[#87be00]"
+                    size={14}
+                  />
+
+                  <span className="text-[10px] font-semibold leading-relaxed text-gray-600">
+                    {rule}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <footer className="grid shrink-0 grid-cols-1 gap-3 border-t border-gray-100 bg-white px-5 py-4 sm:grid-cols-[auto_1fr] sm:px-7">
+          <button
+            type="button"
+            onClick={onClose}
+            className="order-2 rounded-2xl border border-gray-100 bg-gray-50 px-6 py-3.5 text-[9px] font-black uppercase tracking-[0.16em] text-gray-500 transition-all hover:bg-gray-100 sm:order-1"
+          >
+            Cerrar
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            className="order-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-900 px-6 py-3.5 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-gray-200 transition-all hover:bg-[#87be00] sm:order-2"
+          >
+            <FiDownload size={15} />
+            Descargar plantilla oficial
+          </button>
+        </footer>
+      </div>
     </div>
   );
 };
