@@ -14,7 +14,10 @@ import {
   FiSearch,
   FiX,
   FiAlertTriangle,
-  FiBriefcase
+  FiBriefcase,
+  FiHelpCircle,
+  FiDownload,
+  FiCheckCircle
 } from "react-icons/fi"
 import { toast } from "react-hot-toast"
 import api from "../../api/apiClient"
@@ -32,6 +35,7 @@ import AssignLocalesModal from "./AssignLocalesModal"
 import AssignUsersModal from "./AssignUsersModal"
 import UserQuickView from "../../components/UserQuickView"
 import { motion, AnimatePresence } from "framer-motion"
+import * as XLSX from "xlsx"
 
 
 const parseContractDate = (value) => {
@@ -108,6 +112,75 @@ const formatContractDate = (value) => {
   })
 }
 
+const getRoleVisual = (role) => {
+  const roles = {
+    ROOT: {
+      badge:
+        "border-fuchsia-100 bg-fuchsia-50 text-fuchsia-700",
+      avatar:
+        "border-fuchsia-100 bg-fuchsia-50 text-fuchsia-700",
+    },
+    ADMIN_CLIENTE: {
+      badge:
+        "border-orange-100 bg-orange-50 text-orange-700",
+      avatar:
+        "border-orange-100 bg-orange-50 text-orange-700",
+    },
+    ADMIN: {
+      badge:
+        "border-orange-100 bg-orange-50 text-orange-700",
+      avatar:
+        "border-orange-100 bg-orange-50 text-orange-700",
+    },
+    SUPERVISOR: {
+      badge:
+        "border-blue-100 bg-blue-50 text-blue-700",
+      avatar:
+        "border-blue-100 bg-blue-50 text-blue-700",
+    },
+    USUARIO: {
+      badge:
+        "border-[#87be00]/20 bg-[#87be00]/10 text-[#679300]",
+      avatar:
+        "border-[#87be00]/20 bg-[#87be00]/10 text-[#679300]",
+    },
+    MERCADERISTA: {
+      badge:
+        "border-[#87be00]/20 bg-[#87be00]/10 text-[#679300]",
+      avatar:
+        "border-[#87be00]/20 bg-[#87be00]/10 text-[#679300]",
+    },
+    VIEW: {
+      badge:
+        "border-violet-100 bg-violet-50 text-violet-700",
+      avatar:
+        "border-violet-100 bg-violet-50 text-violet-700",
+    },
+    VIEWER: {
+      badge:
+        "border-violet-100 bg-violet-50 text-violet-700",
+      avatar:
+        "border-violet-100 bg-violet-50 text-violet-700",
+    },
+  }
+
+  return (
+    roles[role] || {
+      badge:
+        "border-gray-100 bg-gray-50 text-gray-600",
+      avatar:
+        "border-gray-100 bg-gray-50 text-gray-600",
+    }
+  )
+}
+
+const getUserInitials = (user) => {
+  const first = user?.first_name?.trim()?.charAt(0) || ""
+  const last = user?.last_name?.trim()?.charAt(0) || ""
+
+  return `${first}${last}`.toUpperCase() || "U"
+}
+
 const AdminUsers = () => {
   const [users, setUsers] = useState([])
   const [stats, setStats] = useState(null)
@@ -115,6 +188,7 @@ const AdminUsers = () => {
   const [selectedCompanyId, setSelectedCompanyId] = useState("") 
   
   const [openModal, setOpenModal] = useState(false)
+  const [openBulkHelp, setOpenBulkHelp] = useState(false)
   const [editUser, setEditUser] = useState(null)
   const [resetUser, setResetUser] = useState(null)
   const [assignSupervisor, setAssignSupervisor] = useState(null)
@@ -295,400 +369,1410 @@ const AdminUsers = () => {
     }
   }
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center py-20 gap-4 font-[Outfit]">
-      <div className="w-9 h-9 border-2 border-[#87be00] border-t-transparent rounded-full animate-spin" />
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Cargando usuarios...</p>
-    </div>
-  )
+  if (loading) {
+    return (
+      <div className="flex min-h-[65vh] flex-col items-center justify-center gap-4 px-4 font-[Outfit] text-center">
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-[#87be00]/20 bg-[#87be00]/10">
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-[#87be00] border-t-transparent" />
+        </div>
 
-  const licencias = getLicenciasDinamicas()
-
-  return (
-    <div className="flex-1 transition-all duration-300 space-y-8 animate-in fade-in duration-500 font-[Outfit] pb-12 pt-20 md:pt-4 bg-slate-50/50 min-h-screen relative" onClick={() => setActivePopover(null)}>
-      
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 px-6">
         <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-[#111111] tracking-tight uppercase leading-none">
-            Usuarios
-          </h1>
-          <p className="text-[10px] font-bold text-[#87be00] uppercase tracking-[0.25em] mt-2.5">
-            {tieneAccesoGlobal ? "Panel de control multiempresa" : `Panel de control · ${userLocal?.company_name || "Mi empresa"}`}
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-gray-400">
+            Cargando usuarios
+          </p>
+
+          <p className="mt-1 text-[11px] font-medium text-gray-300">
+            Sincronizando colaboradores y licencias.
           </p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="outline"
-            size="lg"
-            leftIcon={<FiUploadCloud size={15} />}
-            loading={bulkLoading}
-            loadingText="Importando..."
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-1 lg:flex-none"
-          >
-            Importar usuarios
-          </Button>
-
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept=".xlsx, .xls, .csv"
-            onChange={handleBulkUpload}
-          />
-
-          <Button
-            size="lg"
-            leftIcon={<FiUserPlus size={15} />}
-            onClick={() => setOpenModal(true)}
-            className="flex-1 lg:flex-none"
-          >
-            Crear usuario
-          </Button>
-        </div>
       </div>
+    )
+  }
 
-      {/* CARDS DE PROGRESO DINÁMICAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 px-6">
-        <ProgressCard title="Supervisores" used={licencias.supervisors} max={licencias.maxSup} color="bg-[#87be00]" bgClass="bg-emerald-50 text-[#87be00]" icon={<FiShield size={18}/>} />
-        <ProgressCard title="Mercaderistas" used={licencias.users} max={licencias.maxUsr} color="bg-blue-500" bgClass="bg-blue-50 text-blue-500" icon={<FiUsers size={18}/>} />
-        <ProgressCard title="Visualizadores" used={licencias.view} max={licencias.maxVw} color="bg-slate-800" bgClass="bg-slate-100 text-slate-700" icon={<FiEye size={18}/>} />
-      </div>
+  const licencias = getLicenciasDinamicas()
+  const hasFilters =
+    Boolean(searchTerm) ||
+    Boolean(selectedCompanyId)
 
-      {/* CONTROLES VISTA MÓVIL */}
-      <div className="md:hidden space-y-3 px-6">
-        <div className="flex flex-col gap-3 my-4">
-          {/* 🚩 Filtro Empresa Móvil: Solo visible si tiene Acceso Global */}
-          {tieneAccesoGlobal && (
-            <div className="relative w-full">
-              <select
-                value={selectedCompanyId}
-                onChange={(e) => setSelectedCompanyId(e.target.value)}
-                className="w-full bg-white border border-slate-200 px-4 py-3.5 rounded-xl text-[12px] font-bold text-slate-700 outline-none focus:border-[#87be00] focus:ring-1 focus:ring-[#87be00] transition-all shadow-sm appearance-none cursor-pointer"
-              >
-                <option value="">Todas las empresas del sistema</option>
-                {companies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name?.toUpperCase()}</option>
-                ))}
-              </select>
+  const clearFilters = () => {
+    setSearchTerm("")
+    setSelectedCompanyId("")
+  }
+
+  return (
+    <div
+      className="min-h-full bg-gray-50/40 pb-20 font-[Outfit]"
+      onClick={() => setActivePopover(null)}
+    >
+      {/* ENCABEZADO CULTIVAPP */}
+      <header className="border-b border-gray-100 bg-white">
+        <div className="mx-auto flex max-w-[1500px] flex-col gap-5 px-4 py-5 sm:px-6 md:px-8 md:py-8 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+              <FiUsers size={21} />
             </div>
-          )}
 
-          <div className="relative w-full">
-            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input
-              type="text"
-              placeholder="Buscar por nombre, correo o RUT..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3.5 rounded-xl text-[12px] font-medium text-slate-700 placeholder-slate-400 outline-none focus:border-[#87be00] focus:ring-1 focus:ring-[#87be00] transition-all shadow-sm"
-            />
+            <div>
+              <h1 className="text-3xl font-black leading-none tracking-tight text-gray-900 md:text-5xl">
+                Gestión de usuarios
+              </h1>
+
+              <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#87be00]">
+                {tieneAccesoGlobal
+                  ? "Administración multiempresa"
+                  : `Administración · ${
+                      userLocal?.company_name ||
+                      "Mi empresa"
+                    }`}
+              </p>
+            </div>
           </div>
-        </div>
 
-        {filteredUsers.length > 0 ? (
-          filteredUsers.map((user, idx) => (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.04 }}
-            key={user.id}
-            className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-4 relative overflow-hidden"
-          >
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-3.5 min-w-0 pr-2">
-                <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center font-bold text-xs shrink-0">
-                  {user.first_name?.charAt(0)}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-[#111111] uppercase tracking-tight truncate">{user.first_name} {user.last_name}</p>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    <span className="text-[8px] font-extrabold text-[#87be00] uppercase bg-[#87be00]/10 px-2 py-0.5 rounded border border-[#87be00]/5 whitespace-nowrap">
-                      {getRoleLabel(user.role)}
-                    </span>
-                    <span className="text-[8px] font-extrabold text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded border border-blue-100 whitespace-nowrap">
-                      {companies.find(c => String(c.id) === String(user.company_id))?.name || "Sin empresa asignada"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <Switch
-                checked={user.is_active}
-                disabled={user.id === userLocal.id}
-                size="sm"
-                label={
-                  user.is_active
-                    ? `Desactivar a ${user.first_name} ${user.last_name}`
-                    : `Activar a ${user.first_name} ${user.last_name}`
+          <div className="flex w-full items-center gap-2 md:gap-3 lg:w-auto">
+            <div className="group relative shrink-0">
+              <IconButton
+                label="Ver formato de carga masiva de usuarios"
+                size="lg"
+                onClick={() =>
+                  setOpenBulkHelp(true)
                 }
-                onChange={() => toggleUser(user)}
-              />
-            </div>
-
-            <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500 truncate bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-              <FiFileText className="text-[#87be00] shrink-0" size={13} /> <span className="truncate">{user.email}</span>
-            </div>
-
-            <div className="grid grid-cols-5 gap-1.5 pt-1">
-              {(user.role === "SUPERVISOR" || user.role === "VIEW") && (
-                <IconButton
-                  label={`Asignar locales a ${user.first_name} ${user.last_name}`}
-                  variant="primary"
-                  onClick={() => setAssignSupervisor(user)}
-                  className="w-full"
-                >
-                  <FiMapPin size={14} />
-                </IconButton>
-              )}
-
-              {(user.role === "VIEW" || user.role === "SUPERVISOR") && (
-                <IconButton
-                  label={`Asignar usuarios a ${user.first_name} ${user.last_name}`}
-                  variant="info"
-                  onClick={() => setAssignUser(user)}
-                  className="w-full"
-                >
-                  <FiUsers size={14} />
-                </IconButton>
-              )}
-
-              <IconButton
-                label={`Editar usuario ${user.first_name} ${user.last_name}`}
-                onClick={() => setEditUser(user)}
-                className="w-full"
+                className="shrink-0"
               >
-                <FiEdit size={14} />
+                <FiHelpCircle size={19} />
               </IconButton>
 
-              <IconButton
-                label={`Restablecer contraseña de ${user.first_name} ${user.last_name}`}
-                variant="info"
-                onClick={() => setResetUser(user)}
-                className="w-full"
-              >
-                <FiRotateCw size={14} />
-              </IconButton>
+              <div className="pointer-events-none absolute left-0 top-[calc(100%+10px)] z-[300] hidden w-64 rounded-2xl border border-gray-100 bg-gray-900 px-4 py-3 text-left shadow-2xl group-hover:block">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#87be00]">
+                  Formato de carga
+                </p>
 
-              {user.role !== "ADMIN_CLIENTE" && user.id !== userLocal.id ? (
-                <IconButton
-                  label={`Eliminar usuario ${user.first_name} ${user.last_name}`}
-                  variant="danger"
-                  onClick={() => setUserToDelete(user)}
-                  className="w-full"
-                >
-                  <FiTrash size={14} />
-                </IconButton>
-              ) : (
-                <IconButton
-                  label="Eliminar usuario no disponible"
-                  variant="danger"
-                  disabled
-                  className="w-full"
-                >
-                  <FiTrash size={14} />
-                </IconButton>
-              )}
-            </div>
-          </motion.div>
-          ))
-        ) : (
-          <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center shadow-sm">
-            <p className="text-sm font-bold text-slate-400">
-              No se encontraron usuarios.
-            </p>
-          </div>
-        )}
-      </div>
+                <p className="mt-1 text-[10px] font-medium leading-relaxed text-gray-300">
+                  Revisa las columnas y descarga la plantilla oficial para importar usuarios.
+                </p>
 
-      {/* VISTA DESKTOP */}
-      <div className="hidden md:block bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm mx-6">
-        
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/40 flex items-center gap-4">
-          {/* 🚩 Filtro Empresa Desktop: Solo visible si tiene Acceso Global */}
-          {tieneAccesoGlobal ? (
-            <div className="relative w-72 shrink-0">
-              <select
-                value={selectedCompanyId}
-                onChange={(e) => setSelectedCompanyId(e.target.value)}
-                className="w-full bg-white border border-slate-200 pl-4 pr-10 py-3 rounded-xl text-[12px] font-bold text-slate-700 outline-none focus:border-[#87be00] focus:ring-1 focus:ring-[#87be00] transition-all shadow-sm appearance-none cursor-pointer"
-              >
-                <option value="">Todas las empresas de la red</option>
-                {companies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name?.toUpperCase()}</option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
-                <FiBriefcase size={14} />
+                <div className="absolute -top-1.5 left-4 h-3 w-3 rotate-45 bg-gray-900" />
               </div>
             </div>
-          ) : null}
 
-          <div className="relative flex-1 max-w-md">
-            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              leftIcon={
+                <FiUploadCloud size={15} />
+              }
+              loading={bulkLoading}
+              loadingText="Importando..."
+              onClick={() =>
+                fileInputRef.current?.click()
+              }
+              className="min-w-0 flex-1 whitespace-nowrap lg:flex-none"
+            >
+              Importar usuarios
+            </Button>
+
             <input
-              type="text"
-              placeholder="Buscar por nombre, correo o RUT..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white border border-slate-200 pl-11 pr-4 py-3 text-[12px] font-medium text-slate-700 placeholder-slate-400 outline-none focus:border-[#87be00] focus:ring-1 focus:ring-[#87be00] transition-all shadow-sm"
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept=".xlsx, .xls, .csv"
+              onChange={handleBulkUpload}
             />
+
+            <Button
+              type="button"
+              size="lg"
+              leftIcon={
+                <FiUserPlus size={15} />
+              }
+              onClick={() =>
+                setOpenModal(true)
+              }
+              className="min-w-0 flex-1 whitespace-nowrap lg:flex-none"
+            >
+              Crear usuario
+            </Button>
           </div>
         </div>
-        
-        <div className="max-h-[65vh] overflow-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-max">
-            <thead className="sticky top-0 bg-slate-50 z-20 border-b border-slate-100">
-              <tr>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] whitespace-nowrap">Colaborador</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] text-center whitespace-nowrap">Rol</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] text-center whitespace-nowrap">Empresa Asignada</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] text-center whitespace-nowrap">Teléfono</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] text-center whitespace-nowrap">Correo</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] text-center whitespace-nowrap">Estado</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase text-slate-400 tracking-[0.15em] text-right whitespace-nowrap">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-50/60 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-4">
-                      <UserQuickView
-                        user={user}
-                        isActive={activePopover === user.id}
-                        onToggle={() => setActivePopover(activePopover === user.id ? null : user.id)}
-                      />
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-bold text-[#111111] uppercase tracking-tight">
-                          {user.first_name} {user.last_name}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="bg-[#87be00]/10 text-[#87be00] px-3 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wider border border-[#87be00]/5 whitespace-nowrap inline-block">
-                      {getRoleLabel(user.role)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wider border border-blue-100 whitespace-nowrap inline-block">
-                      {companies.find(c => String(c.id) === String(user.company_id))?.name || "Sin empresa asignada"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-2 whitespace-nowrap text-[12px] font-medium text-slate-600">
-                      <FiPhone className="text-slate-400" size={13} /> {user.phone || '—'}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-2 whitespace-nowrap text-[12px] font-medium text-slate-600">
-                      <FiFileText className="text-slate-400" size={13} /> {user.email}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <Switch
-                      checked={user.is_active}
-                      disabled={user.id === userLocal.id}
-                      size="sm"
-                      label={
-                        user.is_active
-                          ? `Desactivar a ${user.first_name} ${user.last_name}`
-                          : `Activar a ${user.first_name} ${user.last_name}`
-                      }
-                      onChange={() => toggleUser(user)}
-                    />
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-1.5 text-slate-400">
-                      {(user.role === 'SUPERVISOR' || user.role === 'VIEW') && (
-                        <button onClick={() => setAssignSupervisor(user)} className="p-2.5 bg-emerald-50 text-[#87be00] border border-emerald-100 rounded-lg flex items-center justify-center transition-colors" title="Asignar Locales">
-                          <FiMapPin size={14} />
-                        </button>
-                      )}
-                      {(user.role === 'VIEW' || user.role === 'SUPERVISOR') && (
-                        <button onClick={() => setAssignUser(user)} className="p-2.5 bg-blue-50 text-blue-500 border border-blue-100 rounded-lg flex items-center justify-center transition-colors" title="Asignar Usuarios">
-                          <FiUsers size={14} />
-                        </button>
-                      )}
-                      <button onClick={() => setEditUser(user)} className="p-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg transition-colors" title="Editar"><FiEdit size={14} /></button>
-                      <button onClick={() => setResetUser(user)} className="p-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg transition-colors" title="Clave"><FiRotateCw size={14} /></button>
-                      
-                      {user.role !== "ADMIN_CLIENTE" && user.id !== userLocal.id ? (
-                        <button onClick={() => setUserToDelete(user)} className="p-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg transition-colors" title="Eliminar"><FiTrash size={14} /></button>
-                      ) : (
-                        <div className="p-2.5 bg-slate-100/40 text-slate-300 border border-slate-200/30 rounded-lg flex items-center justify-center cursor-not-allowed">
-                          <FiTrash size={14} />
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-6 py-12 text-center text-sm font-bold text-slate-400"
-                  >
-                    No se encontraron usuarios.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </header>
 
-      <CreateAdminUserModal isOpen={openModal} onClose={() => setOpenModal(false)} onCreated={fetchData} />
-      <EditAdminUserModal isOpen={!!editUser} user={editUser} stats={stats} onClose={() => setEditUser(null)} onUpdated={fetchData} />
-      {resetUser && <ResetPasswordAdminModal user={resetUser} onClose={() => setResetUser(null)} onUpdated={fetchData} />}
-      {assignSupervisor && <AssignLocalesModal supervisor={assignSupervisor} onClose={() => setAssignSupervisor(null)} onRefresh={fetchData} />}
-      {assignUser && <AssignUsersModal targetUser={assignUser} onClose={() => setAssignUser(null)} onRefresh={fetchData} />}
-      <AnimatePresence>
-        {showContractAlertModal && contractAlerts.length > 0 && (
-          <ContractAlertsModal
-            users={contractAlerts}
-            companies={companies}
-            onClose={() => setShowContractAlertModal(false)}
-            onEdit={(user) => {
-              setShowContractAlertModal(false)
-              setEditUser(user)
-            }}
+      <main className="mx-auto max-w-[1500px] space-y-6 px-4 pt-6 sm:px-6 md:px-8">
+        {/* INDICADORES */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ProgressCard
+            title="Supervisores"
+            used={licencias.supervisors}
+            max={licencias.maxSup}
+            color="bg-blue-500"
+            bgClass="bg-blue-50 text-blue-600"
+            icon={<FiShield size={18} />}
+            description="Gestión y seguimiento de equipos"
           />
-        )}
+
+          <ProgressCard
+            title="Mercaderistas"
+            used={licencias.users}
+            max={licencias.maxUsr}
+            color="bg-[#87be00]"
+            bgClass="bg-[#87be00]/10 text-[#679300]"
+            icon={<FiUsers size={18} />}
+            description="Ejecución operativa en terreno"
+          />
+
+          <ProgressCard
+            title="Visualizadores"
+            used={licencias.view}
+            max={licencias.maxVw}
+            color="bg-violet-500"
+            bgClass="bg-violet-50 text-violet-600"
+            icon={<FiEye size={18} />}
+            description="Consulta y supervisión de información"
+          />
+        </section>
+
+        {/* FILTROS */}
+        <section className="rounded-[2rem] border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-[#87be00]">
+                Filtros de búsqueda
+              </p>
+
+              <h2 className="mt-1 text-base font-black text-gray-900">
+                Localiza colaboradores
+              </h2>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full border border-[#87be00]/20 bg-[#87be00]/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-[#679300]">
+                {filteredUsers.length} usuario
+                {filteredUsers.length === 1
+                  ? ""
+                  : "s"}
+              </span>
+
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3.5 py-2.5 text-[9px] font-black uppercase tracking-[0.14em] text-gray-500 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500"
+                >
+                  <FiX size={13} />
+                  Limpiar
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div
+            className={`grid grid-cols-1 gap-3 ${
+              tieneAccesoGlobal
+                ? "md:grid-cols-[minmax(240px,320px)_1fr]"
+                : ""
+            }`}
+          >
+            {tieneAccesoGlobal && (
+              <div className="relative">
+                <FiBriefcase
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                  size={15}
+                />
+
+                <select
+                  value={selectedCompanyId}
+                  onChange={(event) =>
+                    setSelectedCompanyId(
+                      event.target.value,
+                    )
+                  }
+                  className={`${inputClass} appearance-none pl-11 pr-10`}
+                >
+                  <option value="">
+                    Todas las empresas
+                  </option>
+
+                  {companies.map((company) => (
+                    <option
+                      key={company.id}
+                      value={company.id}
+                    >
+                      {company.name ||
+                        company.nombre ||
+                        "Empresa"}
+                    </option>
+                  ))}
+                </select>
+
+                <SelectArrow />
+              </div>
+            )}
+
+            <div className="relative">
+              <FiSearch
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                size={15}
+              />
+
+              <input
+                type="search"
+                placeholder="Buscar por nombre, correo o RUT..."
+                value={searchTerm}
+                onChange={(event) =>
+                  setSearchTerm(
+                    event.target.value,
+                  )
+                }
+                className={`${inputClass} pl-11 pr-11`}
+              />
+
+              {searchTerm && (
+                <button
+                  type="button"
+                  aria-label="Limpiar búsqueda"
+                  onClick={() =>
+                    setSearchTerm("")
+                  }
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-red-500"
+                >
+                  <FiX size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* TABLA DE ESCRITORIO */}
+        <section className="hidden overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm md:block">
+          <div className="flex items-center justify-between gap-4 border-b border-gray-100 bg-gray-50/50 px-6 py-4">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">
+                Listado de usuarios
+              </p>
+
+              <p className="mt-1 text-[11px] font-semibold text-gray-500">
+                Roles, empresa, contacto y acciones disponibles.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={fetchData}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-100 bg-white text-gray-400 transition-all hover:border-[#87be00]/30 hover:bg-[#87be00]/5 hover:text-[#87be00]"
+              aria-label="Actualizar usuarios"
+            >
+              <FiRotateCw size={16} />
+            </button>
+          </div>
+
+          <div className="max-h-[68vh] overflow-auto custom-scrollbar">
+            <table className="w-full min-w-[1050px] border-collapse text-left">
+              <thead className="sticky top-0 z-20 border-b border-gray-100 bg-white">
+                <tr>
+                  <th className={thClass}>
+                    Colaborador
+                  </th>
+
+                  <th className={`${thClass} text-center`}>
+                    Rol
+                  </th>
+
+                  <th className={`${thClass} text-center`}>
+                    Empresa
+                  </th>
+
+                  <th className={`${thClass} text-center`}>
+                    Teléfono
+                  </th>
+
+                  <th className={`${thClass} text-center`}>
+                    Correo
+                  </th>
+
+                  <th className={`${thClass} text-center`}>
+                    Estado
+                  </th>
+
+                  <th className={`${thClass} text-right`}>
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-gray-50">
+                {filteredUsers.length > 0 ? (
+                  filteredUsers.map((user) => {
+                    const roleVisual =
+                      getRoleVisual(user.role)
+
+                    const companyName =
+                      companies.find(
+                        (company) =>
+                          String(company.id) ===
+                          String(user.company_id),
+                      )?.name ||
+                      "Sin empresa asignada"
+
+                    return (
+                      <tr
+                        key={user.id}
+                        className="group transition-colors hover:bg-gray-50/60"
+                      >
+                        <td className="p-5 align-top">
+                          <div className="flex items-center gap-3.5">
+                            <div className="relative shrink-0">
+                              <UserQuickView
+                                user={user}
+                                isActive={
+                                  activePopover ===
+                                  user.id
+                                }
+                                onToggle={() =>
+                                  setActivePopover(
+                                    activePopover ===
+                                      user.id
+                                      ? null
+                                      : user.id,
+                                  )
+                                }
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="text-xs font-black text-gray-900">
+                                {user.first_name}{" "}
+                                {user.last_name}
+                              </p>
+
+                              <p className="mt-1 font-mono text-[8px] font-bold uppercase tracking-wider text-gray-400">
+                                {user.rut ||
+                                  "Sin RUT"}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-5 text-center align-top">
+                          <span
+                            className={`inline-flex rounded-lg border px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.12em] ${roleVisual.badge}`}
+                          >
+                            {getRoleLabel(
+                              user.role,
+                            )}
+                          </span>
+                        </td>
+
+                        <td className="p-5 text-center align-top">
+                          <span className="inline-flex max-w-[190px] truncate rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.1em] text-blue-700">
+                            {companyName}
+                          </span>
+                        </td>
+
+                        <td className="p-5 align-top">
+                          <div className="flex items-center justify-center gap-2 whitespace-nowrap text-[11px] font-semibold text-gray-500">
+                            <FiPhone
+                              className="text-gray-300"
+                              size={13}
+                            />
+
+                            {user.phone || "—"}
+                          </div>
+                        </td>
+
+                        <td className="p-5 align-top">
+                          <div className="flex max-w-[230px] items-center justify-center gap-2 text-[11px] font-semibold text-gray-500">
+                            <FiFileText
+                              className="shrink-0 text-gray-300"
+                              size={13}
+                            />
+
+                            <span className="truncate">
+                              {user.email}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className="p-5 text-center align-top">
+                          <Switch
+                            checked={user.is_active}
+                            disabled={
+                              user.id ===
+                              userLocal.id
+                            }
+                            size="sm"
+                            label={
+                              user.is_active
+                                ? `Desactivar a ${user.first_name} ${user.last_name}`
+                                : `Activar a ${user.first_name} ${user.last_name}`
+                            }
+                            onChange={() =>
+                              toggleUser(user)
+                            }
+                          />
+                        </td>
+
+                        <td className="p-5 align-top">
+                          <div className="flex justify-end gap-2">
+                            {(user.role ===
+                              "SUPERVISOR" ||
+                              user.role ===
+                                "VIEW") && (
+                              <IconButton
+                                label={`Asignar locales a ${user.first_name} ${user.last_name}`}
+                                size="sm"
+                                variant="primary"
+                                onClick={() =>
+                                  setAssignSupervisor(
+                                    user,
+                                  )
+                                }
+                              >
+                                <FiMapPin size={14} />
+                              </IconButton>
+                            )}
+
+                            {(user.role ===
+                              "VIEW" ||
+                              user.role ===
+                                "SUPERVISOR") && (
+                              <IconButton
+                                label={`Asignar usuarios a ${user.first_name} ${user.last_name}`}
+                                size="sm"
+                                variant="info"
+                                onClick={() =>
+                                  setAssignUser(
+                                    user,
+                                  )
+                                }
+                              >
+                                <FiUsers size={14} />
+                              </IconButton>
+                            )}
+
+                            <IconButton
+                              label={`Editar usuario ${user.first_name} ${user.last_name}`}
+                              size="sm"
+                              onClick={() =>
+                                setEditUser(user)
+                              }
+                            >
+                              <FiEdit size={14} />
+                            </IconButton>
+
+                            <IconButton
+                              label={`Restablecer contraseña de ${user.first_name} ${user.last_name}`}
+                              size="sm"
+                              variant="info"
+                              onClick={() =>
+                                setResetUser(user)
+                              }
+                            >
+                              <FiRotateCw size={14} />
+                            </IconButton>
+
+                            <IconButton
+                              label={
+                                user.role !==
+                                  "ADMIN_CLIENTE" &&
+                                user.id !==
+                                  userLocal.id
+                                  ? `Eliminar usuario ${user.first_name} ${user.last_name}`
+                                  : "Eliminar usuario no disponible"
+                              }
+                              size="sm"
+                              variant="danger"
+                              disabled={
+                                user.role ===
+                                  "ADMIN_CLIENTE" ||
+                                user.id ===
+                                  userLocal.id
+                              }
+                              onClick={() =>
+                                setUserToDelete(
+                                  user,
+                                )
+                              }
+                            >
+                              <FiTrash size={14} />
+                            </IconButton>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="p-6"
+                    >
+                      <UsersEmptyState
+                        title="Sin información disponible"
+                        description="No existen usuarios que coincidan con los filtros seleccionados."
+                        compact
+                      />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* TARJETAS MÓVILES */}
+        <section className="space-y-3 md:hidden">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">
+                Resultados
+              </p>
+
+              <p className="mt-1 text-2xl font-black text-gray-900">
+                {filteredUsers.length}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={fetchData}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-100 bg-white text-gray-400 shadow-sm transition-all hover:text-[#87be00]"
+              aria-label="Actualizar usuarios"
+            >
+              <FiRotateCw size={16} />
+            </button>
+          </div>
+
+          {filteredUsers.length > 0 ? (
+            filteredUsers.map(
+              (user, index) => {
+                const roleVisual =
+                  getRoleVisual(user.role)
+
+                const companyName =
+                  companies.find(
+                    (company) =>
+                      String(company.id) ===
+                      String(user.company_id),
+                  )?.name ||
+                  "Sin empresa asignada"
+
+                return (
+                  <motion.article
+                    key={user.id}
+                    initial={{
+                      opacity: 0,
+                      y: 12,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    transition={{
+                      delay:
+                        index * 0.03,
+                    }}
+                    className="rounded-[1.6rem] border border-gray-100 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div
+                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border text-xs font-black ${roleVisual.avatar}`}
+                        >
+                          {getUserInitials(
+                            user,
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <h3 className="truncate text-sm font-black text-gray-900">
+                            {user.first_name}{" "}
+                            {user.last_name}
+                          </h3>
+
+                          <p className="mt-1 truncate text-[10px] font-medium text-gray-400">
+                            {user.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Switch
+                        checked={user.is_active}
+                        disabled={
+                          user.id ===
+                          userLocal.id
+                        }
+                        size="sm"
+                        label={
+                          user.is_active
+                            ? `Desactivar a ${user.first_name} ${user.last_name}`
+                            : `Activar a ${user.first_name} ${user.last_name}`
+                        }
+                        onChange={() =>
+                          toggleUser(user)
+                        }
+                      />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span
+                        className={`rounded-lg border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.1em] ${roleVisual.badge}`}
+                      >
+                        {getRoleLabel(
+                          user.role,
+                        )}
+                      </span>
+
+                      <span className="max-w-full truncate rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.1em] text-blue-700">
+                        {companyName}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-2 rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
+                      <p className="flex items-center gap-2 text-[10px] font-semibold text-gray-500">
+                        <FiPhone
+                          className="shrink-0 text-[#87be00]"
+                          size={13}
+                        />
+                        {user.phone ||
+                          "Sin teléfono"}
+                      </p>
+
+                      <p className="flex items-center gap-2 text-[10px] font-semibold text-gray-500">
+                        <FiFileText
+                          className="shrink-0 text-[#87be00]"
+                          size={13}
+                        />
+                        <span className="truncate">
+                          {user.rut ||
+                            "Sin RUT"}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-50 pt-4">
+                      {(user.role ===
+                        "SUPERVISOR" ||
+                        user.role ===
+                          "VIEW") && (
+                        <IconButton
+                          label={`Asignar locales a ${user.first_name} ${user.last_name}`}
+                          size="sm"
+                          variant="primary"
+                          onClick={() =>
+                            setAssignSupervisor(
+                              user,
+                            )
+                          }
+                        >
+                          <FiMapPin size={14} />
+                        </IconButton>
+                      )}
+
+                      {(user.role ===
+                        "VIEW" ||
+                        user.role ===
+                          "SUPERVISOR") && (
+                        <IconButton
+                          label={`Asignar usuarios a ${user.first_name} ${user.last_name}`}
+                          size="sm"
+                          variant="info"
+                          onClick={() =>
+                            setAssignUser(
+                              user,
+                            )
+                          }
+                        >
+                          <FiUsers size={14} />
+                        </IconButton>
+                      )}
+
+                      <IconButton
+                        label={`Editar usuario ${user.first_name} ${user.last_name}`}
+                        size="sm"
+                        onClick={() =>
+                          setEditUser(user)
+                        }
+                      >
+                        <FiEdit size={14} />
+                      </IconButton>
+
+                      <IconButton
+                        label={`Restablecer contraseña de ${user.first_name} ${user.last_name}`}
+                        size="sm"
+                        variant="info"
+                        onClick={() =>
+                          setResetUser(user)
+                        }
+                      >
+                        <FiRotateCw size={14} />
+                      </IconButton>
+
+                      <IconButton
+                        label={
+                          user.role !==
+                            "ADMIN_CLIENTE" &&
+                          user.id !==
+                            userLocal.id
+                            ? `Eliminar usuario ${user.first_name} ${user.last_name}`
+                            : "Eliminar usuario no disponible"
+                        }
+                        size="sm"
+                        variant="danger"
+                        disabled={
+                          user.role ===
+                            "ADMIN_CLIENTE" ||
+                          user.id ===
+                            userLocal.id
+                        }
+                        onClick={() =>
+                          setUserToDelete(user)
+                        }
+                      >
+                        <FiTrash size={14} />
+                      </IconButton>
+                    </div>
+                  </motion.article>
+                )
+              },
+            )
+          ) : (
+            <UsersEmptyState
+              title="Sin información disponible"
+              description="No existen usuarios que coincidan con los filtros seleccionados."
+            />
+          )}
+        </section>
+      </main>
+
+      {openBulkHelp && (
+        <BulkUsersHelpModal
+          onClose={() =>
+            setOpenBulkHelp(false)
+          }
+        />
+      )}
+
+      <CreateAdminUserModal
+        isOpen={openModal}
+        onClose={() =>
+          setOpenModal(false)
+        }
+        onCreated={fetchData}
+      />
+
+      <EditAdminUserModal
+        isOpen={!!editUser}
+        user={editUser}
+        stats={stats}
+        onClose={() =>
+          setEditUser(null)
+        }
+        onUpdated={fetchData}
+      />
+
+      {resetUser && (
+        <ResetPasswordAdminModal
+          user={resetUser}
+          onClose={() =>
+            setResetUser(null)
+          }
+          onUpdated={fetchData}
+        />
+      )}
+
+      {assignSupervisor && (
+        <AssignLocalesModal
+          supervisor={assignSupervisor}
+          onClose={() =>
+            setAssignSupervisor(null)
+          }
+          onRefresh={fetchData}
+        />
+      )}
+
+      {assignUser && (
+        <AssignUsersModal
+          targetUser={assignUser}
+          onClose={() =>
+            setAssignUser(null)
+          }
+          onRefresh={fetchData}
+        />
+      )}
+
+      <AnimatePresence>
+        {showContractAlertModal &&
+          contractAlerts.length > 0 && (
+            <ContractAlertsModal
+              users={contractAlerts}
+              companies={companies}
+              onClose={() =>
+                setShowContractAlertModal(
+                  false,
+                )
+              }
+              onEdit={(user) => {
+                setShowContractAlertModal(
+                  false,
+                )
+                setEditUser(user)
+              }}
+            />
+          )}
       </AnimatePresence>
+
       {userToDelete && (
-        <DeleteAdminUserModal 
-          user={userToDelete} 
-          onClose={() => setUserToDelete(null)} 
-          onConfirm={() => deleteUser(userToDelete)} 
+        <DeleteAdminUserModal
+          user={userToDelete}
+          onClose={() =>
+            setUserToDelete(null)
+          }
+          onConfirm={() =>
+            deleteUser(userToDelete)
+          }
         />
       )}
     </div>
   )
 }
 
-const ProgressCard = ({ title, used, max, color, icon, bgClass }) => {
-  const percentage = typeof max === "number" && max > 0 ? (used / max) * 100 : 0
+const SelectArrow = () => (
+  <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+    <svg
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="3"
+        d="M19 9l-7 7-7-7"
+      />
+    </svg>
+  </div>
+)
+
+const UsersEmptyState = ({
+  title,
+  description,
+  compact = false,
+}) => (
+  <div
+    className={`flex flex-col items-center justify-center rounded-[1.6rem] border border-dashed border-gray-200 bg-white px-6 text-center ${
+      compact ? "py-10" : "py-14"
+    }`}
+  >
+    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-300">
+      <FiUsers size={21} />
+    </div>
+
+    <h3 className="mt-4 text-base font-black text-gray-800">
+      {title}
+    </h3>
+
+    {description && (
+      <p className="mt-2 max-w-xl text-xs font-medium leading-relaxed text-gray-400">
+        {description}
+      </p>
+    )}
+  </div>
+)
+
+const BulkUsersHelpModal = ({ onClose }) => {
+  const handleDownloadTemplate = () => {
+    const headers = [
+      "first_name",
+      "last_name",
+      "email",
+      "phone",
+      "password",
+      "role",
+      "rut",
+      "position",
+      "tipo_contrato",
+      "fecha_inicio_contrato",
+      "fecha_termino_contrato",
+      "supervisor_nombre",
+      "supervisor_telefono",
+      "trabajando_para",
+    ]
+
+    const usersSheet =
+      XLSX.utils.aoa_to_sheet([
+        headers,
+      ])
+
+    usersSheet["!cols"] = [
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 30 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 20 },
+      { wch: 24 },
+      { wch: 26 },
+      { wch: 28 },
+      { wch: 24 },
+      { wch: 24 },
+    ]
+
+    usersSheet["!autofilter"] = {
+      ref: "A1:N1",
+    }
+
+    const instructionsSheet =
+      XLSX.utils.aoa_to_sheet([
+        [
+          "Campo",
+          "Obligatorio",
+          "Descripción",
+          "Ejemplo",
+        ],
+        [
+          "first_name",
+          "Sí",
+          "Nombre del usuario.",
+          "Ignacio",
+        ],
+        [
+          "last_name",
+          "Sí",
+          "Apellidos del usuario.",
+          "Estay Baeza",
+        ],
+        [
+          "email",
+          "Sí",
+          "Correo electrónico único.",
+          "usuario@empresa.cl",
+        ],
+        [
+          "phone",
+          "No",
+          "Teléfono de contacto.",
+          "56912345678",
+        ],
+        [
+          "password",
+          "Sí",
+          "Contraseña temporal inicial.",
+          "Temporal01",
+        ],
+        [
+          "role",
+          "Sí",
+          "Rol válido: ADMIN_CLIENTE, SUPERVISOR, USUARIO o VIEW.",
+          "USUARIO",
+        ],
+        [
+          "rut",
+          "Sí",
+          "RUT chileno con dígito verificador.",
+          "28.176.589-2",
+        ],
+        [
+          "position",
+          "No",
+          "Cargo o función del colaborador.",
+          "Mercaderista",
+        ],
+        [
+          "tipo_contrato",
+          "No",
+          "Tipo de contrato laboral.",
+          "Indefinido",
+        ],
+        [
+          "fecha_inicio_contrato",
+          "No",
+          "Fecha de inicio en formato AAAA-MM-DD.",
+          "2026-05-01",
+        ],
+        [
+          "fecha_termino_contrato",
+          "No",
+          "Fecha de término en formato AAAA-MM-DD.",
+          "2026-05-31",
+        ],
+        [
+          "supervisor_nombre",
+          "No",
+          "Nombre del supervisor directo. Úsalo para mercaderistas.",
+          "Juan Estay Rodríguez",
+        ],
+        [
+          "supervisor_telefono",
+          "No",
+          "Teléfono del supervisor directo.",
+          "995318205",
+        ],
+        [
+          "trabajando_para",
+          "No",
+          "Marca, cliente o empresa para la que presta servicio.",
+          "Walmart",
+        ],
+      ])
+
+    instructionsSheet["!cols"] = [
+      { wch: 28 },
+      { wch: 14 },
+      { wch: 62 },
+      { wch: 30 },
+    ]
+
+    const workbook =
+      XLSX.utils.book_new()
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      usersSheet,
+      "Usuarios",
+    )
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      instructionsSheet,
+      "Instrucciones",
+    )
+
+    XLSX.writeFile(
+      workbook,
+      "Carga_Masiva_Usuarios.xlsx",
+      {
+        bookType: "xlsx",
+        compression: true,
+      },
+    )
+  }
+
+  const columns = [
+    {
+      name: "first_name",
+      description: "Nombre del usuario.",
+      example: "Ignacio",
+      required: true,
+    },
+    {
+      name: "last_name",
+      description: "Apellidos del usuario.",
+      example: "Estay Baeza",
+      required: true,
+    },
+    {
+      name: "email",
+      description: "Correo electrónico único dentro de CultivApp.",
+      example: "usuario@empresa.cl",
+      required: true,
+    },
+    {
+      name: "phone",
+      description: "Teléfono de contacto del usuario.",
+      example: "56912345678",
+      required: false,
+    },
+    {
+      name: "password",
+      description: "Contraseña temporal utilizada en el primer acceso.",
+      example: "Temporal01",
+      required: true,
+    },
+    {
+      name: "role",
+      description: "Rol permitido: ADMIN_CLIENTE, SUPERVISOR, USUARIO o VIEW.",
+      example: "USUARIO",
+      required: true,
+    },
+    {
+      name: "rut",
+      description: "RUT chileno con dígito verificador.",
+      example: "28.176.589-2",
+      required: true,
+    },
+    {
+      name: "position",
+      description: "Cargo o función del colaborador.",
+      example: "Mercaderista",
+      required: false,
+    },
+    {
+      name: "tipo_contrato",
+      description: "Tipo de contrato laboral.",
+      example: "Indefinido",
+      required: false,
+    },
+    {
+      name: "fecha_inicio_contrato",
+      description: "Fecha de inicio en formato AAAA-MM-DD.",
+      example: "2026-05-01",
+      required: false,
+    },
+    {
+      name: "fecha_termino_contrato",
+      description: "Fecha de término en formato AAAA-MM-DD.",
+      example: "2026-05-31",
+      required: false,
+    },
+    {
+      name: "supervisor_nombre",
+      description: "Nombre del supervisor directo del mercaderista.",
+      example: "Juan Estay Rodríguez",
+      required: false,
+    },
+    {
+      name: "supervisor_telefono",
+      description: "Teléfono del supervisor directo.",
+      example: "995318205",
+      required: false,
+    },
+    {
+      name: "trabajando_para",
+      description: "Marca, cliente o empresa para la que presta servicio.",
+      example: "Walmart",
+      required: false,
+    },
+  ]
+
   return (
-    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between transition-all duration-300">
-      <div className="flex justify-between items-start mb-4">
-        <div className={`p-2.5 rounded-xl ${bgClass} transition-colors`}>{icon}</div>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">{title}</p>
-      </div>
-      <div>
-        <p className="text-2xl font-extrabold text-[#111111] leading-none mb-3">
-          {used} <span className="text-xs text-slate-300 font-bold tracking-wider">/ {max}</span>
-        </p>
-        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-          <div
-            className={`${color} h-full rounded-full transition-all duration-1000 ease-out`}
-            style={{ width: typeof max === "number" ? `${percentage}%` : "0%" }}
-          />
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#111111]/70 p-3 font-[Outfit] backdrop-blur-sm sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bulk-users-help-title"
+      onClick={onClose}
+    >
+      <div
+        className="relative flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="relative shrink-0 border-b border-slate-100 bg-white px-5 py-5 sm:px-7 sm:py-6">
+          <div className="absolute inset-x-0 top-0 h-1 bg-[#87be00]" />
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+                <FiFileText size={20} />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#87be00]">
+                  Carga masiva
+                </p>
+
+                <h2
+                  id="bulk-users-help-title"
+                  className="mt-1 text-xl font-black leading-none tracking-tight text-slate-900 sm:text-2xl"
+                >
+                  Formato de usuarios
+                </h2>
+
+                <p className="mt-2 text-[11px] font-medium leading-relaxed text-slate-400">
+                  Conserva exactamente los encabezados y descarga la plantilla oficial.
+                </p>
+              </div>
+            </div>
+
+            <IconButton
+              label="Cerrar ayuda de carga masiva"
+              onClick={onClose}
+            >
+              <FiX size={18} />
+            </IconButton>
+          </div>
+        </header>
+
+        <div className="custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto bg-slate-50/50 px-5 py-5 sm:px-7 sm:py-6">
+          <section className="rounded-[1.6rem] border border-[#87be00]/20 bg-[#87be00]/5 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <FiAlertTriangle
+                className="mt-0.5 shrink-0 text-[#679300]"
+                size={17}
+              />
+
+              <div>
+                <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-[#679300]">
+                  Empresa de destino
+                </h3>
+
+                <p className="mt-2 text-[11px] font-semibold leading-relaxed text-slate-600">
+                  La carga se asociará a la empresa seleccionada en el filtro. Para administradores sin acceso global se utilizará automáticamente la empresa de su sesión.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-[1.6rem] border border-slate-100 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-800">
+                Leyenda de columnas
+              </h3>
+
+              <p className="mt-1 text-[10px] font-medium text-slate-400">
+                Los nombres deben mantenerse en minúsculas y sin espacios adicionales.
+              </p>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {columns.map((column) => (
+                <div
+                  key={column.name}
+                  className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-[200px_1fr] sm:px-5"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex rounded-lg border border-[#87be00]/20 bg-[#87be00]/10 px-2.5 py-1 font-mono text-[9px] font-black text-[#679300]">
+                      {column.name}
+                    </span>
+
+                    <span
+                      className={`rounded-full border px-2 py-1 text-[7px] font-black uppercase tracking-wider ${
+                        column.required
+                          ? "border-rose-100 bg-rose-50 text-rose-500"
+                          : "border-slate-100 bg-slate-50 text-slate-400"
+                      }`}
+                    >
+                      {column.required ? "Obligatorio" : "Opcional"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-semibold leading-relaxed text-slate-600">
+                      {column.description}
+                    </p>
+
+                    <p className="mt-1 text-[9px] font-medium text-slate-400">
+                      Ejemplo:{" "}
+                      <strong className="text-slate-600">
+                        {column.example}
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[1.6rem] border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-800">
+              Antes de importar
+            </h3>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                "Completa los registros en la hoja Usuarios.",
+                "No cambies los nombres de los encabezados.",
+                "Usa correos y RUT únicos.",
+                "Escribe el rol exactamente en mayúsculas.",
+                "Usa fechas con formato AAAA-MM-DD.",
+                "Guarda el archivo en formato .xlsx.",
+              ].map((rule) => (
+                <div
+                  key={rule}
+                  className="flex items-start gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-3.5 py-3"
+                >
+                  <FiCheckCircle
+                    className="mt-0.5 shrink-0 text-[#87be00]"
+                    size={14}
+                  />
+
+                  <span className="text-[10px] font-semibold leading-relaxed text-slate-600">
+                    {rule}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
+
+        <footer className="grid shrink-0 grid-cols-1 gap-3 border-t border-slate-100 bg-white px-5 py-4 sm:grid-cols-[auto_1fr] sm:px-7">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+            className="order-2 sm:order-1"
+          >
+            Cerrar
+          </Button>
+
+          <Button
+            type="button"
+            variant="dark"
+            leftIcon={<FiDownload size={15} />}
+            onClick={handleDownloadTemplate}
+            className="order-1 sm:order-2"
+          >
+            Descargar plantilla oficial
+          </Button>
+        </footer>
       </div>
     </div>
+  )
+}
+
+const ProgressCard = ({
+  title,
+  used,
+  max,
+  color,
+  icon,
+  bgClass,
+  description,
+}) => {
+  const percentage =
+    typeof max === "number" &&
+    max > 0
+      ? Math.min(
+          (used / max) * 100,
+          100,
+        )
+      : 0
+
+  return (
+    <article className="group relative overflow-hidden rounded-[1.6rem] border border-gray-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gray-100">
+        <div
+          className={`${color} h-full rounded-r-full transition-all duration-1000 ease-out`}
+          style={{
+            width:
+              typeof max === "number"
+                ? `${percentage}%`
+                : "0%",
+          }}
+        />
+      </div>
+
+      <div className="flex items-start justify-between gap-4">
+        <div
+          className={`flex h-11 w-11 items-center justify-center rounded-2xl ${bgClass}`}
+        >
+          {icon}
+        </div>
+
+        <span className="rounded-full border border-gray-100 bg-gray-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-gray-400">
+          Licencias
+        </span>
+      </div>
+
+      <div className="mt-5">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-gray-400">
+          {title}
+        </p>
+
+        <p className="mt-2 text-3xl font-black leading-none text-gray-900">
+          {used}
+          <span className="ml-1.5 text-sm font-bold text-gray-300">
+            / {max}
+          </span>
+        </p>
+
+        <p className="mt-3 text-[10px] font-medium leading-relaxed text-gray-400">
+          {description}
+        </p>
+      </div>
+    </article>
   )
 }
 
@@ -757,7 +1841,7 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 font-[Outfit]"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#111111]/70 p-4 font-[Outfit] backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -765,10 +1849,12 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 20 }}
         transition={{ duration: 0.2 }}
-        className="bg-white w-full max-w-3xl max-h-[88vh] rounded-3xl shadow-2xl overflow-hidden border border-slate-100"
+        className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="p-6 md:p-7 border-b border-slate-100 bg-slate-50/70">
+        <div className="relative shrink-0 border-b border-gray-100 bg-white p-6 md:p-7">
+          <div className="absolute inset-x-0 top-0 h-1 bg-[#87be00]" />
+
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
@@ -818,7 +1904,7 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
           </div>
         </div>
 
-        <div className="p-4 md:p-6 overflow-y-auto max-h-[55vh] space-y-3 custom-scrollbar">
+        <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto bg-gray-50/40 p-4 md:p-6">
           {users.map((user) => {
             const config = getStatusConfig(user.contractStatus)
 
@@ -883,7 +1969,7 @@ const ContractAlertsModal = ({ users, companies, onClose, onEdit }) => {
           })}
         </div>
 
-        <div className="p-4 md:p-5 border-t border-slate-100 bg-slate-50 flex justify-end">
+        <div className="shrink-0 border-t border-gray-100 bg-white p-4 md:p-5 flex justify-end">
           <Button onClick={onClose}>
             Entendido
           </Button>
@@ -906,8 +1992,8 @@ const DeleteAdminUserModal = ({ user, onClose, onConfirm }) => {
   }
 
   return (
-    <div className="absolute inset-0 bg-[#111111]/70 backdrop-blur-sm flex items-center justify-center p-4 z-[110] font-[Outfit] transition-all duration-300 min-h-full">
-      <div className="bg-white w-full max-w-md rounded-2xl border border-slate-100 shadow-2xl p-6 relative animate-in fade-in zoom-in duration-200">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#111111]/70 p-4 font-[Outfit] backdrop-blur-sm">
+      <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/60 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         
         <IconButton
           label="Cerrar confirmación de eliminación"
@@ -966,5 +2052,25 @@ const DeleteAdminUserModal = ({ user, onClose, onConfirm }) => {
     </div>
   );
 };
+
+const inputClass = `
+  h-12 w-full rounded-2xl
+  border border-gray-100
+  bg-gray-50
+  px-4
+  text-[11px] font-bold
+  text-gray-700
+  outline-none
+  shadow-inner
+  transition-all
+  placeholder:text-gray-300
+  focus:border-[#87be00]/40
+  focus:bg-white
+  focus:ring-4
+  focus:ring-[#87be00]/10
+`
+
+const thClass =
+  "px-5 py-4 text-[9px] font-black uppercase tracking-[0.18em] text-gray-400 whitespace-nowrap"
 
 export default AdminUsers;
