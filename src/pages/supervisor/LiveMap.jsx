@@ -92,6 +92,11 @@ const LiveMap = () => {
   const liveMarkers = useRef([]);
   const circleLayersRef = useRef([]);
   const pollRef = useRef(null);
+  const didInitialFit =
+    useRef(false);
+
+  const [mapReady, setMapReady] =
+    useState(false);
 
   const [routes, setRoutes] = useState([]); 
   const [activeRoutes, setActiveRoutes] = useState([]); 
@@ -203,193 +208,938 @@ const LiveMap = () => {
   }, [routesUsuarios]);
 
   useEffect(() => {
-    if (map.current || !mapContainer.current) return undefined;
+    let cancelled =
+      false;
 
-    if (!MAPBOX_TOKEN) {
-      setError("No está configurado VITE_MAPBOX_TOKEN");
-      setLoading(false);
+    let initializationTimer =
+      null;
+
+    let resizeTimer =
+      null;
+
+    let mapInstance =
+      null;
+
+    const initializeMap =
+      () => {
+        const container =
+          mapContainer.current;
+
+        if (
+          cancelled ||
+          map.current ||
+          !container
+        ) {
+          return;
+        }
+
+        if (!MAPBOX_TOKEN) {
+          setError(
+            "No está configurado VITE_MAPBOX_TOKEN",
+          );
+
+          setLoading(
+            false,
+          );
+
+          return;
+        }
+
+        /*
+         * Mismo comportamiento del mapa responsivo de referencia:
+         * Mapbox solo se crea cuando el contenedor ya tiene
+         * dimensiones reales.
+         */
+        const {
+          width,
+          height,
+        } =
+          container.getBoundingClientRect();
+
+        if (
+          width <= 0 ||
+          height <= 0
+        ) {
+          initializationTimer =
+            window.setTimeout(
+              initializeMap,
+              100,
+            );
+
+          return;
+        }
+
+        container.innerHTML =
+          "";
+
+        mapInstance =
+          new mapboxgl.Map({
+            container,
+            style:
+              "mapbox://styles/mapbox/light-v11",
+            center: [
+              -70.6483,
+              -33.4569,
+            ],
+            zoom: 10,
+            attributionControl:
+              true,
+          });
+
+        map.current =
+          mapInstance;
+
+        mapInstance.addControl(
+          new mapboxgl.NavigationControl({
+            showCompass:
+              false,
+          }),
+          "top-right",
+        );
+
+        const resizeMap =
+          () => {
+            window.requestAnimationFrame(
+              () => {
+                if (
+                  !cancelled &&
+                  map.current ===
+                    mapInstance
+                ) {
+                  mapInstance.resize();
+                }
+              },
+            );
+          };
+
+        const handleLoad =
+          () => {
+            setMapReady(
+              true,
+            );
+
+            resizeMap();
+
+            resizeTimer =
+              window.setTimeout(
+                resizeMap,
+                250,
+              );
+          };
+
+        const handleMapError =
+          (event) => {
+            console.error(
+              "❌ Error de Mapbox:",
+              event?.error ??
+                event,
+            );
+          };
+
+        mapInstance.on(
+          "load",
+          handleLoad,
+        );
+
+        mapInstance.on(
+          "error",
+          handleMapError,
+        );
+
+        /*
+         * Ajuste inicial después de que Tailwind termina
+         * de aplicar la altura responsiva.
+         */
+        resizeTimer =
+          window.setTimeout(
+            resizeMap,
+            150,
+          );
+      };
+
+    const frameId =
+      window.requestAnimationFrame(
+        initializeMap,
+      );
+
+    return () => {
+      cancelled =
+        true;
+
+      window.cancelAnimationFrame(
+        frameId,
+      );
+
+      if (
+        initializationTimer
+      ) {
+        window.clearTimeout(
+          initializationTimer,
+        );
+      }
+
+      if (resizeTimer) {
+        window.clearTimeout(
+          resizeTimer,
+        );
+      }
+
+      routeMarkers.current.forEach(
+        (marker) =>
+          marker.remove(),
+      );
+
+      routeMarkers.current =
+        [];
+
+      routePopups.current.forEach(
+        (popup) =>
+          popup.remove(),
+      );
+
+      routePopups.current =
+        [];
+
+      liveMarkers.current.forEach(
+        (marker) =>
+          marker.remove(),
+      );
+
+      liveMarkers.current =
+        [];
+
+      if (mapInstance) {
+        mapInstance.remove();
+      }
+
+      map.current =
+        null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!map.current) {
       return undefined;
     }
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: [-70.6483, -33.4569],
-      zoom: 13,
-    });
+    const timer =
+      window.setTimeout(
+        () =>
+          map.current?.resize(),
+        350,
+      );
 
-    map.current.addControl(
-      new mapboxgl.NavigationControl({ showCompass: false }),
-      "top-right",
-    );
-
-    return () => {
-      routeMarkers.current.forEach((marker) => marker.remove());
-      routePopups.current.forEach((popup) => popup.remove());
-      liveMarkers.current.forEach((marker) => marker.remove());
-      map.current?.remove();
-      map.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (map.current) {
-      const resizeTimer = setTimeout(() => map.current.resize(), 500);
-      return () => clearTimeout(resizeTimer);
-    }
+    return () =>
+      window.clearTimeout(
+        timer,
+      );
   }, [panelOpen]);
 
   useEffect(() => {
-    if (!mapContainer.current) return;
-    const resizeObserver = new ResizeObserver(() => {
-      if (map.current) map.current.resize();
-    });
-    resizeObserver.observe(mapContainer.current);
-    return () => resizeObserver.disconnect();
+    const container =
+      mapContainer.current;
+
+    if (!container) {
+      return undefined;
+    }
+
+    const resizeMap =
+      () => {
+        window.requestAnimationFrame(
+          () =>
+            map.current?.resize(),
+        );
+      };
+
+    let observer =
+      null;
+
+    if (
+      typeof ResizeObserver !==
+      "undefined"
+    ) {
+      observer =
+        new ResizeObserver(
+          resizeMap,
+        );
+
+      observer.observe(
+        container,
+      );
+    }
+
+    window.addEventListener(
+      "resize",
+      resizeMap,
+    );
+
+    window.addEventListener(
+      "orientationchange",
+      resizeMap,
+    );
+
+    return () => {
+      observer?.disconnect();
+
+      window.removeEventListener(
+        "resize",
+        resizeMap,
+      );
+
+      window.removeEventListener(
+        "orientationchange",
+        resizeMap,
+      );
+    };
   }, []);
 
   useEffect(() => {
-    if (!map.current) return;
+    didInitialFit.current =
+      false;
+  }, [
+    searchTerm,
+    statusFilter,
+  ]);
+
+  useEffect(() => {
+    const mapInstance =
+      map.current;
+
+    if (
+      !mapInstance ||
+      !mapReady
+    ) {
+      return undefined;
+    }
+
+    let cancelled =
+      false;
+
+    const clearDynamicMapData =
+      () => {
+        routeMarkers.current.forEach(
+          (marker) => {
+            try {
+              marker.remove();
+            } catch {
+              // El marcador ya pudo ser eliminado.
+            }
+          },
+        );
+
+        routeMarkers.current =
+          [];
+
+        routePopups.current.forEach(
+          (popup) => {
+            try {
+              popup.remove();
+            } catch {
+              // El popup ya pudo ser eliminado.
+            }
+          },
+        );
+
+        routePopups.current =
+          [];
+
+        liveMarkers.current.forEach(
+          (marker) => {
+            try {
+              marker.remove();
+            } catch {
+              // El marcador ya pudo ser eliminado.
+            }
+          },
+        );
+
+        liveMarkers.current =
+          [];
+
+        if (
+          map.current !==
+            mapInstance ||
+          !mapInstance.getStyle()
+        ) {
+          circleLayersRef.current =
+            [];
+
+          return;
+        }
+
+        circleLayersRef.current.forEach(
+          (id) => {
+            const fillId =
+              `circle-fill-${id}`;
+            const outlineId =
+              `circle-outline-${id}`;
+            const sourceId =
+              `circle-source-${id}`;
+
+            try {
+              if (
+                mapInstance.getLayer(
+                  fillId,
+                )
+              ) {
+                mapInstance.removeLayer(
+                  fillId,
+                );
+              }
+
+              if (
+                mapInstance.getLayer(
+                  outlineId,
+                )
+              ) {
+                mapInstance.removeLayer(
+                  outlineId,
+                );
+              }
+
+              if (
+                mapInstance.getSource(
+                  sourceId,
+                )
+              ) {
+                mapInstance.removeSource(
+                  sourceId,
+                );
+              }
+            } catch (cleanupError) {
+              console.warn(
+                "⚠️ No fue posible limpiar una geocerca:",
+                cleanupError,
+              );
+            }
+          },
+        );
+
+        circleLayersRef.current =
+          [];
+      };
 
     const paintMap = () => {
-      routeMarkers.current.forEach((m) => m.remove());
-      routeMarkers.current = [];
-      routePopups.current.forEach((p) => p.remove());
-      routePopups.current = [];
-      liveMarkers.current.forEach((m) => m.remove());
-      liveMarkers.current = [];
-      circleLayersRef.current.forEach((id) => {
-        if (map.current.getLayer(`circle-fill-${id}`)) map.current.removeLayer(`circle-fill-${id}`);
-        if (map.current.getLayer(`circle-outline-${id}`)) map.current.removeLayer(`circle-outline-${id}`);
-        if (map.current.getSource(`circle-source-${id}`)) map.current.removeSource(`circle-source-${id}`);
-      });
-      circleLayersRef.current = [];
+      if (
+        cancelled ||
+        map.current !==
+          mapInstance ||
+        !mapInstance.isStyleLoaded()
+      ) {
+        return;
+      }
 
-      const bounds = new mapboxgl.LngLatBounds();
-      let hasCoords = false;
+      clearDynamicMapData();
 
-      filteredRoutes.forEach((route) => {
-        const lng = Number.parseFloat(route.lng);
-        const lat = Number.parseFloat(route.lat);
+      const bounds =
+        new mapboxgl.LngLatBounds();
 
-        if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+      let coordinateCount =
+        0;
 
-        hasCoords = true;
+      filteredRoutes.forEach(
+        (route) => {
+          const lng =
+            Number.parseFloat(
+              route.lng,
+            );
 
-        const el = document.createElement("div");
-        el.style.cssText = `width:22px;height:22px;cursor:pointer;`;
+          const lat =
+            Number.parseFloat(
+              route.lat,
+            );
 
-        const dot = document.createElement("div");
-        dot.style.cssText = `width:22px;height:22px;background-color:${statusToColor(route.status)};border-radius:50%;border:3px solid white;box-shadow:0 4px 6px rgba(0,0,0,0.2);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);`;
-        el.appendChild(dot);
+          if (
+            !Number.isFinite(
+              lng,
+            ) ||
+            !Number.isFinite(
+              lat,
+            )
+          ) {
+            return;
+          }
 
-        const marker = new mapboxgl.Marker(el)
-          .setLngLat([lng, lat])
-          .addTo(map.current);
+          coordinateCount +=
+            1;
 
-        const popup = new mapboxgl.Popup({
-          offset: 15,
-          closeButton: false,
-          closeOnClick: false,
-        }).setHTML(`
-          <div style="font-family:'Outfit';padding:10px 6px;min-width:200px;">
-            <p style="font-weight:900;margin:0 0 8px 0;font-size:12px;color:#111827;text-transform:uppercase;letter-spacing:-0.02em;">${escapeHtml(route.cadena || 'Sin nombre')}</p>
-            <div style="font-size:10px;font-weight:700;color:#374151;line-height:1.9;">
-              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Código del local:</span><br/>${escapeHtml(route.codigo_local || 'S/N')}</div>
-              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Dirección:</span><br/>${escapeHtml(route.direccion || route.comuna || 'Sin dirección')}</div>
-              <div><span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">Mercaderista:</span><br/>${escapeHtml(route.usuario_nombre || 'Sin asignar')}</div>
-            </div>
-            <div style="margin-top:8px;">
-              <span style="font-size:8px;font-weight:900;color:white;background:${statusToColor(route.status)};padding:3px 8px;border-radius:6px;display:inline-block;text-transform:uppercase;letter-spacing:0.05em;">
-                ${statusLabel(route.status)}
-              </span>
-            </div>
-          </div>
-        `);
+          const element =
+            document.createElement(
+              "button",
+            );
 
-        el.addEventListener("mouseenter", () => {
-          dot.style.transform = 'scale(1.4)';
-          popup.setLngLat([lng, lat]).addTo(map.current);
-        });
-        el.addEventListener("mouseleave", () => {
-          dot.style.transform = 'scale(1)';
-          popup.remove();
-        });
+          element.type =
+            "button";
 
-        routeMarkers.current.push(marker);
-        routePopups.current.push(popup);
-        bounds.extend([lng, lat]);
-      });
+          element.setAttribute(
+            "aria-label",
+            `Ver ${
+              route.cadena ||
+              route.codigo_local ||
+              "local"
+            }`,
+          );
 
-      activeRoutes.forEach((route, index) => {
-        const lng = Number.parseFloat(route.lng_in);
-        const lat = Number.parseFloat(route.lat_in);
+          element.style.cssText =
+            "width:28px;height:28px;padding:0;border:0;background:transparent;cursor:pointer;";
 
-        if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+          const dot =
+            document.createElement(
+              "span",
+            );
 
-        hasCoords = true;
-        const userColor = stringToColor(route.user_id || "default");
-        
-        const circleGeoJSON = createGeoJSONCircle([lng, lat], 0.3);
+          dot.style.cssText = `
+            display:block;
+            width:22px;
+            height:22px;
+            margin:3px;
+            background-color:${statusToColor(
+              route.status,
+            )};
+            border-radius:9999px;
+            border:3px solid white;
+            box-shadow:0 4px 8px rgba(0,0,0,0.22);
+            transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+          `;
 
-        map.current.addSource(`circle-source-${index}`, { type: "geojson", data: circleGeoJSON });
-        
-        // 🚩 Geocerca de usuarios activos pasa a color azul (#2563eb)
-        map.current.addLayer({
-          id: `circle-fill-${index}`,
-          type: "fill",
-          source: `circle-source-${index}`,
-          paint: { "fill-color": "#2563eb", "fill-opacity": 0.12 },
-        });
-        map.current.addLayer({
-          id: `circle-outline-${index}`,
-          type: "line",
-          source: `circle-source-${index}`,
-          paint: { "line-color": "#2563eb", "line-width": 2, "line-dasharray": [2, 2] },
-        });
+          element.appendChild(
+            dot,
+          );
 
-        circleLayersRef.current.push(index);
+          const marker =
+            new mapboxgl.Marker({
+              element,
+              anchor:
+                "center",
+            })
+              .setLngLat([
+                lng,
+                lat,
+              ])
+              .addTo(
+                mapInstance,
+              );
 
-        const el = document.createElement("div");
-        el.className = "custom-marker";
-        el.style.cssText = `
-          width: 32px; height: 32px;
-          background-color: ${userColor};
-          border-radius: 10px; border: 3px solid white;
-          box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-          display: flex; align-items: center; justify-content: center;
-          cursor: pointer; transition: transform 0.2s; z-index: 10;
-        `;
-        el.innerHTML = `<span style="color:white; font-family:'Outfit'; font-size:11px; font-weight:900;">${route.first_name?.[0]}${route.last_name?.[0]}</span>`;
+          const popup =
+            new mapboxgl.Popup({
+              offset: 16,
+              closeButton:
+                true,
+              closeOnClick:
+                true,
+              maxWidth:
+                "280px",
+            }).setHTML(`
+              <div style="font-family:'Outfit';padding:10px 6px;min-width:200px;">
+                <p style="font-weight:900;margin:0 0 8px 0;font-size:12px;color:#111827;text-transform:uppercase;letter-spacing:-0.02em;">
+                  ${escapeHtml(
+                    route.cadena ||
+                    "Sin nombre",
+                  )}
+                </p>
 
-        const marker = new mapboxgl.Marker(el)
-          .setLngLat([lng, lat])
-          .setPopup(new mapboxgl.Popup({ offset: 20 }).setHTML(`
-              <div style="font-family: 'Outfit'; padding: 6px;">
-                  <p style="font-weight: 900; font-size: 11px; margin: 0; color: #111;">${escapeHtml(`${route.first_name || ''} ${route.last_name || ''}`.trim() || 'Usuario')}</p>
-                  <p style="font-size: 9px; color: #2563eb; font-weight: 700; margin: 2px 0 0 0; text-transform: uppercase;">
-                    ${escapeHtml(route.local_nombre || 'En Movimiento')}
-                  </p>
+                <div style="font-size:10px;font-weight:700;color:#374151;line-height:1.9;">
+                  <div>
+                    <span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">
+                      Código del local:
+                    </span>
+                    <br/>
+                    ${escapeHtml(
+                      route.codigo_local ||
+                      "S/N",
+                    )}
+                  </div>
+
+                  <div>
+                    <span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">
+                      Dirección:
+                    </span>
+                    <br/>
+                    ${escapeHtml(
+                      route.direccion ||
+                      route.comuna ||
+                      "Sin dirección",
+                    )}
+                  </div>
+
+                  <div>
+                    <span style="color:#9ca3af;text-transform:uppercase;font-size:8px;letter-spacing:0.05em;">
+                      Mercaderista:
+                    </span>
+                    <br/>
+                    ${escapeHtml(
+                      route.usuario_nombre ||
+                      "Sin asignar",
+                    )}
+                  </div>
+                </div>
+
+                <div style="margin-top:8px;">
+                  <span style="font-size:8px;font-weight:900;color:white;background:${statusToColor(
+                    route.status,
+                  )};padding:3px 8px;border-radius:6px;display:inline-block;text-transform:uppercase;letter-spacing:0.05em;">
+                    ${statusLabel(
+                      route.status,
+                    )}
+                  </span>
+                </div>
               </div>
-          `))
-          .addTo(map.current);
-        
-        liveMarkers.current.push(marker);
-        bounds.extend([lng, lat]);
-      });
+            `);
 
-      if (hasCoords && !bounds.isEmpty()) {
-        map.current.fitBounds(bounds, {
-          padding: 80,
-          duration: 1000,
-          maxZoom: 15,
-        });
+          const showPopup =
+            () => {
+              dot.style.transform =
+                "scale(1.35)";
+
+              popup
+                .setLngLat([
+                  lng,
+                  lat,
+                ])
+                .addTo(
+                  mapInstance,
+                );
+            };
+
+          const hidePopup =
+            () => {
+              dot.style.transform =
+                "scale(1)";
+
+              popup.remove();
+            };
+
+          element.addEventListener(
+            "mouseenter",
+            showPopup,
+          );
+
+          element.addEventListener(
+            "mouseleave",
+            hidePopup,
+          );
+
+          element.addEventListener(
+            "focus",
+            showPopup,
+          );
+
+          element.addEventListener(
+            "blur",
+            hidePopup,
+          );
+
+          element.addEventListener(
+            "click",
+            (event) => {
+              event.stopPropagation();
+
+              setSelectedRoute(
+                route,
+              );
+
+              showPopup();
+
+              mapInstance.flyTo({
+                center: [
+                  lng,
+                  lat,
+                ],
+                zoom: 14,
+                duration: 850,
+                essential:
+                  true,
+              });
+            },
+          );
+
+          routeMarkers.current.push(
+            marker,
+          );
+
+          routePopups.current.push(
+            popup,
+          );
+
+          bounds.extend([
+            lng,
+            lat,
+          ]);
+        },
+      );
+
+      activeRoutes.forEach(
+        (
+          route,
+          index,
+        ) => {
+          const lng =
+            Number.parseFloat(
+              route.lng_in,
+            );
+
+          const lat =
+            Number.parseFloat(
+              route.lat_in,
+            );
+
+          if (
+            !Number.isFinite(
+              lng,
+            ) ||
+            !Number.isFinite(
+              lat,
+            )
+          ) {
+            return;
+          }
+
+          coordinateCount +=
+            1;
+
+          const userColor =
+            stringToColor(
+              route.user_id ||
+              "default",
+            );
+
+          const circleGeoJSON =
+            createGeoJSONCircle(
+              [
+                lng,
+                lat,
+              ],
+              0.3,
+            );
+
+          const sourceId =
+            `circle-source-${index}`;
+
+          const fillId =
+            `circle-fill-${index}`;
+
+          const outlineId =
+            `circle-outline-${index}`;
+
+          if (
+            !mapInstance.getSource(
+              sourceId,
+            )
+          ) {
+            mapInstance.addSource(
+              sourceId,
+              {
+                type:
+                  "geojson",
+                data:
+                  circleGeoJSON,
+              },
+            );
+          }
+
+          if (
+            !mapInstance.getLayer(
+              fillId,
+            )
+          ) {
+            mapInstance.addLayer({
+              id:
+                fillId,
+              type:
+                "fill",
+              source:
+                sourceId,
+              paint: {
+                "fill-color":
+                  "#2563eb",
+                "fill-opacity":
+                  0.12,
+              },
+            });
+          }
+
+          if (
+            !mapInstance.getLayer(
+              outlineId,
+            )
+          ) {
+            mapInstance.addLayer({
+              id:
+                outlineId,
+              type:
+                "line",
+              source:
+                sourceId,
+              paint: {
+                "line-color":
+                  "#2563eb",
+                "line-width":
+                  2,
+                "line-dasharray": [
+                  2,
+                  2,
+                ],
+              },
+            });
+          }
+
+          circleLayersRef.current.push(
+            index,
+          );
+
+          const element =
+            document.createElement(
+              "button",
+            );
+
+          element.type =
+            "button";
+
+          element.setAttribute(
+            "aria-label",
+            `Ver ubicación de ${
+              `${route.first_name || ""} ${route.last_name || ""}`.trim() ||
+              "usuario"
+            }`,
+          );
+
+          element.style.cssText = `
+            width:32px;
+            height:32px;
+            padding:0;
+            background-color:${userColor};
+            border-radius:10px;
+            border:3px solid white;
+            box-shadow:0 10px 20px rgba(0,0,0,0.2);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            cursor:pointer;
+            transition:transform 0.2s;
+            color:white;
+            font-family:'Outfit';
+            font-size:11px;
+            font-weight:900;
+          `;
+
+          element.textContent =
+            `${route.first_name?.[0] || ""}${route.last_name?.[0] || ""}` ||
+            "U";
+
+          const popup =
+            new mapboxgl.Popup({
+              offset: 20,
+              maxWidth:
+                "260px",
+            }).setHTML(`
+              <div style="font-family:'Outfit';padding:6px;">
+                <p style="font-weight:900;font-size:11px;margin:0;color:#111;">
+                  ${escapeHtml(
+                    `${route.first_name || ""} ${route.last_name || ""}`.trim() ||
+                    "Usuario",
+                  )}
+                </p>
+
+                <p style="font-size:9px;color:#2563eb;font-weight:700;margin:2px 0 0;text-transform:uppercase;">
+                  ${escapeHtml(
+                    route.local_nombre ||
+                    "En movimiento",
+                  )}
+                </p>
+              </div>
+            `);
+
+          const marker =
+            new mapboxgl.Marker({
+              element,
+              anchor:
+                "center",
+            })
+              .setLngLat([
+                lng,
+                lat,
+              ])
+              .setPopup(
+                popup,
+              )
+              .addTo(
+                mapInstance,
+              );
+
+          liveMarkers.current.push(
+            marker,
+          );
+
+          bounds.extend([
+            lng,
+            lat,
+          ]);
+        },
+      );
+
+      if (
+        coordinateCount > 0 &&
+        !didInitialFit.current
+      ) {
+        if (
+          coordinateCount ===
+          1
+        ) {
+          mapInstance.flyTo({
+            center:
+              bounds.getCenter(),
+            zoom: 14,
+            duration: 850,
+            essential:
+              true,
+          });
+        } else {
+          mapInstance.fitBounds(
+            bounds,
+            {
+              padding:
+                window.innerWidth <
+                640
+                  ? 44
+                  : 70,
+              maxZoom: 14,
+              duration: 850,
+            },
+          );
+        }
+
+        didInitialFit.current =
+          true;
       }
     };
 
-    if (map.current.isStyleLoaded()) paintMap();
-    else map.current.once('style.load', paintMap);
-  }, [filteredRoutes, activeRoutes]);
+    if (
+      mapInstance.isStyleLoaded()
+    ) {
+      paintMap();
+    } else {
+      mapInstance.once(
+        "style.load",
+        paintMap,
+      );
+    }
+
+    return () => {
+      cancelled =
+        true;
+
+      mapInstance.off(
+        "style.load",
+        paintMap,
+      );
+
+      clearDynamicMapData();
+    };
+  }, [
+    activeRoutes,
+    filteredRoutes,
+    mapReady,
+  ]);
 
   const flyToRoute = (route) => {
     if (!map.current) return;
@@ -410,7 +1160,50 @@ const LiveMap = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col font-[Outfit] bg-gray-50/50">
+    <div className="live-map-stable flex min-h-full w-full flex-col bg-gray-50/50 font-[Outfit]">
+      <style>{`
+        .live-map-stable .mapboxgl-map,
+        .live-map-stable .mapboxgl-canvas-container,
+        .live-map-stable .mapboxgl-canvas {
+          width: 100% !important;
+          height: 100% !important;
+        }
+
+        .live-map-stable .mapboxgl-canvas {
+          outline: none;
+        }
+
+        .live-map-stable .mapboxgl-ctrl-top-right {
+          top: 0.75rem;
+          right: 0.75rem;
+        }
+
+        .live-map-stable .mapboxgl-ctrl-group {
+          overflow: hidden;
+          border: 1px solid rgb(226 232 240 / 0.9);
+          border-radius: 0.9rem;
+          box-shadow: 0 10px 25px rgb(15 23 42 / 0.12);
+        }
+
+        .live-map-stable .mapboxgl-popup {
+          max-width: min(280px, calc(100vw - 2rem)) !important;
+        }
+
+        .live-map-stable .mapboxgl-popup-content {
+          border-radius: 1rem;
+          box-shadow: 0 18px 45px rgb(15 23 42 / 0.18);
+        }
+
+        .live-map-stable .mapboxgl-popup-close-button {
+          right: 0.4rem;
+          top: 0.3rem;
+          width: 1.8rem;
+          height: 1.8rem;
+          border-radius: 0.65rem;
+          color: #64748b;
+          font-size: 1.1rem;
+        }
+      `}</style>
       <div className="bg-white border-b border-slate-200/80 px-6 py-6 md:px-8 md:py-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
@@ -423,9 +1216,9 @@ const LiveMap = () => {
             </p>
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
+        <div className="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center md:w-auto md:justify-end">
           {/* 🚩 Indicadores de color superiores corregidos */}
-          <div className="flex gap-4 bg-gray-50 px-5 py-3 rounded-[1rem] border border-gray-100 w-full sm:w-auto justify-center">
+          <div className="flex w-full items-center justify-start gap-4 overflow-x-auto rounded-[1rem] border border-gray-100 bg-gray-50 px-5 py-3 sm:w-auto sm:justify-center">
             <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] shadow-sm"></span>Pendiente</span>
             <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#2563eb] shadow-sm"></span>Proceso</span>
             <span className="text-[9px] font-black flex items-center gap-2 uppercase tracking-widest text-gray-500"><span className="w-2.5 h-2.5 rounded-full bg-[#87be00] shadow-sm"></span>Completada</span>
@@ -471,10 +1264,10 @@ const LiveMap = () => {
           </div>
         )}
 
-        <div className="flex flex-col md:flex-row gap-4 md:gap-6 shrink-0 md:h-[480px]">
+        <div className="flex min-h-0 shrink-0 flex-col gap-4 lg:h-[560px] lg:flex-row lg:gap-6">
 
           {/* MAPA */}
-          <div className="h-[400px] md:h-full flex-1 min-w-0 bg-white rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden flex flex-col">
+          <div className="relative isolate h-[55vh] min-h-[420px] w-full min-w-0 overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm lg:h-full lg:min-h-0 lg:flex-1">
             {!loading && filteredRoutes.length === 0 && activeRoutes.length === 0 && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 text-gray-400 bg-gray-50/80 backdrop-blur-sm">
                 <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300"><FiAlertCircle size={32} /></div>
@@ -483,10 +1276,19 @@ const LiveMap = () => {
                 </p>
               </div>
             )}
-            <div ref={mapContainer} className="flex-1 w-full h-full" />
+            <div
+              ref={mapContainer}
+              className="absolute inset-0 h-full min-h-[420px] w-full"
+              style={{
+                width: "100%",
+                height: "100%",
+                minHeight:
+                  "420px",
+              }}
+            />
             <button
               onClick={() => setPanelOpen(!panelOpen)}
-              className="absolute top-6 left-6 z-10 bg-gray-900 text-white shadow-xl shadow-gray-900/20 rounded-2xl p-3.5 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+              className="absolute left-4 top-4 z-10 flex h-12 items-center gap-2 rounded-2xl bg-gray-900 px-4 text-white shadow-xl shadow-gray-900/20 transition hover:bg-black active:scale-95 sm:left-5 sm:top-5"
             >
               <FiList size={18} />
               <span className="text-[9px] font-black uppercase tracking-widest hidden sm:block">{panelOpen ? 'Ocultar' : 'Locales'}</span>
@@ -499,7 +1301,7 @@ const LiveMap = () => {
           </div>
 
           {/* RESUMEN RUTAS */}
-          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 p-6 flex flex-col shrink-0 w-full md:w-64 lg:w-72">
+          <div className="flex w-full shrink-0 flex-col rounded-[2rem] border border-gray-100 bg-white p-5 shadow-xl shadow-gray-200/50 sm:p-6 lg:w-72">
             <div className="flex items-center justify-between mb-5">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Resumen Rutas</p>
               <div className="flex items-center gap-2">
@@ -507,7 +1309,7 @@ const LiveMap = () => {
                 <span className="text-3xl font-black italic text-gray-900 leading-none">{stats.total}</span>
               </div>
             </div>
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-1">
               {[
                 { label: 'Pendiente',  count: stats.pending,    color: 'bg-[#ef4444]' },
                 { label: 'En Proceso', count: stats.inProgress, color: 'bg-[#2563eb]' }, // 🚩 Azul
@@ -532,8 +1334,8 @@ const LiveMap = () => {
 
         {/* PANEL DE DESPLIEGUE */}
         <div className={`
-          transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] shrink-0 flex flex-col md:h-[380px]
-          ${panelOpen ? 'opacity-100' : 'max-h-0 overflow-hidden opacity-0 md:h-0'}
+          transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] shrink-0 flex flex-col lg:h-[420px]
+          ${panelOpen ? 'max-h-[1800px] opacity-100 lg:max-h-none' : 'max-h-0 overflow-hidden opacity-0 lg:h-0'}
         `}>
 
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col overflow-hidden flex-1 min-h-0">
@@ -560,7 +1362,7 @@ const LiveMap = () => {
               </div>
               
               {/* 🚩 BOTONES INFERIORES: Ajustados para reflejar la inversión de colores real en la UI */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <button onClick={() => setStatusFilter("ALL")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "ALL" ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-500"}`}>Todas</button>
                 <button onClick={() => setStatusFilter("PENDING")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "PENDING" ? "bg-red-500 text-white" : "bg-red-50 text-red-500"}`}>Pendientes</button>
                 <button onClick={() => setStatusFilter("IN_PROGRESS")} className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase ${statusFilter === "IN_PROGRESS" ? "bg-blue-500 text-white" : "bg-blue-50 text-blue-500"}`}>En Proceso</button>

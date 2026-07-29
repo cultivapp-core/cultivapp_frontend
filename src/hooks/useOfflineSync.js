@@ -29,6 +29,12 @@ const ONLINE_SYNC_DELAY_MS =
 const AUTH_REQUIRED_STORAGE_KEY =
   "cultivapp_offline_auth_required";
 
+const OFFLINE_ALLOWED_ROLES =
+  new Set([
+    "USUARIO",
+    "MERCADERISTA",
+  ]);
+
 const getStoredUser = () => {
   try {
     const rawUser =
@@ -45,6 +51,19 @@ const getStoredUser = () => {
     return null;
   }
 };
+
+const canCurrentUserUseOfflineSync =
+  () => {
+    const role =
+      String(
+        getStoredUser()?.role ||
+        "",
+      ).toUpperCase();
+
+    return OFFLINE_ALLOWED_ROLES.has(
+      role,
+    );
+  };
 
 const isSessionAuthError = (
   statusCode,
@@ -514,6 +533,18 @@ export const useOfflineSync =
     ] = useState(false);
 
     const [
+      offlineEnabled,
+      setOfflineEnabled,
+    ] = useState(
+      canCurrentUserUseOfflineSync,
+    );
+
+    const offlineEnabledRef =
+      useRef(
+        offlineEnabled,
+      );
+
+    const [
       queueStats,
       setQueueStats,
     ] = useState({
@@ -554,6 +585,32 @@ export const useOfflineSync =
     ] = useState(
       "Tu sesión venció. Vuelve a ingresar en este dispositivo para sincronizar.",
     );
+
+    const updateOfflineAccess =
+      useCallback(() => {
+        const nextEnabled =
+          canCurrentUserUseOfflineSync();
+
+        offlineEnabledRef.current =
+          nextEnabled;
+
+        setOfflineEnabled(
+          nextEnabled,
+        );
+
+        if (!nextEnabled) {
+          setSyncing(false);
+          setCurrentItem(null);
+          setQueueStats({
+            pendingCount: 0,
+            failedCount: 0,
+            totalCount: 0,
+            lastError: null,
+          });
+        }
+
+        return nextEnabled;
+      }, []);
 
     const isSyncingRef =
       useRef(false);
@@ -628,6 +685,23 @@ export const useOfflineSync =
 
     const refreshStats =
       useCallback(async () => {
+        if (
+          !offlineEnabledRef.current
+        ) {
+          const emptyStats = {
+            pendingCount: 0,
+            failedCount: 0,
+            totalCount: 0,
+            lastError: null,
+          };
+
+          setQueueStats(
+            emptyStats,
+          );
+
+          return emptyStats;
+        }
+
         try {
           const stats =
             await getSyncQueueStats();
@@ -659,6 +733,12 @@ export const useOfflineSync =
         silent = false,
         force = false,
       } = {}) => {
+        if (
+          !updateOfflineAccess()
+        ) {
+          return null;
+        }
+
         if (
           typeof navigator !==
             "undefined" &&
@@ -1259,6 +1339,7 @@ export const useOfflineSync =
         clearAuthRequired,
         markAuthRequired,
         refreshStats,
+        updateOfflineAccess,
       ]);
 
     const scheduleSync =
@@ -1299,6 +1380,12 @@ export const useOfflineSync =
     useEffect(() => {
       const resumeAfterLogin =
         () => {
+          if (
+            !updateOfflineAccess()
+          ) {
+            return false;
+          }
+
           const currentToken =
             getToken();
 
@@ -1365,6 +1452,12 @@ export const useOfflineSync =
 
       const initialize =
         async () => {
+          if (
+            !updateOfflineAccess()
+          ) {
+            return;
+          }
+
           await normalizeLegacySyncQueue();
           await refreshStats();
 
@@ -1410,6 +1503,12 @@ export const useOfflineSync =
           );
 
           if (
+            !updateOfflineAccess()
+          ) {
+            return;
+          }
+
+          if (
             authRequiredRef.current
           ) {
             toast.error(
@@ -1446,6 +1545,12 @@ export const useOfflineSync =
             false,
           );
 
+          if (
+            !updateOfflineAccess()
+          ) {
+            return;
+          }
+
           toast.error(
             "Sin conexión. El avance seguirá guardado en el dispositivo.",
             {
@@ -1457,6 +1562,12 @@ export const useOfflineSync =
 
       const handleQueueChanged =
         () => {
+          if (
+            !updateOfflineAccess()
+          ) {
+            return;
+          }
+
           refreshStats();
 
           if (
@@ -1472,6 +1583,12 @@ export const useOfflineSync =
       const handleSyncRequested =
         () => {
           if (
+            !updateOfflineAccess()
+          ) {
+            return;
+          }
+
+          if (
             navigator.onLine &&
             !authRequiredRef.current
           ) {
@@ -1486,6 +1603,12 @@ export const useOfflineSync =
 
       const handleAuthRequired =
         (event) => {
+          if (
+            !updateOfflineAccess()
+          ) {
+            return;
+          }
+
           const message =
             event?.detail
               ?.message ||
@@ -1503,6 +1626,12 @@ export const useOfflineSync =
           if (
             document.visibilityState !==
               "visible"
+          ) {
+            return;
+          }
+
+          if (
+            !updateOfflineAccess()
           ) {
             return;
           }
@@ -1570,6 +1699,7 @@ export const useOfflineSync =
         window.setInterval(
           () => {
             if (
+              offlineEnabledRef.current &&
               navigator.onLine &&
               !isSyncingRef.current &&
               !authRequiredRef.current
@@ -1590,7 +1720,12 @@ export const useOfflineSync =
       const authenticationWatcher =
         window.setInterval(
           () => {
-            resumeAfterLogin();
+            const enabled =
+              updateOfflineAccess();
+
+            if (enabled) {
+              resumeAfterLogin();
+            }
           },
           800,
         );
@@ -1659,6 +1794,7 @@ export const useOfflineSync =
       refreshStats,
       scheduleSync,
       startSync,
+      updateOfflineAccess,
     ]);
 
     return {
@@ -1676,6 +1812,7 @@ export const useOfflineSync =
       lastResult,
       authRequired,
       authMessage,
+      offlineEnabled,
       startSync,
       refreshStats,
     };

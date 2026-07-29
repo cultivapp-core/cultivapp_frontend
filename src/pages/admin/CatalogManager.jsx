@@ -1,14 +1,57 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   FiPlus, FiAward, FiTrash2, FiEdit2, FiTag, FiX,
   FiUploadCloud, FiRotateCw, FiPackage, FiSearch,
-  FiHelpCircle, FiDownload, FiCheckCircle, FiAlertCircle
+  FiHelpCircle, FiDownload, FiCheckCircle, FiAlertCircle,
+  FiBriefcase, FiChevronDown
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx";
 
-const EMPTY_PRODUCT = { name: "", barcode: "", brand_id: "", category_id: "" };
+const CULTIVA_COMPANY_ID =
+  "0e342e01-d213-4353-b210-39a12ac335cf";
+
+const AUTHORIZED_ROOT_USER_ID =
+  "177b6c2d-2ec0-417e-a0a7-24354904e2e7";
+
+const EMPTY_PRODUCT = {
+  name: "",
+  barcode: "",
+  brand_id: "",
+  category_id: "",
+  company_id: "",
+};
+
+const getResponseData = (
+  response,
+  fallback = [],
+) => {
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  if (Array.isArray(response?.data)) {
+    return response.data;
+  }
+
+  return fallback;
+};
+
+const buildCompanyQuery = (
+  companyId,
+) =>
+  companyId
+    ? `?company_id=${encodeURIComponent(
+        companyId,
+      )}`
+    : "";
 
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message ||
@@ -17,6 +60,71 @@ const getErrorMessage = (error, fallback) =>
   fallback;
 
 const CatalogManager = () => {
+  const currentUser =
+    useMemo(() => {
+      try {
+        const storedUser =
+          localStorage.getItem(
+            "user",
+          );
+
+        return storedUser
+          ? JSON.parse(
+              storedUser,
+            )
+          : null;
+      } catch {
+        return null;
+      }
+    }, []);
+
+  const normalizedRole =
+    String(
+      currentUser?.role ||
+      "",
+    ).toUpperCase();
+
+  const currentUserId =
+    String(
+      currentUser?.id ||
+      currentUser?.user_id ||
+      currentUser?.sub ||
+      "",
+    );
+
+  const isCultivaAdmin =
+    normalizedRole ===
+      "ADMIN_CLIENTE" &&
+    String(
+      currentUser?.company_id ||
+      "",
+    ) ===
+      CULTIVA_COMPANY_ID;
+
+  const isAuthorizedRoot =
+    normalizedRole ===
+      "ROOT" &&
+    currentUserId ===
+      AUTHORIZED_ROOT_USER_ID;
+
+  const canManageCompanies =
+    isCultivaAdmin ||
+    isAuthorizedRoot;
+
+  const [companies, setCompanies] =
+    useState([]);
+
+  const [
+    selectedCompanyId,
+    setSelectedCompanyId,
+  ] = useState("");
+
+  const effectiveCompanyId =
+    canManageCompanies
+      ? selectedCompanyId
+      : currentUser?.company_id ||
+        "";
+
   const [brands, setBrands] = useState([]);
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
@@ -39,36 +147,431 @@ const CatalogManager = () => {
   const [editingBrandId, setEditingBrandId] = useState(null);
   const [editingCategoryId, setEditingCategoryId] = useState(null);
 
-  const [productData, setProductData] = useState(EMPTY_PRODUCT);
+  const [productData, setProductData] =
+    useState(EMPTY_PRODUCT);
+
+  const [
+    productModalBrands,
+    setProductModalBrands,
+  ] = useState([]);
+
+  const [
+    productModalCategories,
+    setProductModalCategories,
+  ] = useState([]);
+
+  const [
+    productOptionsLoading,
+    setProductOptionsLoading,
+  ] = useState(false);
+
   const [brandName, setBrandName] = useState("");
+  const [
+    brandCompanyId,
+    setBrandCompanyId,
+  ] = useState("");
+
   const [categoryName, setCategoryName] = useState("");
+  const [
+    categoryCompanyId,
+    setCategoryCompanyId,
+  ] = useState("");
+
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const fileInputRef = useRef(null);
 
+  const selectedCompany =
+    useMemo(
+      () =>
+        companies.find(
+          (company) =>
+            String(
+              company.id,
+            ) ===
+            String(
+              selectedCompanyId,
+            ),
+        ) || null,
+      [
+        companies,
+        selectedCompanyId,
+      ],
+    );
+
+  const companyNameById = (
+    companyId,
+  ) => {
+    if (!companyId) {
+      return "";
+    }
+
+    const company =
+      companies.find(
+        (item) =>
+          String(item.id) ===
+          String(companyId),
+      );
+
+    return (
+      company?.name ||
+      company?.nombre ||
+      (
+        String(
+          currentUser?.company_id ||
+          "",
+        ) ===
+        String(companyId)
+          ? currentUser?.company_name ||
+            currentUser?.company?.name ||
+            "Mi empresa"
+          : "Empresa"
+      )
+    );
+  };
+
+  const scopeItemsToCompany = (
+    items,
+  ) => {
+    if (
+      !effectiveCompanyId
+    ) {
+      return items;
+    }
+
+    const hasCompanyField =
+      items.some(
+        (item) =>
+          item?.company_id,
+      );
+
+    if (!hasCompanyField) {
+      return items;
+    }
+
+    return items.filter(
+      (item) =>
+        String(
+          item.company_id,
+        ) ===
+        String(
+          effectiveCompanyId,
+        ),
+    );
+  };
+
+  const loadCompanies =
+    useCallback(async () => {
+      if (!canManageCompanies) {
+        setCompanies([]);
+        return;
+      }
+
+      try {
+        const response =
+          await api.get(
+            "/companies",
+          );
+
+        const companyData =
+          getResponseData(
+            response,
+            [],
+          )
+            .filter(
+              (company) =>
+                company?.is_active !==
+                false,
+            )
+            .sort(
+              (first, second) =>
+                String(
+                  first?.name ||
+                  first?.nombre ||
+                  "",
+                ).localeCompare(
+                  String(
+                    second?.name ||
+                    second?.nombre ||
+                    "",
+                  ),
+                  "es",
+                ),
+            );
+
+        setCompanies(
+          companyData,
+        );
+      } catch (error) {
+        console.error(
+          "Error cargando empresas del catálogo:",
+          error,
+        );
+
+        setCompanies([]);
+
+        toast.error(
+          getErrorMessage(
+            error,
+            "No se pudieron cargar las empresas",
+          ),
+        );
+      }
+    }, [
+      canManageCompanies,
+    ]);
+
+  const loadData =
+    useCallback(async () => {
+      try {
+        setLoading(true);
+
+        const query =
+          buildCompanyQuery(
+            effectiveCompanyId,
+          );
+
+        const [
+          resBrands,
+          resProducts,
+          resCategories,
+        ] = await Promise.all([
+          api.get(
+            `/routes/brands${query}`,
+          ),
+          api.get(
+            `/routes/products${query}`,
+          ),
+          api.get(
+            `/routes/categories${query}`,
+          ),
+        ]);
+
+        const brandData =
+          scopeItemsToCompany(
+            getResponseData(
+              resBrands,
+              [],
+            ),
+          );
+
+        const productData =
+          scopeItemsToCompany(
+            getResponseData(
+              resProducts,
+              [],
+            ),
+          );
+
+        const categoryData =
+          scopeItemsToCompany(
+            getResponseData(
+              resCategories,
+              [],
+            ),
+          );
+
+        setBrands(
+          brandData,
+        );
+
+        setProducts(
+          productData,
+        );
+
+        setCategories(
+          categoryData,
+        );
+      } catch (error) {
+        toast.error(
+          getErrorMessage(
+            error,
+            "Error al sincronizar el catálogo",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, [
+      effectiveCompanyId,
+    ]);
+
+  useEffect(() => {
+    loadCompanies();
+  }, [
+    loadCompanies,
+  ]);
+
   useEffect(() => {
     loadData();
-  }, []);
+  }, [
+    loadData,
+  ]);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
+  useEffect(() => {
+    setSearchTerm("");
+    setSelectedBrand("");
+    setSelectedCategory("");
+    setActiveTab(
+      "products",
+    );
+  }, [
+    selectedCompanyId,
+  ]);
 
-      const [resBrands, resProducts, resCategories] = await Promise.all([
-        api.get("/routes/brands"),
-        api.get("/routes/products"),
-        api.get("/routes/categories")
-      ]);
+  const requireTargetCompany =
+    (
+      actionLabel =
+        "realizar esta acción",
+    ) => {
+      const targetCompanyId =
+        effectiveCompanyId ||
+        currentUser?.company_id ||
+        "";
 
-      setBrands(Array.isArray(resBrands) ? resBrands : resBrands?.data || []);
-      setProducts(Array.isArray(resProducts) ? resProducts : resProducts?.data || []);
-      setCategories(Array.isArray(resCategories) ? resCategories : resCategories?.data || []);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Error al sincronizar el catálogo"));
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (
+        canManageCompanies &&
+        !targetCompanyId
+      ) {
+        toast.error(
+          `Selecciona una empresa para ${actionLabel}.`,
+        );
+
+        return null;
+      }
+
+      if (!targetCompanyId) {
+        toast.error(
+          "No fue posible identificar la empresa del usuario.",
+        );
+
+        return null;
+      }
+
+      return String(
+        targetCompanyId,
+      );
+    };
+
+
+  const loadProductOptions =
+    useCallback(
+      async (
+        companyId,
+      ) => {
+        if (!companyId) {
+          setProductModalBrands(
+            [],
+          );
+
+          setProductModalCategories(
+            [],
+          );
+
+          return;
+        }
+
+        try {
+          setProductOptionsLoading(
+            true,
+          );
+
+          const query =
+            buildCompanyQuery(
+              companyId,
+            );
+
+          const [
+            brandsResponse,
+            categoriesResponse,
+          ] = await Promise.all([
+            api.get(
+              `/routes/brands${query}`,
+            ),
+            api.get(
+              `/routes/categories${query}`,
+            ),
+          ]);
+
+          const brandsData =
+            getResponseData(
+              brandsResponse,
+              [],
+            );
+
+          const categoriesData =
+            getResponseData(
+              categoriesResponse,
+              [],
+            );
+
+          const filteredBrands =
+            brandsData.some(
+              (brand) =>
+                brand?.company_id,
+            )
+              ? brandsData.filter(
+                  (brand) =>
+                    String(
+                      brand.company_id,
+                    ) ===
+                    String(
+                      companyId,
+                    ),
+                )
+              : brandsData;
+
+          const filteredCategories =
+            categoriesData.some(
+              (category) =>
+                category?.company_id,
+            )
+              ? categoriesData.filter(
+                  (category) =>
+                    String(
+                      category.company_id,
+                    ) ===
+                    String(
+                      companyId,
+                    ),
+                )
+              : categoriesData;
+
+          setProductModalBrands(
+            filteredBrands,
+          );
+
+          setProductModalCategories(
+            filteredCategories,
+          );
+        } catch (error) {
+          console.error(
+            "Error cargando opciones del producto:",
+            error,
+          );
+
+          setProductModalBrands(
+            [],
+          );
+
+          setProductModalCategories(
+            [],
+          );
+
+          toast.error(
+            getErrorMessage(
+              error,
+              "No se pudieron cargar las marcas y categorías de la empresa",
+            ),
+          );
+        } finally {
+          setProductOptionsLoading(
+            false,
+          );
+        }
+      },
+      [],
+    );
 
   const brandNameById = (id) =>
     brands.find((item) => String(item.id) === String(id))?.name || "Sin marca";
@@ -110,72 +613,215 @@ const CatalogManager = () => {
   const closeProductModal = () => {
     setProductModal(false);
     setEditingProductId(null);
-    setProductData(EMPTY_PRODUCT);
+    setProductData(
+      EMPTY_PRODUCT,
+    );
+    setProductModalBrands(
+      [],
+    );
+    setProductModalCategories(
+      [],
+    );
+    setProductOptionsLoading(
+      false,
+    );
   };
 
   const closeBrandModal = () => {
     setBrandModal(false);
     setEditingBrandId(null);
     setBrandName("");
+    setBrandCompanyId("");
   };
 
   const closeCategoryModal = () => {
     setCategoryModal(false);
     setEditingCategoryId(null);
     setCategoryName("");
+    setCategoryCompanyId("");
   };
 
-  const openNewProduct = () => {
-    setEditingProductId(null);
-    setProductData(EMPTY_PRODUCT);
-    setProductModal(true);
-  };
+  const openNewProduct =
+    async () => {
+      const defaultCompanyId =
+        canManageCompanies
+          ? selectedCompanyId
+          : currentUser?.company_id ||
+            "";
 
-  const openEditProduct = (product) => {
-    setEditingProductId(product.id);
-    setProductData({
-      name: product.name || "",
-      barcode: product.barcode || "",
-      brand_id: product.brand_id || "",
-      category_id: product.category_id || ""
-    });
-    setProductModal(true);
-  };
+      setEditingProductId(
+        null,
+      );
+
+      setProductData({
+        ...EMPTY_PRODUCT,
+        company_id:
+          defaultCompanyId,
+      });
+
+      setProductModal(
+        true,
+      );
+
+      await loadProductOptions(
+        defaultCompanyId,
+      );
+    };
+
+  const openEditProduct =
+    async (product) => {
+      const companyId =
+        product.company_id ||
+        effectiveCompanyId ||
+        currentUser?.company_id ||
+        "";
+
+      setEditingProductId(
+        product.id,
+      );
+
+      setProductData({
+        name:
+          product.name || "",
+        barcode:
+          product.barcode || "",
+        brand_id:
+          product.brand_id || "",
+        category_id:
+          product.category_id || "",
+        company_id:
+          companyId,
+      });
+
+      setProductModal(
+        true,
+      );
+
+      await loadProductOptions(
+        companyId,
+      );
+    };
 
   const openNewBrand = () => {
-    setEditingBrandId(null);
-    setBrandName("");
-    setBrandModal(true);
+    const defaultCompanyId =
+      canManageCompanies
+        ? selectedCompanyId
+        : currentUser?.company_id ||
+          "";
+
+    setEditingBrandId(
+      null,
+    );
+
+    setBrandName(
+      "",
+    );
+
+    setBrandCompanyId(
+      defaultCompanyId,
+    );
+
+    setBrandModal(
+      true,
+    );
   };
 
   const openEditBrand = (brand) => {
     setEditingBrandId(brand.id);
     setBrandName(brand.name || "");
+    setBrandCompanyId(
+      brand.company_id ||
+      effectiveCompanyId ||
+      currentUser?.company_id ||
+      "",
+    );
     setBrandModal(true);
   };
 
   const openNewCategory = () => {
-    setEditingCategoryId(null);
-    setCategoryName("");
-    setCategoryModal(true);
+    const defaultCompanyId =
+      canManageCompanies
+        ? selectedCompanyId
+        : currentUser?.company_id ||
+          "";
+
+    setEditingCategoryId(
+      null,
+    );
+
+    setCategoryName(
+      "",
+    );
+
+    setCategoryCompanyId(
+      defaultCompanyId,
+    );
+
+    setCategoryModal(
+      true,
+    );
   };
 
   const openEditCategory = (category) => {
     setEditingCategoryId(category.id);
     setCategoryName(category.name || "");
+    setCategoryCompanyId(
+      category.company_id ||
+      effectiveCompanyId ||
+      currentUser?.company_id ||
+      "",
+    );
     setCategoryModal(true);
+  };
+
+  const openBulkUpload = () => {
+    const companyId =
+      requireTargetCompany(
+        "realizar una carga masiva",
+      );
+
+    if (!companyId) {
+      return;
+    }
+
+    fileInputRef.current?.click();
   };
 
   const handleBulkUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const companyId =
+      requireTargetCompany(
+        "realizar una carga masiva",
+      );
+
+    if (!companyId) {
+      if (
+        fileInputRef.current
+      ) {
+        fileInputRef.current.value =
+          "";
+      }
+
+      return;
+    }
+
     const formData = new FormData();
     formData.append("excel", file);
+    formData.append(
+      "company_id",
+      companyId,
+    );
 
     try {
       setBulkLoading(true);
-      const response = await api.post("/routes/products/bulk", formData);
+      const response = await api.post(
+        `/routes/products/bulk${buildCompanyQuery(
+          companyId,
+        )}`,
+        formData,
+      );
       toast.success(response?.message || "Carga masiva completada");
       await loadData();
     } catch (error) {
@@ -189,11 +835,29 @@ const CatalogManager = () => {
   const handleProductSubmit = async (event) => {
     event.preventDefault();
 
+    const companyId =
+      productData.company_id ||
+      (
+        !canManageCompanies
+          ? currentUser?.company_id
+          : ""
+      );
+
+    if (!companyId) {
+      toast.error(
+        "Selecciona la empresa donde se creará el producto.",
+      );
+
+      return;
+    }
+
     const payload = {
       name: productData.name.trim(),
       barcode: productData.barcode.trim(),
       brand_id: productData.brand_id,
-      category_id: productData.category_id
+      category_id: productData.category_id,
+      company_id:
+        companyId,
     };
 
     if (!payload.name || !payload.barcode || !payload.brand_id || !payload.category_id) {
@@ -204,7 +868,12 @@ const CatalogManager = () => {
     const duplicate = products.some(
       (product) =>
         String(product.barcode).trim().toLowerCase() === payload.barcode.toLowerCase() &&
-        String(product.id) !== String(editingProductId)
+        String(product.id) !== String(editingProductId) &&
+        (
+          !product.company_id ||
+          String(product.company_id) ===
+            String(companyId)
+        )
     );
 
     if (duplicate) {
@@ -216,10 +885,20 @@ const CatalogManager = () => {
       setSaving(true);
 
       if (editingProductId) {
-        await api.put(`/routes/products/${editingProductId}`, payload);
+        await api.put(
+          `/routes/products/${editingProductId}${buildCompanyQuery(
+            companyId,
+          )}`,
+          payload,
+        );
         toast.success("Producto actualizado");
       } else {
-        await api.post("/routes/products", payload);
+        await api.post(
+          `/routes/products${buildCompanyQuery(
+            companyId,
+          )}`,
+          payload,
+        );
         toast.success("Producto creado");
       }
 
@@ -236,6 +915,22 @@ const CatalogManager = () => {
     event.preventDefault();
     const name = brandName.trim();
 
+    const companyId =
+      brandCompanyId ||
+      (
+        !canManageCompanies
+          ? currentUser?.company_id
+          : ""
+      );
+
+    if (!companyId) {
+      toast.error(
+        "Selecciona la empresa donde se creará la marca.",
+      );
+
+      return;
+    }
+
     if (!name) {
       toast.error("Ingresa el nombre de la marca");
       return;
@@ -244,7 +939,12 @@ const CatalogManager = () => {
     const duplicate = brands.some(
       (brand) =>
         brand.name?.trim().toLowerCase() === name.toLowerCase() &&
-        String(brand.id) !== String(editingBrandId)
+        String(brand.id) !== String(editingBrandId) &&
+        (
+          !brand.company_id ||
+          String(brand.company_id) ===
+            String(companyId)
+        )
     );
 
     if (duplicate) {
@@ -256,10 +956,28 @@ const CatalogManager = () => {
       setSaving(true);
 
       if (editingBrandId) {
-        await api.put(`/routes/brands/${editingBrandId}`, { name });
+        await api.put(
+          `/routes/brands/${editingBrandId}${buildCompanyQuery(
+            companyId,
+          )}`,
+          {
+            name,
+            company_id:
+              companyId,
+          },
+        );
         toast.success("Marca actualizada");
       } else {
-        await api.post("/routes/brands", { name });
+        await api.post(
+          `/routes/brands${buildCompanyQuery(
+            companyId,
+          )}`,
+          {
+            name,
+            company_id:
+              companyId,
+          },
+        );
         toast.success("Marca creada");
       }
 
@@ -276,6 +994,22 @@ const CatalogManager = () => {
     event.preventDefault();
     const name = categoryName.trim();
 
+    const companyId =
+      categoryCompanyId ||
+      (
+        !canManageCompanies
+          ? currentUser?.company_id
+          : ""
+      );
+
+    if (!companyId) {
+      toast.error(
+        "Selecciona la empresa donde se creará la categoría.",
+      );
+
+      return;
+    }
+
     if (!name) {
       toast.error("Ingresa el nombre de la categoría");
       return;
@@ -284,7 +1018,12 @@ const CatalogManager = () => {
     const duplicate = categories.some(
       (category) =>
         category.name?.trim().toLowerCase() === name.toLowerCase() &&
-        String(category.id) !== String(editingCategoryId)
+        String(category.id) !== String(editingCategoryId) &&
+        (
+          !category.company_id ||
+          String(category.company_id) ===
+            String(companyId)
+        )
     );
 
     if (duplicate) {
@@ -296,10 +1035,28 @@ const CatalogManager = () => {
       setSaving(true);
 
       if (editingCategoryId) {
-        await api.put(`/routes/categories/${editingCategoryId}`, { name });
+        await api.put(
+          `/routes/categories/${editingCategoryId}${buildCompanyQuery(
+            companyId,
+          )}`,
+          {
+            name,
+            company_id:
+              companyId,
+          },
+        );
         toast.success("Categoría actualizada");
       } else {
-        await api.post("/routes/categories", { name });
+        await api.post(
+          `/routes/categories${buildCompanyQuery(
+            companyId,
+          )}`,
+          {
+            name,
+            company_id:
+              companyId,
+          },
+        );
         toast.success("Categoría creada");
       }
 
@@ -318,9 +1075,34 @@ const CatalogManager = () => {
     const { type, item } = deleteTarget;
 
     try {
-      if (type === "product") await api.delete(`/routes/products/${item.id}`);
-      if (type === "brand") await api.delete(`/routes/brands/${item.id}`);
-      if (type === "category") await api.delete(`/routes/categories/${item.id}`);
+      const companyId =
+        item.company_id ||
+        effectiveCompanyId ||
+        currentUser?.company_id ||
+        "";
+
+      const companyQuery =
+        buildCompanyQuery(
+          companyId,
+        );
+
+      if (type === "product") {
+        await api.delete(
+          `/routes/products/${item.id}${companyQuery}`,
+        );
+      }
+
+      if (type === "brand") {
+        await api.delete(
+          `/routes/brands/${item.id}${companyQuery}`,
+        );
+      }
+
+      if (type === "category") {
+        await api.delete(
+          `/routes/categories/${item.id}${companyQuery}`,
+        );
+      }
 
       toast.success("Registro eliminado");
       setDeleteTarget(null);
@@ -356,6 +1138,29 @@ const CatalogManager = () => {
               <p className="mt-3 text-xs font-medium leading-relaxed text-gray-500">
                 Administra productos, marcas y categorías desde un solo módulo.
               </p>
+
+              {canManageCompanies && (
+                <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-xl border border-[#87be00]/20 bg-[#87be00]/5 px-3 py-2">
+                  <FiBriefcase
+                    className="shrink-0 text-[#87be00]"
+                    size={13}
+                  />
+
+                  <span className="truncate text-[9px] font-black uppercase tracking-[0.12em] text-[#679300]">
+                    {selectedCompany
+                      ? `Empresa: ${
+                          selectedCompany.name ||
+                          selectedCompany.nombre ||
+                          "Seleccionada"
+                        }`
+                      : `${
+                          isAuthorizedRoot
+                            ? "ROOT"
+                            : "Cultiva"
+                        } · Vista global · Selecciona una empresa para crear o importar`}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 xl:flex xl:w-auto">
@@ -396,7 +1201,7 @@ const CatalogManager = () => {
               <ActionButton
                 icon={bulkLoading ? <FiRotateCw className="animate-spin" /> : <FiUploadCloud />}
                 label="Carga masiva"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={openBulkUpload}
                 disabled={bulkLoading}
               />
 
@@ -428,6 +1233,56 @@ const CatalogManager = () => {
               </div>
 
               <div className="flex flex-col gap-3 lg:flex-row">
+                {canManageCompanies && (
+                  <div className="relative min-w-0 lg:min-w-[270px]">
+                    <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
+                      <FiBriefcase
+                        size={14}
+                      />
+                    </span>
+
+                    <select
+                      value={
+                        selectedCompanyId
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        setSelectedCompanyId(
+                          event.target.value,
+                        )
+                      }
+                      className="catalog-company-select h-12 w-full cursor-pointer appearance-none"
+                    >
+                      <option value="">
+                        Todas las empresas
+                      </option>
+
+                      {companies.map(
+                        (company) => (
+                          <option
+                            key={
+                              company.id
+                            }
+                            value={
+                              company.id
+                            }
+                          >
+                            {company.name ||
+                              company.nombre ||
+                              "Empresa"}
+                          </option>
+                        ),
+                      )}
+                    </select>
+
+                    <FiChevronDown
+                      className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                      size={15}
+                    />
+                  </div>
+                )}
+
                 <div className="relative min-w-0 flex-1 lg:min-w-[260px]">
                   <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
@@ -471,7 +1326,24 @@ const CatalogManager = () => {
                     icon={<FiPackage />}
                     title={product.name}
                     subtitle={`EAN: ${product.barcode || "—"}`}
-                    badges={[brandNameById(product.brand_id), categoryNameById(product.category_id)]}
+                    badges={[
+                      ...(
+                        canManageCompanies &&
+                        !selectedCompanyId
+                          ? [
+                              companyNameById(
+                                product.company_id,
+                              ),
+                            ]
+                          : []
+                      ),
+                      brandNameById(
+                        product.brand_id,
+                      ),
+                      categoryNameById(
+                        product.category_id,
+                      ),
+                    ].filter(Boolean)}
                     onEdit={() => openEditProduct(product)}
                     onDelete={() => setDeleteTarget({ type: "product", item: product })}
                   />
@@ -491,6 +1363,16 @@ const CatalogManager = () => {
                       icon={<FiAward />}
                       title={brand.name}
                       subtitle={`${count} productos asociados`}
+                      badges={
+                        canManageCompanies &&
+                        !selectedCompanyId
+                          ? [
+                              companyNameById(
+                                brand.company_id,
+                              ),
+                            ].filter(Boolean)
+                          : []
+                      }
                       onEdit={() => openEditBrand(brand)}
                       onDelete={() => {
                         if (count > 0) return toast.error("La marca tiene productos asociados");
@@ -514,6 +1396,16 @@ const CatalogManager = () => {
                       icon={<FiTag />}
                       title={category.name}
                       subtitle={`${count} productos asociados`}
+                      badges={
+                        canManageCompanies &&
+                        !selectedCompanyId
+                          ? [
+                              companyNameById(
+                                category.company_id,
+                              ),
+                            ].filter(Boolean)
+                          : []
+                      }
                       onEdit={() => openEditCategory(category)}
                       onDelete={() => {
                         if (count > 0) return toast.error("La categoría tiene productos asociados");
@@ -537,12 +1429,109 @@ const CatalogManager = () => {
       {productModal && (
         <Modal title={editingProductId ? "Editar producto" : "Nuevo producto"} onClose={closeProductModal}>
           <form onSubmit={handleProductSubmit} className="space-y-4">
+            {canManageCompanies &&
+            !editingProductId ? (
+              <CompanySelectField
+                value={
+                  productData.company_id
+                }
+                companies={
+                  companies
+                }
+                disabled={
+                  saving ||
+                  productOptionsLoading
+                }
+                description="El producto, su marca y su categoría quedarán asociados a esta empresa."
+                onChange={async (
+                  companyId,
+                ) => {
+                  setProductData(
+                    (current) => ({
+                      ...current,
+                      company_id:
+                        companyId,
+                      brand_id:
+                        "",
+                      category_id:
+                        "",
+                    }),
+                  );
+
+                  await loadProductOptions(
+                    companyId,
+                  );
+                }}
+              />
+            ) : (
+              <CompanyContextBanner
+                name={
+                  companyNameById(
+                    productData.company_id,
+                  )
+                }
+              />
+            )}
+
             <InputField label="Nombre" value={productData.name} onChange={(value) => setProductData({ ...productData, name: value })} />
             <InputField label="EAN" value={productData.barcode} onChange={(value) => setProductData({ ...productData, barcode: value })} />
 
             <div className="grid md:grid-cols-2 gap-4">
-              <SelectField label="Marca" value={productData.brand_id} onChange={(value) => setProductData({ ...productData, brand_id: value })} options={brands} />
-              <SelectField label="Categoría" value={productData.category_id} onChange={(value) => setProductData({ ...productData, category_id: value })} options={categories} />
+              <SelectField
+                label="Marca"
+                value={
+                  productData.brand_id
+                }
+                onChange={(value) =>
+                  setProductData({
+                    ...productData,
+                    brand_id:
+                      value,
+                  })
+                }
+                options={
+                  productModalBrands
+                }
+                disabled={
+                  !productData.company_id ||
+                  productOptionsLoading
+                }
+                placeholder={
+                  productOptionsLoading
+                    ? "Cargando marcas..."
+                    : !productData.company_id
+                      ? "Selecciona una empresa"
+                      : "Seleccionar"
+                }
+              />
+
+              <SelectField
+                label="Categoría"
+                value={
+                  productData.category_id
+                }
+                onChange={(value) =>
+                  setProductData({
+                    ...productData,
+                    category_id:
+                      value,
+                  })
+                }
+                options={
+                  productModalCategories
+                }
+                disabled={
+                  !productData.company_id ||
+                  productOptionsLoading
+                }
+                placeholder={
+                  productOptionsLoading
+                    ? "Cargando categorías..."
+                    : !productData.company_id
+                      ? "Selecciona una empresa"
+                      : "Seleccionar"
+                }
+              />
             </div>
 
             <ModalActions loading={saving} onCancel={closeProductModal} />
@@ -552,18 +1541,114 @@ const CatalogManager = () => {
 
       {brandModal && (
         <Modal title={editingBrandId ? "Editar marca" : "Nueva marca"} onClose={closeBrandModal}>
-          <form onSubmit={handleBrandSubmit} className="space-y-4">
-            <InputField label="Nombre de la marca" value={brandName} onChange={setBrandName} />
-            <ModalActions loading={saving} onCancel={closeBrandModal} />
+          <form
+            onSubmit={
+              handleBrandSubmit
+            }
+            className="space-y-4"
+          >
+            {canManageCompanies &&
+            !editingBrandId ? (
+              <CompanySelectField
+                value={
+                  brandCompanyId
+                }
+                companies={
+                  companies
+                }
+                disabled={
+                  saving
+                }
+                description="La nueva marca quedará asociada únicamente a la empresa seleccionada."
+                onChange={
+                  setBrandCompanyId
+                }
+              />
+            ) : (
+              <CompanyContextBanner
+                name={
+                  companyNameById(
+                    brandCompanyId,
+                  )
+                }
+              />
+            )}
+
+            <InputField
+              label="Nombre de la marca"
+              value={
+                brandName
+              }
+              onChange={
+                setBrandName
+              }
+            />
+
+            <ModalActions
+              loading={
+                saving
+              }
+              onCancel={
+                closeBrandModal
+              }
+            />
           </form>
         </Modal>
       )}
 
       {categoryModal && (
         <Modal title={editingCategoryId ? "Editar categoría" : "Nueva categoría"} onClose={closeCategoryModal}>
-          <form onSubmit={handleCategorySubmit} className="space-y-4">
-            <InputField label="Nombre de la categoría" value={categoryName} onChange={setCategoryName} />
-            <ModalActions loading={saving} onCancel={closeCategoryModal} />
+          <form
+            onSubmit={
+              handleCategorySubmit
+            }
+            className="space-y-4"
+          >
+            {canManageCompanies &&
+            !editingCategoryId ? (
+              <CompanySelectField
+                value={
+                  categoryCompanyId
+                }
+                companies={
+                  companies
+                }
+                disabled={
+                  saving
+                }
+                description="La nueva categoría quedará asociada únicamente a la empresa seleccionada."
+                onChange={
+                  setCategoryCompanyId
+                }
+              />
+            ) : (
+              <CompanyContextBanner
+                name={
+                  companyNameById(
+                    categoryCompanyId,
+                  )
+                }
+              />
+            )}
+
+            <InputField
+              label="Nombre de la categoría"
+              value={
+                categoryName
+              }
+              onChange={
+                setCategoryName
+              }
+            />
+
+            <ModalActions
+              loading={
+                saving
+              }
+              onCancel={
+                closeCategoryModal
+              }
+            />
           </form>
         </Modal>
       )}
@@ -601,6 +1686,49 @@ const CatalogManager = () => {
         }
 
         .catalog-input:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+
+        .catalog-company-select {
+          width: 100%;
+          min-height: 3rem;
+          border: 1px solid rgb(229 231 235);
+          background: rgb(249 250 251);
+          border-radius: 1rem;
+          padding-top: 0.75rem;
+          padding-bottom: 0.75rem;
+          padding-left: 4rem !important;
+          padding-right: 3rem !important;
+          font-size: 0.75rem;
+          font-weight: 800;
+          line-height: 1.25rem;
+          color: rgb(31 41 55);
+          outline: none;
+          box-shadow:
+            inset 0 1px 2px rgb(0 0 0 / 0.025),
+            0 1px 2px rgb(15 23 42 / 0.03);
+          transition:
+            border-color 160ms ease,
+            background-color 160ms ease,
+            box-shadow 160ms ease,
+            transform 160ms ease;
+        }
+
+        .catalog-company-select:hover:not(:disabled) {
+          border-color: rgb(135 190 0 / 0.35);
+          background: white;
+        }
+
+        .catalog-company-select:focus {
+          border-color: rgb(135 190 0 / 0.6);
+          background: white;
+          box-shadow:
+            0 0 0 4px rgb(135 190 0 / 0.1),
+            0 8px 20px rgb(15 23 42 / 0.06);
+        }
+
+        .catalog-company-select:disabled {
           cursor: not-allowed;
           opacity: 0.55;
         }
@@ -897,6 +2025,98 @@ const BulkProductsHelpModal = ({ onClose }) => {
   );
 };
 
+const CompanySelectField = ({
+  value,
+  companies,
+  onChange,
+  disabled = false,
+  description =
+    "El registro quedará asociado a la empresa seleccionada.",
+}) => (
+  <label className="block">
+    <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.16em] text-gray-500">
+      Empresa
+    </span>
+
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-[0.9rem] border border-[#87be00]/15 bg-[#87be00]/10 text-[#87be00] shadow-sm">
+        <FiBriefcase
+          size={16}
+        />
+      </span>
+
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(event) =>
+          onChange(
+            event.target.value,
+          )
+        }
+        className="catalog-company-select min-h-[3.75rem] w-full cursor-pointer appearance-none disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <option value="">
+          Selecciona una empresa
+        </option>
+
+        {companies.map(
+          (company) => (
+            <option
+              key={company.id}
+              value={company.id}
+            >
+              {company.name ||
+                company.nombre ||
+                "Empresa"}
+            </option>
+          ),
+        )}
+      </select>
+
+      <FiChevronDown
+        className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+        size={17}
+      />
+    </div>
+
+    <div className="mt-2.5 flex items-start gap-2 rounded-xl border border-[#87be00]/10 bg-[#87be00]/5 px-3 py-2.5">
+      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#87be00]" />
+
+      <p className="text-[9px] font-semibold leading-relaxed text-gray-500">
+        {description}
+      </p>
+    </div>
+  </label>
+);
+
+const CompanyContextBanner = ({
+  name,
+}) => {
+  if (!name) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-[#87be00]/20 bg-[#87be00]/5 px-4 py-3">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
+        <FiBriefcase
+          size={15}
+        />
+      </span>
+
+      <div className="min-w-0">
+        <p className="text-[8px] font-black uppercase tracking-[0.14em] text-[#679300]">
+          Empresa del registro
+        </p>
+
+        <p className="mt-0.5 truncate text-xs font-black text-gray-800">
+          {name}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const ActionButton = ({ icon, label, onClick, disabled }) => (
   <button type="button" onClick={onClick} disabled={disabled} className="flex items-center justify-center gap-2 rounded-2xl border border-gray-100 bg-white px-4 py-3.5 text-[9px] font-black uppercase tracking-[0.12em] text-gray-600 shadow-sm transition-all hover:border-[#87be00]/40 hover:bg-[#87be00]/5 hover:text-[#679300] disabled:cursor-not-allowed disabled:opacity-50">
     {icon}{label}
@@ -966,12 +2186,43 @@ const InputField = ({ label, value, onChange }) => (
   </label>
 );
 
-const SelectField = ({ label, value, onChange, options }) => (
+const SelectField = ({
+  label,
+  value,
+  onChange,
+  options,
+  disabled = false,
+  placeholder = "Seleccionar",
+}) => (
   <label className="block">
-    <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.14em] text-gray-500">{label}</span>
-    <select value={value} onChange={(event) => onChange(event.target.value)} className="catalog-input w-full">
-      <option value="">Seleccionar</option>
-      {options.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+    <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.14em] text-gray-500">
+      {label}
+    </span>
+
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(event) =>
+        onChange(
+          event.target.value,
+        )
+      }
+      className="catalog-input w-full disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <option value="">
+        {placeholder}
+      </option>
+
+      {options.map(
+        (item) => (
+          <option
+            key={item.id}
+            value={item.id}
+          >
+            {item.name}
+          </option>
+        ),
+      )}
     </select>
   </label>
 );
