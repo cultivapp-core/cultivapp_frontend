@@ -4,16 +4,66 @@ import {
   useRef,
   useState,
 } from "react";
+import toast from "react-hot-toast";
+
+import api from "../api/apiClient";
 import {
+  countPendingSync,
   getPendingSync,
   markSyncItemRetry,
   removeFromSyncQueue,
 } from "../utils/db";
-import api from "../api/apiClient";
-import toast from "react-hot-toast";
 import {
   OFFLINE_SYNC_EVENTS,
 } from "../services/offlineManager";
+
+const AUTO_RETRY_INTERVAL_MS =
+  15_000;
+
+const ONLINE_SYNC_DELAY_MS =
+  1_000;
+
+const getStoredUser = () => {
+  try {
+    const stored =
+      localStorage.getItem(
+        "user",
+      );
+
+    return stored
+      ? JSON.parse(stored)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const hasValidSession = () => {
+  const token =
+    localStorage.getItem(
+      "token",
+    );
+
+  if (
+    !token ||
+    token === "null" ||
+    token ===
+      "undefined"
+  ) {
+    return false;
+  }
+
+  const role =
+    String(
+      getStoredUser()?.role ||
+      "",
+    ).toUpperCase();
+
+  return [
+    "USUARIO",
+    "MERCADERISTA",
+  ].includes(role);
+};
 
 const base64ToFile = (
   value,
@@ -34,7 +84,8 @@ const base64ToFile = (
 
   const binary =
     atob(
-      parts[1] || "",
+      parts[1] ||
+      "",
     );
 
   const bytes =
@@ -57,7 +108,8 @@ const base64ToFile = (
     [bytes],
     fallbackName,
     {
-      type: mime,
+      type:
+        mime,
     },
   );
 };
@@ -73,10 +125,12 @@ const appendFormValue = (
   ) {
     const file =
       value.blob instanceof
-      File
+        File
         ? value.blob
         : new File(
-            [value.blob],
+            [
+              value.blob,
+            ],
             value.name ||
               `archivo-${Date.now()}`,
             {
@@ -102,7 +156,8 @@ const appendFormValue = (
   }
 
   if (
-    value instanceof Blob
+    value instanceof
+      Blob
   ) {
     formData.append(
       key,
@@ -139,7 +194,10 @@ const appendFormValue = (
 const rebuildBody = (
   payload,
 ) => {
-  if (!payload) {
+  if (
+    payload === undefined ||
+    payload === null
+  ) {
     return null;
   }
 
@@ -150,34 +208,18 @@ const rebuildBody = (
     const formData =
       new FormData();
 
-    if (
+    const entries =
       Array.isArray(
         payload.entries,
       )
-    ) {
-      payload.entries.forEach(
-        ({
-          key,
-          value,
-        }) => {
-          appendFormValue(
-            formData,
-            key,
-            value,
-          );
-        },
-      );
+        ? payload.entries
+        : [];
 
-      return formData;
-    }
-
-    Object.entries(
-      payload.data || {},
-    ).forEach(
-      ([
+    entries.forEach(
+      ({
         key,
         value,
-      ]) => {
+      }) => {
         appendFormValue(
           formData,
           key,
@@ -191,7 +233,7 @@ const rebuildBody = (
 
   if (
     typeof payload ===
-    "string"
+      "string"
   ) {
     try {
       return JSON.parse(
@@ -241,9 +283,15 @@ const executeRequest = async (
       method
     ] !== "function"
   ) {
-    throw new Error(
-      `Método HTTP no soportado: ${method}`,
-    );
+    const error =
+      new Error(
+        `Método HTTP no soportado: ${method}`,
+      );
+
+    error.permanent =
+      true;
+
+    throw error;
   }
 
   if (
@@ -252,7 +300,20 @@ const executeRequest = async (
     return api.delete(
       item.endpoint,
       {
-        data: body,
+        data:
+          body,
+      },
+    );
+  }
+
+  if (
+    method === "get"
+  ) {
+    return api.get(
+      item.endpoint,
+      {
+        params:
+          body || undefined,
       },
     );
   }
@@ -265,75 +326,62 @@ const executeRequest = async (
   );
 };
 
-const processLegacyItem =
-  async (
-    item,
-    body,
-  ) => {
-    const {
-      type,
-      routeId,
-    } = item;
+const getStatusCode = (
+  error,
+) =>
+  error?.status ||
+  error?.response
+    ?.status ||
+  null;
 
-    if (
-      !type ||
-      !routeId
-    ) {
-      throw new Error(
-        "Operación offline incompleta.",
-      );
-    }
+const getErrorMessage = (
+  error,
+) =>
+  error?.response
+    ?.data?.message ||
+  error?.data?.message ||
+  error?.message ||
+  "Error de sincronización";
 
-    switch (type) {
-      case "PHOTO":
-        return api.post(
-          `/routes/${routeId}/photo`,
-          body,
-        );
+const isNetworkFailure = (
+  error,
+) =>
+  !error?.response ||
+  error?.code ===
+    "ERR_NETWORK" ||
+  error?.message ===
+    "Network Error" ||
+  error?.name ===
+    "AbortError";
 
-      case "SCAN":
-        return api.post(
-          `/routes/${routeId}/scans`,
-          body,
-        );
+const isPermanentError = (
+  error,
+) => {
+  if (
+    error?.permanent ===
+      true
+  ) {
+    return true;
+  }
 
-      case "TASK":
-        return api.post(
-          `/routes/${routeId}/task`,
-          body,
-        );
+  return [
+    400,
+    404,
+    413,
+    422,
+  ].includes(
+    getStatusCode(error),
+  );
+};
 
-      case "FINISH":
-        return api.post(
-          `/routes/${routeId}/finish`,
-          body,
-        );
-
-      case "CHECK_IN": {
-        const error =
-          new Error(
-            "Un check-in antiguo no puede sincronizarse porque requiere validar el GPS en tiempo real.",
-          );
-
-        error.permanent =
-          true;
-
-        throw error;
-      }
-
-      default: {
-        const error =
-          new Error(
-            "Tipo de operación offline desconocido.",
-          );
-
-        error.permanent =
-          true;
-
-        throw error;
-      }
-    }
-  };
+const routeKeyForItem = (
+  item,
+) =>
+  item.routeId
+    ? String(
+        item.routeId,
+      )
+    : `global:${item.type || "OTHER"}`;
 
 export const useOfflineSync =
   () => {
@@ -341,7 +389,10 @@ export const useOfflineSync =
       isOnline,
       setIsOnline,
     ] = useState(
-      navigator.onLine,
+      typeof navigator ===
+        "undefined"
+        ? true
+        : navigator.onLine,
     );
 
     const [
@@ -349,83 +400,75 @@ export const useOfflineSync =
       setSyncing,
     ] = useState(false);
 
+    const [
+      pendingCount,
+      setPendingCount,
+    ] = useState(0);
+
     const isSyncingRef =
       useRef(false);
 
-    const startSync =
+    const syncAgainRef =
+      useRef(false);
+
+    const scheduledTimerRef =
+      useRef(null);
+
+    const updatePendingCount =
       useCallback(async () => {
+        try {
+          const count =
+            await countPendingSync();
+
+          setPendingCount(
+            count,
+          );
+
+          return count;
+        } catch (error) {
+          console.error(
+            "Error contando operaciones offline:",
+            error,
+          );
+
+          return 0;
+        }
+      }, []);
+
+    const startSync =
+      useCallback(async ({
+        silent = false,
+      } = {}) => {
         if (
-          isSyncingRef.current ||
+          typeof navigator !==
+            "undefined" &&
           !navigator.onLine
         ) {
-          return;
+          return {
+            synchronizedCount:
+              0,
+            discardedCount:
+              0,
+            pendingCount:
+              await updatePendingCount(),
+          };
         }
-
-        const token =
-          localStorage.getItem(
-            "token",
-          );
 
         if (
-          !token ||
-          token === "null" ||
-          token ===
-            "undefined"
+          isSyncingRef.current
         ) {
-          return;
+          syncAgainRef.current =
+            true;
+
+          return null;
         }
-
-        /*
-         * La cola offline de visitas solo debe sincronizarse
-         * cuando la sesión corresponde a un usuario de terreno.
-         *
-         * Esto evita que ROOT, ADMIN_CLIENTE, SUPERVISOR o VIEW
-         * intenten procesar operaciones guardadas anteriormente
-         * por un mercaderista en el mismo dispositivo.
-         */
-        const storedUser =
-          localStorage.getItem(
-            "user",
-          );
-
-        let currentUser =
-          null;
-
-        try {
-          currentUser =
-            storedUser
-              ? JSON.parse(
-                  storedUser,
-                )
-              : null;
-        } catch {
-          currentUser =
-            null;
-        }
-
-        const currentRole =
-          String(
-            currentUser
-              ?.role ||
-              "",
-          ).toUpperCase();
-
-        const canSyncOfflineVisits =
-          [
-            "USUARIO",
-            "MERCADERISTA",
-          ].includes(
-            currentRole,
-          );
 
         if (
-          !canSyncOfflineVisits
+          !hasValidSession()
         ) {
-          toast.dismiss(
-            "offline-sync",
-          );
+          await updatePendingCount();
 
-          return;
+          return null;
         }
 
         const pending =
@@ -434,11 +477,29 @@ export const useOfflineSync =
         if (
           pending.length === 0
         ) {
-          return;
+          await updatePendingCount();
+
+          if (!silent) {
+            toast.dismiss(
+              "offline-sync",
+            );
+          }
+
+          return {
+            synchronizedCount:
+              0,
+            discardedCount:
+              0,
+            pendingCount:
+              0,
+          };
         }
 
         isSyncingRef.current =
           true;
+
+        syncAgainRef.current =
+          false;
 
         setSyncing(true);
 
@@ -448,11 +509,28 @@ export const useOfflineSync =
         let discardedCount =
           0;
 
-        toast.loading(
-          "Sincronizando datos pendientes...",
+        let deferredCount =
+          0;
+
+        const blockedRoutes =
+          new Set();
+
+        if (!silent) {
+          toast.loading(
+            "Sincronizando datos pendientes...",
+            {
+              id:
+                "offline-sync",
+            },
+          );
+        }
+
+        dispatchSyncEvent(
+          OFFLINE_SYNC_EVENTS
+            .SYNC_STARTED,
           {
-            id:
-              "offline-sync",
+            pendingCount:
+              pending.length,
           },
         );
 
@@ -461,8 +539,37 @@ export const useOfflineSync =
             const item of
             pending
           ) {
+            if (
+              typeof navigator !==
+                "undefined" &&
+              !navigator.onLine
+            ) {
+              break;
+            }
+
+            const routeKey =
+              routeKeyForItem(
+                item,
+              );
+
+            /*
+             * Si una operación de una visita falla temporalmente,
+             * las posteriores de esa misma visita deben esperar.
+             * Las visitas distintas sí pueden continuar.
+             */
+            if (
+              blockedRoutes.has(
+                routeKey,
+              )
+            ) {
+              deferredCount +=
+                1;
+
+              continue;
+            }
+
             try {
-              const isQueuedCheckIn =
+              const isCheckIn =
                 item.type ===
                   "CHECK_IN" ||
                 String(
@@ -472,12 +579,10 @@ export const useOfflineSync =
                   "/check-in",
                 );
 
-              if (
-                isQueuedCheckIn
-              ) {
+              if (isCheckIn) {
                 const error =
                   new Error(
-                    "El check-in GPS debe realizarse en línea y no puede sincronizarse desde una cola offline.",
+                    "El check-in GPS debe realizarse en línea.",
                   );
 
                 error.permanent =
@@ -492,16 +597,10 @@ export const useOfflineSync =
                 );
 
               const response =
-                item.method &&
-                item.endpoint
-                  ? await executeRequest(
-                      item,
-                      body,
-                    )
-                  : await processLegacyItem(
-                      item,
-                      body,
-                    );
+                await executeRequest(
+                  item,
+                  body,
+                );
 
               await removeFromSyncQueue(
                 item.id,
@@ -515,47 +614,29 @@ export const useOfflineSync =
                   .ITEM_SUCCESS,
                 {
                   item,
-                  response,
+                  response:
+                    response?.data ??
+                    response,
                 },
               );
             } catch (error) {
               const statusCode =
-                error?.status ||
-                error?.response
-                  ?.status ||
-                null;
+                getStatusCode(
+                  error,
+                );
 
               const message =
-                error?.response
-                  ?.data?.message ||
-                error?.message ||
-                "Error de sincronización";
-
-              if (
-                statusCode ===
-                  401 ||
-                statusCode ===
-                  403
-              ) {
-                await markSyncItemRetry(
-                  item.id,
-                  message,
+                getErrorMessage(
+                  error,
                 );
 
-                toast.error(
-                  "Tu sesión expiró o no tiene permisos. Inicia sesión para continuar la sincronización.",
-                  {
-                    id:
-                      "offline-sync",
-                  },
-                );
-
-                return;
-              }
-
+              /*
+               * Conflicto suele significar que la operación ya había
+               * sido procesada antes de un cierre o recarga.
+               */
               if (
                 statusCode ===
-                409
+                  409
               ) {
                 await removeFromSyncQueue(
                   item.id,
@@ -581,20 +662,44 @@ export const useOfflineSync =
                 continue;
               }
 
-              const permanentError =
-                error?.permanent ===
-                  true ||
-                [
-                  400,
-                  404,
-                  413,
-                  422,
-                ].includes(
-                  statusCode,
+              if (
+                statusCode ===
+                  401 ||
+                statusCode ===
+                  403
+              ) {
+                await markSyncItemRetry(
+                  item.id,
+                  message,
                 );
 
+                dispatchSyncEvent(
+                  OFFLINE_SYNC_EVENTS
+                    .ITEM_ERROR,
+                  {
+                    item,
+                    error:
+                      message,
+                    permanent:
+                      false,
+                  },
+                );
+
+                toast.error(
+                  "La sesión expiró o no tiene permisos. Inicia sesión nuevamente para sincronizar.",
+                  {
+                    id:
+                      "offline-sync",
+                  },
+                );
+
+                break;
+              }
+
               if (
-                permanentError
+                isPermanentError(
+                  error,
+                )
               ) {
                 await removeFromSyncQueue(
                   item.id,
@@ -615,6 +720,10 @@ export const useOfflineSync =
                   },
                 );
 
+                /*
+                 * No bloquear la visita por un dato irrecuperable:
+                 * se descarta y continúa con la siguiente operación.
+                 */
                 continue;
               }
 
@@ -622,6 +731,13 @@ export const useOfflineSync =
                 item.id,
                 message,
               );
+
+              blockedRoutes.add(
+                routeKey,
+              );
+
+              deferredCount +=
+                1;
 
               dispatchSyncEvent(
                 OFFLINE_SYNC_EVENTS
@@ -632,76 +748,169 @@ export const useOfflineSync =
                     message,
                   permanent:
                     false,
+                  network:
+                    isNetworkFailure(
+                      error,
+                    ),
                 },
               );
-
-              break;
             }
           }
 
-          if (
-            synchronizedCount >
-            0
-          ) {
-            toast.success(
-              `${synchronizedCount} operación${
-                synchronizedCount ===
-                1
-                  ? ""
-                  : "es"
-              } sincronizada${
-                synchronizedCount ===
-                1
-                  ? ""
-                  : "s"
-              }.`,
-              {
-                id:
-                  "offline-sync",
-              },
-            );
-          } else if (
-            discardedCount >
-            0
-          ) {
-            toast.error(
-              `${discardedCount} operación${
-                discardedCount ===
-                1
-                  ? ""
-                  : "es"
-              } no pudo${
-                discardedCount ===
-                1
-                  ? ""
-                  : "ieron"
-              } recuperarse.`,
-              {
-                id:
-                  "offline-sync",
-              },
-            );
-          } else {
-            toast.dismiss(
-              "offline-sync",
-            );
+          const remaining =
+            await updatePendingCount();
+
+          if (!silent) {
+            if (
+              synchronizedCount >
+                0 &&
+              remaining === 0
+            ) {
+              toast.success(
+                `${synchronizedCount} operación${
+                  synchronizedCount ===
+                  1
+                    ? ""
+                    : "es"
+                } sincronizada${
+                  synchronizedCount ===
+                  1
+                    ? ""
+                    : "s"
+                }.`,
+                {
+                  id:
+                    "offline-sync",
+                },
+              );
+            } else if (
+              synchronizedCount >
+              0
+            ) {
+              toast.success(
+                `${synchronizedCount} sincronizada${
+                  synchronizedCount ===
+                  1
+                    ? ""
+                    : "s"
+                }. Quedan ${remaining} pendiente${
+                  remaining ===
+                  1
+                    ? ""
+                    : "s"
+                }.`,
+                {
+                  id:
+                    "offline-sync",
+                },
+              );
+            } else if (
+              discardedCount >
+              0
+            ) {
+              toast.error(
+                `${discardedCount} operación${
+                  discardedCount ===
+                  1
+                    ? ""
+                    : "es"
+                } no pudo${
+                  discardedCount ===
+                  1
+                    ? ""
+                    : "ieron"
+                } recuperarse.`,
+                {
+                  id:
+                    "offline-sync",
+                },
+              );
+            } else {
+              toast.dismiss(
+                "offline-sync",
+              );
+            }
           }
+
+          const summary = {
+            synchronizedCount,
+            discardedCount,
+            deferredCount,
+            pendingCount:
+              remaining,
+          };
 
           dispatchSyncEvent(
             OFFLINE_SYNC_EVENTS
               .SYNC_COMPLETE,
-            {
-              synchronizedCount,
-              discardedCount,
-            },
+            summary,
           );
+
+          return summary;
         } finally {
           isSyncingRef.current =
             false;
 
           setSyncing(false);
+
+          if (
+            syncAgainRef.current &&
+            typeof navigator !==
+              "undefined" &&
+            navigator.onLine
+          ) {
+            syncAgainRef.current =
+              false;
+
+            window.setTimeout(
+              () =>
+                startSync({
+                  silent:
+                    true,
+                }),
+              300,
+            );
+          }
         }
-      }, []);
+      }, [
+        updatePendingCount,
+      ]);
+
+    const scheduleSync =
+      useCallback(
+        (
+          delay =
+            ONLINE_SYNC_DELAY_MS,
+          {
+            silent =
+              false,
+          } = {},
+        ) => {
+          if (
+            typeof window ===
+            "undefined"
+          ) {
+            return;
+          }
+
+          window.clearTimeout(
+            scheduledTimerRef.current,
+          );
+
+          scheduledTimerRef.current =
+            window.setTimeout(
+              () => {
+                startSync({
+                  silent,
+                });
+              },
+              delay,
+            );
+        },
+        [
+          startSync,
+        ],
+      );
 
     useEffect(() => {
       const handleOnline =
@@ -711,12 +920,15 @@ export const useOfflineSync =
           );
 
           toast.success(
-            "Conexión restablecida. Verificando datos...",
+            "Conexión restablecida. Sincronizando datos...",
+            {
+              id:
+                "offline-online",
+            },
           );
 
-          window.setTimeout(
-            startSync,
-            1200,
+          scheduleSync(
+            ONLINE_SYNC_DELAY_MS,
           );
         };
 
@@ -727,7 +939,11 @@ export const useOfflineSync =
           );
 
           toast.error(
-            "Sin conexión. El avance se guardará localmente.",
+            "Sin conexión. El avance se guardará en el dispositivo.",
+            {
+              id:
+                "offline-online",
+            },
           );
         };
 
@@ -739,18 +955,59 @@ export const useOfflineSync =
               "visible" &&
             navigator.onLine
           ) {
-            startSync();
+            scheduleSync(
+              300,
+              {
+                silent:
+                  true,
+              },
+            );
+          }
+        };
+
+      const handleFocus =
+        () => {
+          if (
+            navigator.onLine
+          ) {
+            scheduleSync(
+              300,
+              {
+                silent:
+                  true,
+              },
+            );
+          }
+        };
+
+      const handleSyncRequested =
+        () => {
+          if (
+            navigator.onLine
+          ) {
+            scheduleSync(
+              200,
+              {
+                silent:
+                  true,
+              },
+            );
           }
         };
 
       const handleQueueUpdated =
         () => {
+          updatePendingCount();
+
           if (
             navigator.onLine
           ) {
-            window.setTimeout(
-              startSync,
+            scheduleSync(
               250,
+              {
+                silent:
+                  true,
+              },
             );
           }
         };
@@ -763,6 +1020,22 @@ export const useOfflineSync =
       window.addEventListener(
         "offline",
         handleOffline,
+      );
+
+      window.addEventListener(
+        "focus",
+        handleFocus,
+      );
+
+      window.addEventListener(
+        "pageshow",
+        handleFocus,
+      );
+
+      window.addEventListener(
+        OFFLINE_SYNC_EVENTS
+          .SYNC_REQUESTED,
+        handleSyncRequested,
       );
 
       window.addEventListener(
@@ -783,18 +1056,26 @@ export const useOfflineSync =
               navigator.onLine &&
               !isSyncingRef.current
             ) {
-              startSync();
+              startSync({
+                silent:
+                  true,
+              });
             }
           },
-          20000,
+          AUTO_RETRY_INTERVAL_MS,
         );
+
+      updatePendingCount();
 
       if (
         navigator.onLine
       ) {
-        window.setTimeout(
-          startSync,
-          1200,
+        scheduleSync(
+          ONLINE_SYNC_DELAY_MS,
+          {
+            silent:
+              true,
+          },
         );
       }
 
@@ -807,6 +1088,22 @@ export const useOfflineSync =
         window.removeEventListener(
           "offline",
           handleOffline,
+        );
+
+        window.removeEventListener(
+          "focus",
+          handleFocus,
+        );
+
+        window.removeEventListener(
+          "pageshow",
+          handleFocus,
+        );
+
+        window.removeEventListener(
+          OFFLINE_SYNC_EVENTS
+            .SYNC_REQUESTED,
+          handleSyncRequested,
         );
 
         window.removeEventListener(
@@ -823,14 +1120,21 @@ export const useOfflineSync =
         window.clearInterval(
           backupInterval,
         );
+
+        window.clearTimeout(
+          scheduledTimerRef.current,
+        );
       };
     }, [
+      scheduleSync,
       startSync,
+      updatePendingCount,
     ]);
 
     return {
       isOnline,
       syncing,
+      pendingCount,
       startSync,
     };
   };

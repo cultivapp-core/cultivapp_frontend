@@ -7,9 +7,8 @@ import api from "./api/apiClient"
 import { presenceSocket } from "./services/presenceSocket"
 import { getDeviceInfo } from "./utils/deviceInfo"
 
-// --- HOOKS ---
-import { useOfflineSync } from "./hooks/useOfflineSync"
-import { FiRefreshCw } from "react-icons/fi"
+// --- SINCRONIZACIÓN OFFLINE GLOBAL ---
+import OfflineSyncMonitor from "./components/OfflineSyncMonitor"
 
 // --- AUTH PAGES ---
 import Login from "./pages/Login"
@@ -284,33 +283,18 @@ const HeartbeatMonitor = () => {
   return null;
 };
 
-const OfflineMonitor = () => {
-  const { syncing } = useOfflineSync();
-
-  if (!syncing) {
-    return null;
-  }
-
-  return (
-    <div className="fixed bottom-6 right-6 bg-black text-white px-4 py-3 rounded-2xl shadow-2xl z-[9999] flex items-center gap-3 border border-white/10 animate-bounce">
-      <FiRefreshCw
-        size={18}
-        className="animate-spin text-[#87be00]"
-      />
-
-      <span className="text-[10px] font-black uppercase tracking-tighter">
-        Sincronizando...
-      </span>
-    </div>
-  );
-};
-
 function App() {
   return (
     <AuthProvider>
       <NotificationProvider> 
         <BrowserRouter>
-          <OfflineMonitor />
+          {/*
+           * Monitor global único.
+           * Mantiene useOfflineSync activo durante toda la sesión,
+           * incluso cuando el usuario cambia de pantalla.
+           */}
+          <OfflineSyncMonitor />
+
           <HeartbeatMonitor /> 
           <Toaster 
             position="top-right"

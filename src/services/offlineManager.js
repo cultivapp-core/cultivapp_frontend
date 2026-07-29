@@ -7,6 +7,10 @@ import {
 export const OFFLINE_SYNC_EVENTS = {
   QUEUE_UPDATED:
     "cultivapp:offline-queue-updated",
+  SYNC_REQUESTED:
+    "cultivapp:offline-sync-requested",
+  SYNC_STARTED:
+    "cultivapp:sync-started",
   ITEM_SUCCESS:
     "cultivapp:sync-item-success",
   ITEM_ERROR:
@@ -41,14 +45,6 @@ const getOperationType = (
 
   if (
     normalized.includes(
-      "/photo",
-    )
-  ) {
-    return "PHOTO";
-  }
-
-  if (
-    normalized.includes(
       "/scans",
     )
   ) {
@@ -61,6 +57,14 @@ const getOperationType = (
     )
   ) {
     return "TASK";
+  }
+
+  if (
+    normalized.includes(
+      "/photo",
+    )
+  ) {
+    return "PHOTO";
   }
 
   return "OTHER";
@@ -76,11 +80,14 @@ const getRouteId = (
       /\/routes\/([^/?]+)/,
     );
 
-  return match?.[1] ||
-    null;
+  return (
+    match?.[1] ||
+    null
+  );
 };
 
-const dispatchQueueEvent = (
+const dispatchEvent = (
+  eventName,
   detail,
 ) => {
   if (
@@ -92,8 +99,7 @@ const dispatchQueueEvent = (
 
   window.dispatchEvent(
     new CustomEvent(
-      OFFLINE_SYNC_EVENTS
-        .QUEUE_UPDATED,
+      eventName,
       {
         detail,
       },
@@ -159,10 +165,16 @@ const OfflineManager = {
         normalizedMethod,
       payload:
         body,
-      metadata,
+      metadata: {
+        ...metadata,
+        queuedAt:
+          createdAt,
+      },
       status:
         "pending",
       retryCount: 0,
+      lastError: null,
+      nextRetryAt: null,
       createdAt,
       updatedAt:
         createdAt,
@@ -178,11 +190,38 @@ const OfflineManager = {
       id,
     };
 
-    dispatchQueueEvent({
-      action: "ADDED",
-      item:
-        savedItem,
-    });
+    dispatchEvent(
+      OFFLINE_SYNC_EVENTS
+        .QUEUE_UPDATED,
+      {
+        action:
+          "ADDED",
+        item:
+          savedItem,
+      },
+    );
+
+    /*
+     * Si el navegador cree tener conexión, solicita al hook global
+     * que procese inmediatamente la cola. El hook también reintenta
+     * cuando vuelve internet, al regresar a la pestaña y por intervalo.
+     */
+    if (
+      typeof navigator !==
+        "undefined" &&
+      navigator.onLine
+    ) {
+      dispatchEvent(
+        OFFLINE_SYNC_EVENTS
+          .SYNC_REQUESTED,
+        {
+          reason:
+            "QUEUE_ITEM_ADDED",
+          item:
+            savedItem,
+        },
+      );
+    }
 
     return savedItem;
   },
@@ -192,10 +231,15 @@ const OfflineManager = {
       id,
     );
 
-    dispatchQueueEvent({
-      action: "REMOVED",
-      id,
-    });
+    dispatchEvent(
+      OFFLINE_SYNC_EVENTS
+        .QUEUE_UPDATED,
+      {
+        action:
+          "REMOVED",
+        id,
+      },
+    );
   },
 
   hasPendingForRoute:
@@ -205,6 +249,19 @@ const OfflineManager = {
           routeId,
         )
       ) > 0,
+
+  requestSync: (
+    reason =
+      "MANUAL",
+  ) => {
+    dispatchEvent(
+      OFFLINE_SYNC_EVENTS
+        .SYNC_REQUESTED,
+      {
+        reason,
+      },
+    );
+  },
 
   eventName:
     OFFLINE_SYNC_EVENTS
