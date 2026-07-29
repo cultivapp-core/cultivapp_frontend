@@ -25,6 +25,8 @@ import {
   FiAlertCircle,
   FiX,
   FiRefreshCw,
+  FiBriefcase,
+  FiEyeOff,
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
@@ -35,6 +37,9 @@ import LocalesMap from "../../components/LocalesMap";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
 
+const CULTIVA_COMPANY_ID =
+  "0e342e01-d213-4353-b210-39a12ac335cf";
+
 const AdminLocales = () => {
   const [locales, setLocales] = useState([]);
   const [chains, setChains] = useState([]);
@@ -43,9 +48,30 @@ const AdminLocales = () => {
   const [companies, setCompanies] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCompanyId, setSelectedCompanyId] =
+    useState("");
   const [selectedChain, setSelectedChain] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedComuna, setSelectedComuna] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
+
+  const currentUser = useMemo(() => {
+    try {
+      const storedUser =
+        localStorage.getItem("user");
+
+      return storedUser
+        ? JSON.parse(storedUser)
+        : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const isCultivaAdmin =
+    currentUser?.role === "ADMIN_CLIENTE" &&
+    String(currentUser?.company_id) ===
+      CULTIVA_COMPANY_ID;
 
   const [openCreate, setOpenCreate] = useState(false);
   const [openUpload, setOpenUpload] = useState(false);
@@ -60,12 +86,43 @@ const AdminLocales = () => {
         api.get("/companies"),
       ]);
 
-      setLocales(localesData || []);
-      setCompanies(companiesData || []);
+      const normalizedLocales =
+        Array.isArray(localesData)
+          ? localesData
+          : localesData?.data || [];
 
-      if (localesData) {
+      const normalizedCompanies =
+        Array.isArray(companiesData)
+          ? companiesData
+          : companiesData?.data || [];
+
+      setLocales(normalizedLocales);
+
+      setCompanies(
+        normalizedCompanies
+          .filter(
+            (company) =>
+              company?.is_active !== false,
+          )
+          .sort((first, second) =>
+            String(
+              first?.name ||
+                first?.nombre ||
+                "",
+            ).localeCompare(
+              String(
+                second?.name ||
+                  second?.nombre ||
+                  "",
+              ),
+              "es",
+            ),
+          ),
+      );
+
+      if (normalizedLocales) {
         setChains(
-          [...new Set(localesData.map((local) => local.cadena))]
+          [...new Set(normalizedLocales.map((local) => local.cadena))]
             .filter(Boolean)
             .sort(),
         );
@@ -73,7 +130,7 @@ const AdminLocales = () => {
         setRegions(
           [
             ...new Set(
-              localesData.map(
+              normalizedLocales.map(
                 (local) => local.region_name || local.region,
               ),
             ),
@@ -91,27 +148,117 @@ const AdminLocales = () => {
     fetchLocalesAndCompanies();
   }, [fetchLocalesAndCompanies]);
 
+  const companyScopedLocales = useMemo(() => {
+    if (
+      !isCultivaAdmin ||
+      !selectedCompanyId
+    ) {
+      return locales;
+    }
+
+    return locales.filter(
+      (local) =>
+        String(local.company_id) ===
+        String(selectedCompanyId),
+    );
+  }, [
+    locales,
+    isCultivaAdmin,
+    selectedCompanyId,
+  ]);
+
   useEffect(() => {
-    const filteredComunas = [
+    const availableChains = [
       ...new Set(
-        locales
-          .filter(
-            (local) =>
-              !selectedRegion ||
-              (local.region_name || local.region) === selectedRegion,
-          )
-          .map((local) => local.comuna_name || local.comuna),
+        companyScopedLocales.map(
+          (local) => local.cadena,
+        ),
       ),
     ]
       .filter(Boolean)
-      .sort();
+      .sort((first, second) =>
+        String(first).localeCompare(
+          String(second),
+          "es",
+        ),
+      );
+
+    const availableRegions = [
+      ...new Set(
+        companyScopedLocales.map(
+          (local) =>
+            local.region_name ||
+            local.region,
+        ),
+      ),
+    ]
+      .filter(Boolean)
+      .sort((first, second) =>
+        String(first).localeCompare(
+          String(second),
+          "es",
+        ),
+      );
+
+    setChains(availableChains);
+    setRegions(availableRegions);
+
+    setSelectedChain((current) =>
+      !current ||
+      availableChains.includes(current)
+        ? current
+        : "",
+    );
+
+    setSelectedRegion((current) =>
+      !current ||
+      availableRegions.includes(current)
+        ? current
+        : "",
+    );
+  }, [companyScopedLocales]);
+
+  useEffect(() => {
+    const filteredComunas = [
+      ...new Set(
+        companyScopedLocales
+          .filter(
+            (local) =>
+              !selectedRegion ||
+              (local.region_name ||
+                local.region) ===
+                selectedRegion,
+          )
+          .map(
+            (local) =>
+              local.comuna_name ||
+              local.comuna,
+          ),
+      ),
+    ]
+      .filter(Boolean)
+      .sort((first, second) =>
+        String(first).localeCompare(
+          String(second),
+          "es",
+        ),
+      );
 
     setComunas(filteredComunas);
-    setSelectedComuna("");
-  }, [selectedRegion, locales]);
+
+    setSelectedComuna((current) =>
+      !current ||
+      filteredComunas.includes(current)
+        ? current
+        : "",
+    );
+  }, [
+    selectedRegion,
+    companyScopedLocales,
+  ]);
 
   const filteredLocales = useMemo(() => {
-    return locales.filter((local) => {
+    return companyScopedLocales.filter((local) => {
       const term = searchTerm.toLowerCase().trim();
 
       const matchesChain =
@@ -125,6 +272,10 @@ const AdminLocales = () => {
         selectedComuna === "" ||
         (local.comuna_name || local.comuna) === selectedComuna;
 
+      const matchesActive =
+        showInactive ||
+        local.is_active !== false;
+
       const matchesSearch =
         local.cadena?.toLowerCase().includes(term) ||
         local.codigo_local
@@ -137,6 +288,7 @@ const AdminLocales = () => {
         local.direccion?.toLowerCase().includes(term);
 
       return (
+        matchesActive &&
         matchesSearch &&
         matchesChain &&
         matchesRegion &&
@@ -144,24 +296,29 @@ const AdminLocales = () => {
       );
     });
   }, [
-    locales,
+    companyScopedLocales,
     searchTerm,
     selectedChain,
     selectedRegion,
     selectedComuna,
+    showInactive,
   ]);
 
   const hasFilters =
     Boolean(searchTerm) ||
+    Boolean(selectedCompanyId) ||
     Boolean(selectedChain) ||
     Boolean(selectedRegion) ||
-    Boolean(selectedComuna);
+    Boolean(selectedComuna) ||
+    Boolean(showInactive);
 
   const clearFilters = () => {
     setSearchTerm("");
+    setSelectedCompanyId("");
     setSelectedChain("");
     setSelectedRegion("");
     setSelectedComuna("");
+    setShowInactive(false);
   };
 
   const handleEdit = (local) => {
@@ -283,42 +440,120 @@ const AdminLocales = () => {
 
       <main className="mx-auto max-w-[1500px] space-y-6 px-4 pt-6 sm:px-6 md:px-8">
         {/* FILTROS */}
-        <section className="rounded-[2rem] border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-[#87be00]">
-                Filtros de búsqueda
-              </p>
+        <section className="rounded-[2rem] border border-gray-100 bg-white p-3 shadow-sm sm:p-4">
+          <div
+            className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+              isCultivaAdmin
+                ? "xl:grid-cols-[minmax(190px,1fr)_minmax(230px,1.2fr)_repeat(3,minmax(180px,1fr))_210px]"
+                : "xl:grid-cols-[minmax(230px,1.2fr)_repeat(3,minmax(180px,1fr))_210px]"
+            }`}
+          >
+            {isCultivaAdmin && (
+              <FilterSelect
+                icon={<FiBriefcase size={15} />}
+                value={selectedCompanyId}
+                onChange={(event) => {
+                  setSelectedCompanyId(
+                    event.target.value,
+                  );
+                  setSelectedChain("");
+                  setSelectedRegion("");
+                  setSelectedComuna("");
+                }}
+                className="min-w-0"
+              >
+                <option value="">
+                  Todas las empresas
+                </option>
 
-              <h2 className="mt-1 text-base font-black text-gray-900">
-                Localiza puntos de venta
-              </h2>
+                {companies.map((company) => (
+                  <option
+                    key={company.id}
+                    value={company.id}
+                  >
+                    {company.name ||
+                      company.nombre ||
+                      "Empresa"}
+                  </option>
+                ))}
+              </FilterSelect>
+            )}
+
+            <div className="relative min-w-0">
+              <FiSearch
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                size={15}
+              />
+
+              <input
+                type="search"
+                placeholder="Código, cadena, dirección..."
+                value={searchTerm}
+                onChange={(event) =>
+                  setSearchTerm(
+                    event.target.value,
+                  )
+                }
+                className={`${filterControlClass} pl-11 pr-10`}
+              />
+
+              {searchTerm && (
+                <button
+                  type="button"
+                  aria-label="Limpiar búsqueda"
+                  onClick={() =>
+                    setSearchTerm("")
+                  }
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-red-500"
+                >
+                  <FiX size={14} />
+                </button>
+              )}
             </div>
 
-            {hasFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-gray-100 bg-gray-50 px-3.5 py-2.5 text-[9px] font-black uppercase tracking-[0.14em] text-gray-500 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500"
-              >
-                <FiX size={13} />
-                Limpiar filtros
-              </button>
-            )}
-          </div>
+            <FilterSelect
+              icon={<FiShoppingCart size={15} />}
+              value={selectedChain}
+              onChange={(event) =>
+                setSelectedChain(
+                  event.target.value,
+                )
+              }
+              className="min-w-0"
+            >
+              <option value="">
+                Todas las cadenas
+              </option>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {chains.map((chain) => (
+                <option
+                  key={chain}
+                  value={chain}
+                >
+                  {chain}
+                </option>
+              ))}
+            </FilterSelect>
+
             <FilterSelect
               icon={<FiGlobe size={15} />}
               value={selectedRegion}
               onChange={(event) =>
-                setSelectedRegion(event.target.value)
+                setSelectedRegion(
+                  event.target.value,
+                )
               }
+              className="min-w-0"
             >
-              <option value="">Todas las regiones</option>
+              <option value="">
+                Todas las regiones
+              </option>
 
               {regions.map((region) => (
-                <option key={region} value={region}>
+                <option
+                  key={region}
+                  value={region}
+                >
                   {region}
                 </option>
               ))}
@@ -328,63 +563,83 @@ const AdminLocales = () => {
               icon={<FiMapPin size={15} />}
               value={selectedComuna}
               onChange={(event) =>
-                setSelectedComuna(event.target.value)
+                setSelectedComuna(
+                  event.target.value,
+                )
               }
               disabled={!selectedRegion}
+              className="min-w-0"
             >
-              <option value="">Todas las comunas</option>
+              <option value="">
+                Todas las comunas
+              </option>
 
               {comunas.map((comuna) => (
-                <option key={comuna} value={comuna}>
+                <option
+                  key={comuna}
+                  value={comuna}
+                >
                   {comuna}
                 </option>
               ))}
             </FilterSelect>
 
-            <FilterSelect
-              icon={<FiShoppingCart size={15} />}
-              value={selectedChain}
-              onChange={(event) =>
-                setSelectedChain(event.target.value)
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showInactive}
+              onClick={() =>
+                setShowInactive(
+                  (current) => !current,
+                )
               }
+              className="flex h-12 min-w-0 items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-4 text-left transition-all hover:border-[#87be00]/30 hover:bg-[#87be00]/5"
             >
-              <option value="">Todas las cadenas</option>
+              <span className="flex min-w-0 items-center gap-2">
+                <FiEyeOff
+                  size={15}
+                  className={
+                    showInactive
+                      ? "shrink-0 text-[#87be00]"
+                      : "shrink-0 text-gray-400"
+                  }
+                />
 
-              {chains.map((chain) => (
-                <option key={chain} value={chain}>
-                  {chain}
-                </option>
-              ))}
-            </FilterSelect>
+                <span className="truncate text-[9px] font-black uppercase tracking-[0.1em] text-gray-500">
+                  Mostrar inactivos
+                </span>
+              </span>
 
-            <div className="relative">
-              <FiSearch
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                size={15}
-              />
-
-              <input
-                type="search"
-                placeholder="Buscar local, código, comuna o dirección..."
-                value={searchTerm}
-                onChange={(event) =>
-                  setSearchTerm(event.target.value)
-                }
-                className={`${inputClass} pl-11 pr-11`}
-              />
-
-              {searchTerm && (
-                <button
-                  type="button"
-                  aria-label="Limpiar búsqueda"
-                  onClick={() => setSearchTerm("")}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-red-500"
-                >
-                  <FiX size={14} />
-                </button>
-              )}
-            </div>
+              <span
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  showInactive
+                    ? "bg-[#87be00]"
+                    : "bg-gray-200"
+                }`}
+              >
+                <span
+                  className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    showInactive
+                      ? "translate-x-6"
+                      : "translate-x-1"
+                  }`}
+                />
+              </span>
+            </button>
           </div>
+
+          {hasFilters && (
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+              >
+                <FiX size={13} />
+                Limpiar filtros
+              </button>
+            </div>
+          )}
         </section>
 
         {/* MAPA */}
@@ -710,7 +965,7 @@ const FilterSelect = ({
 
     <select
       {...props}
-      className={`${inputClass} appearance-none pl-11 pr-10`}
+      className={`${filterControlClass} appearance-none pl-11 pr-10`}
     >
       {children}
     </select>
@@ -1082,6 +1337,24 @@ const BulkLocalesHelpModal = ({ onClose }) => {
     </div>
   );
 };
+
+const filterControlClass = `
+  h-12 w-full rounded-2xl
+  border border-gray-100
+  bg-gray-50
+  px-4
+  text-[10px] font-black
+  text-gray-700
+  outline-none
+  transition-all
+  placeholder:text-gray-400
+  focus:border-[#87be00]/40
+  focus:bg-white
+  focus:ring-4
+  focus:ring-[#87be00]/10
+  disabled:cursor-not-allowed
+  disabled:opacity-50
+`;
 
 const inputClass = `
   h-12 w-full rounded-2xl

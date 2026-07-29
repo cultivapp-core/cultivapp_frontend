@@ -77,6 +77,13 @@ const MercaderistaReport = () => {
   const [chartLimit, setChartLimit] =
     useState(12);
 
+  /*
+   * El Excel de comparación utiliza "Suma de Venta bruta".
+   * Por eso el ranking se inicia en venta bruta.
+   */
+  const [chartMetric, setChartMetric] =
+    useState("gross");
+
   const formatNumber = (value) =>
     Number(value || 0).toLocaleString(
       "es-CL",
@@ -234,8 +241,59 @@ const MercaderistaReport = () => {
     [data],
   );
 
-  const chartData = useMemo(() => {
+  const metricConfig = useMemo(
+    () =>
+      chartMetric === "gross"
+        ? {
+            key: "total_venta_bruta",
+            label: "Venta bruta",
+            title:
+              "Ranking de venta bruta por mercaderista",
+          }
+        : {
+            key: "total_ventas",
+            label: "Venta neta",
+            title:
+              "Ranking de venta neta por mercaderista",
+          },
+    [chartMetric],
+  );
+
+  /*
+   * El backend entrega:
+   * - total_ventas: SUM(venta_neta)
+   * - total_venta_bruta: SUM(venta_bruta)
+   */
+  const rankedData = useMemo(() => {
     return data
+      .map((item) => ({
+        ...item,
+        total_ventas: Number(
+          item.total_ventas || 0,
+        ),
+        total_venta_bruta: Number(
+          item.total_venta_bruta || 0,
+        ),
+        total_unidades: Number(
+          item.total_unidades || 0,
+        ),
+        locales_visitados: Number(
+          item.locales_visitados || 0,
+        ),
+      }))
+      .sort(
+        (first, second) =>
+          Number(
+            second[metricConfig.key] || 0,
+          ) -
+          Number(
+            first[metricConfig.key] || 0,
+          ),
+      );
+  }, [data, metricConfig.key]);
+
+  const chartData = useMemo(() => {
+    return rankedData
       .filter((item) => {
         const name = String(
           item.mercaderista || "",
@@ -247,22 +305,22 @@ const MercaderistaReport = () => {
           name &&
           name !== "sin información" &&
           name !== "sin informacion" &&
-          name !== "sin nombre"
+          name !== "sin nombre" &&
+          name !== "sin asignar"
         );
       })
       .map((item) => ({
         ...item,
-        total_ventas: Number(
-          item.total_ventas || 0,
+        chart_value: Number(
+          item[metricConfig.key] || 0,
         ),
       }))
-      .sort(
-        (first, second) =>
-          second.total_ventas -
-          first.total_ventas,
-      )
       .slice(0, chartLimit);
-  }, [data, chartLimit]);
+  }, [
+    rankedData,
+    chartLimit,
+    metricConfig.key,
+  ]);
 
   const unnamedRowsCount =
     useMemo(
@@ -278,7 +336,8 @@ const MercaderistaReport = () => {
             !name ||
             name === "sin información" ||
             name === "sin informacion" ||
-            name === "sin nombre"
+            name === "sin nombre" ||
+            name === "sin asignar"
           );
         }).length,
       [data],
@@ -663,15 +722,39 @@ const MercaderistaReport = () => {
               </p>
 
               <h2 className="mt-1 text-base font-black tracking-tight text-slate-900">
-                Ranking de venta neta por mercaderista
+                {metricConfig.title}
               </h2>
 
               <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                El gráfico muestra los mejores resultados ordenados de mayor a menor para evitar que los nombres se superpongan.
+                El ranking se ordena por la métrica seleccionada. La opción Venta bruta coincide con la tabla dinámica del Excel de comparación.
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                  Métrica
+                </span>
+
+                <select
+                  value={chartMetric}
+                  onChange={(event) =>
+                    setChartMetric(
+                      event.target.value,
+                    )
+                  }
+                  className="bg-transparent text-[10px] font-black text-slate-700 outline-none"
+                >
+                  <option value="gross">
+                    Venta bruta
+                  </option>
+
+                  <option value="net">
+                    Venta neta
+                  </option>
+                </select>
+              </label>
+
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                 <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
                   Mostrar
@@ -816,7 +899,7 @@ const MercaderistaReport = () => {
                     }}
                     formatter={(value) => [
                       formatCurrency(value),
-                      "Venta neta",
+                      metricConfig.label,
                     ]}
                     labelFormatter={(label) =>
                       `Mercaderista: ${label}`
@@ -824,8 +907,8 @@ const MercaderistaReport = () => {
                   />
 
                   <Bar
-                    dataKey="total_ventas"
-                    name="Venta neta"
+                    dataKey="chart_value"
+                    name={metricConfig.label}
                     fill="#87be00"
                     radius={[
                       0,
@@ -871,7 +954,7 @@ const MercaderistaReport = () => {
             </div>
 
             <span className="rounded-xl bg-slate-100 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-slate-500">
-              {data.length} filas
+              {rankedData.length} filas
             </span>
           </div>
 
@@ -926,7 +1009,7 @@ const MercaderistaReport = () => {
                     </td>
                   </tr>
                 ) : (
-                  data.map(
+                  rankedData.map(
                     (item, index) => (
                       <tr
                         key={

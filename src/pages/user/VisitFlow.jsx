@@ -21,6 +21,7 @@ import {
   FiImage,
   FiLoader,
   FiMapPin,
+  FiMessageSquare,
   FiPackage,
   FiPlay,
   FiRefreshCw,
@@ -650,6 +651,11 @@ const VisitFlow = () => {
     useState("");
 
   const [
+    gondolaInitialObservation,
+    setGondolaInitialObservation,
+  ] = useState("");
+
+  const [
     fachadaPhoto,
     setFachadaPhoto,
   ] = useState(null);
@@ -975,6 +981,12 @@ const VisitFlow = () => {
               "",
           );
 
+          setGondolaInitialObservation(
+            draft.gondolaInitialObservation ||
+              draft.initialObservation ||
+              "",
+          );
+
           setPhotoSync(
             draft.photoSync &&
               typeof draft.photoSync ===
@@ -983,12 +995,15 @@ const VisitFlow = () => {
               : {},
           );
 
-          setPhotoServerUrls(
+          const restoredServerUrls =
             draft.photoServerUrls &&
               typeof draft.photoServerUrls ===
                 "object"
               ? draft.photoServerUrls
-              : {},
+              : {};
+
+          setPhotoServerUrls(
+            restoredServerUrls,
           );
 
           setPhotoQueueIds(
@@ -1077,6 +1092,56 @@ const VisitFlow = () => {
             },
           );
 
+          /*
+           * Si la fotografía ya fue sincronizada, puede no existir
+           * un Blob local. En ese caso se recupera su URL del servidor
+           * para que la vista no aparezca vacía al recargar.
+           */
+          Object.entries(
+            restoredServerUrls,
+          ).forEach(
+            ([
+              stepKey,
+              serverUrl,
+            ]) => {
+              if (
+                !serverUrl ||
+                restoredFiles[stepKey]
+              ) {
+                return;
+              }
+
+              const numericStep =
+                Number(stepKey);
+
+              if (
+                numericStep === 1
+              ) {
+                setFachadaPhoto(
+                  serverUrl,
+                );
+              } else if (
+                numericStep === 2
+              ) {
+                setGondolaInicialPhoto(
+                  serverUrl,
+                );
+              } else if (
+                numericStep === 5
+              ) {
+                setGondolaTerminoPhoto(
+                  serverUrl,
+                );
+              } else if (
+                numericStep === 7
+              ) {
+                setExitPhoto(
+                  serverUrl,
+                );
+              }
+            },
+          );
+
           toast(
             "Se recuperó el avance guardado de la visita.",
             {
@@ -1158,6 +1223,7 @@ const VisitFlow = () => {
             scannedCodes,
             answers,
             comment,
+            gondolaInitialObservation,
             photoFiles,
             photoSync,
             photoServerUrls,
@@ -1197,6 +1263,7 @@ const VisitFlow = () => {
     scannedCodes,
     answers,
     comment,
+    gondolaInitialObservation,
     photoFiles,
     photoSync,
     photoServerUrls,
@@ -1470,9 +1537,11 @@ const VisitFlow = () => {
       setFilteredProducts(
         [],
       );
+
       setSelectedProduct(
         "",
       );
+
       return;
     }
 
@@ -1491,8 +1560,20 @@ const VisitFlow = () => {
       filtered,
     );
 
+    /*
+     * Conserva el producto restaurado desde IndexedDB cuando
+     * todavía pertenece a la marca seleccionada. Antes se
+     * borraba siempre al cargar el catálogo.
+     */
     setSelectedProduct(
-      "",
+      (currentProduct) =>
+        filtered.some(
+          (product) =>
+            String(product.id) ===
+            String(currentProduct),
+        )
+          ? currentProduct
+          : "",
     );
   }, [
     selectedBrand,
@@ -2418,6 +2499,7 @@ const VisitFlow = () => {
       setScannedCodes([]);
       setAnswers({});
       setComment("");
+      setGondolaInitialObservation("");
 
       removePhoto(
         gondolaInicialPhoto,
@@ -2571,7 +2653,8 @@ const VisitFlow = () => {
         end_time:
           new Date().toISOString(),
         responses: answers,
-        comment,
+        comment:
+          gondolaInitialObservation.trim(),
         photo_before:
           photoServerUrls[2] ||
           null,
@@ -2609,6 +2692,8 @@ const VisitFlow = () => {
               metadata: {
                 productId:
                   selectedProduct,
+                initialObservation:
+                  gondolaInitialObservation.trim(),
               },
             },
           );
@@ -4214,6 +4299,38 @@ const VisitFlow = () => {
                           </p>
                         </div>
 
+                        <label className="block">
+                          <span className="mb-1.5 flex items-center gap-2 pl-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
+                            <FiMessageSquare
+                              size={12}
+                            />
+                            Observación de góndola inicial
+                          </span>
+
+                          <textarea
+                            value={
+                              gondolaInitialObservation
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              setGondolaInitialObservation(
+                                event.target.value,
+                              )
+                            }
+                            maxLength={500}
+                            placeholder="Describe el estado inicial del producto, quiebres, ubicación, exhibición u otra observación..."
+                            className="h-28 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#87be00]/50 focus:bg-white focus:ring-4 focus:ring-[#87be00]/10"
+                          />
+
+                          <span className="mt-1.5 block pr-1 text-right text-[8px] font-bold text-slate-400">
+                            {
+                              gondolaInitialObservation.length
+                            }
+                            /500
+                          </span>
+                        </label>
+
                         {renderPhotoContainer(
                           gondolaInicialPhoto,
                           2,
@@ -4657,6 +4774,20 @@ const VisitFlow = () => {
                     {selectedProductInfo?.name ||
                       "Producto seleccionado"}
                   </h2>
+
+                  {gondolaInitialObservation.trim() && (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-[7px] font-black uppercase tracking-wider text-[#a8d52c]">
+                        Observación inicial
+                      </p>
+
+                      <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-200">
+                        {
+                          gondolaInitialObservation
+                        }
+                      </p>
+                    </div>
+                  )}
 
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <div className="rounded-xl bg-white/5 p-3">

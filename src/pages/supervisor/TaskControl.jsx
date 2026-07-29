@@ -102,6 +102,154 @@ const formatTime = (value) => {
   );
 };
 
+const parseResponses = (value) => {
+  if (
+    !value ||
+    typeof value === "object"
+  ) {
+    return value || {};
+  }
+
+  if (typeof value !== "string") {
+    return {};
+  }
+
+  try {
+    const parsed =
+      JSON.parse(value);
+
+    return parsed &&
+      typeof parsed === "object"
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const normalizeObservation = (
+  value,
+) => {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "";
+  }
+
+  return String(value).trim();
+};
+
+const getFirstObservation = (
+  ...values
+) => {
+  for (const value of values) {
+    const normalized =
+      normalizeObservation(value);
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "";
+};
+
+const getResponseObservation = (
+  responses,
+  keys,
+) => {
+  const parsed =
+    parseResponses(responses);
+
+  for (const key of keys) {
+    const value =
+      normalizeObservation(
+        parsed?.[key],
+      );
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+};
+
+const getInitialObservation = (
+  product,
+) =>
+  getFirstObservation(
+    product?.gondola_initial_observation,
+    product?.gondola_start_observation,
+    product?.initial_observation,
+    product?.reception_observation,
+    product?.observacion_gondola_inicio,
+    product?.observacion_recepcion_gondola,
+    getResponseObservation(
+      product?.responses,
+      [
+        "gondola_initial_observation",
+        "gondola_start_observation",
+        "initial_observation",
+        "reception_observation",
+        "observacion_gondola_inicio",
+        "observacion_recepcion_gondola",
+      ],
+    ),
+    /*
+     * Compatibilidad con la versión actual:
+     * VisitFlow guarda la observación inicial en vt.comment.
+     */
+    product?.comment,
+  );
+
+const getFinalObservation = (
+  product,
+) =>
+  getFirstObservation(
+    product?.gondola_final_observation,
+    product?.gondola_end_observation,
+    product?.final_observation,
+    product?.observacion_gondola_termino,
+    product?.observacion_termino_gondola,
+    getResponseObservation(
+      product?.responses,
+      [
+        "gondola_final_observation",
+        "gondola_end_observation",
+        "final_observation",
+        "observacion_gondola_termino",
+        "observacion_termino_gondola",
+      ],
+    ),
+  );
+
+const getEndOfDayObservation = (
+  task,
+) =>
+  getFirstObservation(
+    task?.end_of_day_observation,
+    task?.finish_comment,
+    task?.visit_comment,
+    task?.route_comment,
+    task?.journey_end_observation,
+    task?.observacion_termino_jornada,
+    task?.observacion_fin_jornada,
+    getResponseObservation(
+      task?.responses,
+      [
+        "end_of_day_observation",
+        "finish_comment",
+        "visit_comment",
+        "route_comment",
+        "journey_end_observation",
+        "observacion_termino_jornada",
+        "observacion_fin_jornada",
+      ],
+    ),
+  );
+
 const TaskControl = () => {
   const { user } = useAuth();
 
@@ -290,12 +438,28 @@ const TaskControl = () => {
                 task.start_time,
               end_time:
                 task.end_time,
+              end_of_day_observation:
+                getEndOfDayObservation(
+                  task,
+                ),
             };
           }
 
           groups[
             visitId
           ].products.push(task);
+
+          if (
+            !groups[visitId]
+              .end_of_day_observation
+          ) {
+            groups[
+              visitId
+            ].end_of_day_observation =
+              getEndOfDayObservation(
+                task,
+              );
+          }
 
           groups[
             visitId
@@ -1036,6 +1200,9 @@ const TaskControl = () => {
                                     products={
                                       visit.products
                                     }
+                                    endOfDayObservation={
+                                      visit.end_of_day_observation
+                                    }
                                   />
                                 </td>
                               </motion.tr>
@@ -1154,21 +1321,102 @@ const DurationBadge = ({
   );
 };
 
+const ObservationItem = ({
+  label,
+  value,
+  variant = "initial",
+}) => {
+  const styles = {
+    initial: {
+      container:
+        "border-blue-100 bg-blue-50/70",
+      icon:
+        "bg-blue-100 text-blue-600",
+      label:
+        "text-blue-700",
+    },
+    final: {
+      container:
+        "border-[#87be00]/20 bg-[#87be00]/5",
+      icon:
+        "bg-[#87be00]/10 text-[#6f9d00]",
+      label:
+        "text-[#6f9d00]",
+    },
+    journey: {
+      container:
+        "border-amber-100 bg-amber-50/70",
+      icon:
+        "bg-amber-100 text-amber-600",
+      label:
+        "text-amber-700",
+    },
+  };
+
+  const current =
+    styles[variant] ||
+    styles.initial;
+
+  return (
+    <div
+      className={`rounded-2xl border p-3.5 ${current.container}`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${current.icon}`}
+        >
+          <FiMessageSquare
+            size={13}
+          />
+        </span>
+
+        <div className="min-w-0">
+          <p
+            className={`text-[8px] font-black uppercase tracking-[0.12em] ${current.label}`}
+          >
+            {label}
+          </p>
+
+          <p
+            className={`mt-1.5 whitespace-pre-wrap break-words text-[10px] leading-relaxed ${
+              value
+                ? "font-semibold text-gray-700"
+                : "font-medium italic text-gray-400"
+            }`}
+          >
+            {value ||
+              "Sin observación registrada."}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ProductGrid = ({
   products,
+  endOfDayObservation,
 }) => (
-  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-    {products.map(
-      (product, index) => (
-        <ProductCard
-          key={
-            product.id ||
-            `${product.product_id}-${index}`
-          }
-          product={product}
-        />
-      ),
-    )}
+  <div className="space-y-4">
+    <ObservationItem
+      label="Observación de término de jornada"
+      value={endOfDayObservation}
+      variant="journey"
+    />
+
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      {products.map(
+        (product, index) => (
+          <ProductCard
+            key={
+              product.id ||
+              `${product.product_id}-${index}`
+            }
+            product={product}
+          />
+        ),
+      )}
+    </div>
   </div>
 );
 
@@ -1181,16 +1429,26 @@ const ProductCard = ({
     ? product.product_codes
     : [];
 
+  const initialObservation =
+    getInitialObservation(
+      product,
+    );
+
+  const finalObservation =
+    getFinalObservation(
+      product,
+    );
+
   return (
-    <article className="bg-white p-5 rounded-[1.5rem] border border-gray-100 shadow-sm">
-      <div className="flex justify-between items-start gap-3">
+    <article className="rounded-[1.5rem] border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider">
+          <p className="text-[8px] font-black uppercase tracking-wider text-gray-400">
             {product.brand_name ||
               "Sin marca"}
           </p>
 
-          <p className="text-xs font-black text-gray-900 mt-1 truncate">
+          <p className="mt-1 truncate text-xs font-black text-gray-900">
             {product.product_name ||
               "Sin producto"}
           </p>
@@ -1203,43 +1461,44 @@ const ProductCard = ({
         />
       </div>
 
-      <div className="mt-4 pt-3 border-t border-dashed border-gray-100">
-        <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider mb-2">
+      <div className="mt-4 border-t border-dashed border-gray-100 pt-3">
+        <p className="mb-2 text-[8px] font-black uppercase tracking-wider text-gray-400">
           Códigos EAN ({codes.length})
         </p>
 
-        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+        <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
           {codes.length > 0 ? (
             codes.map(
               (code, index) => (
                 <span
                   key={`${code}-${index}`}
-                  className="text-[9px] font-mono bg-purple-50 text-purple-700 px-2 py-1 rounded-md border border-purple-100"
+                  className="rounded-md border border-purple-100 bg-purple-50 px-2 py-1 font-mono text-[9px] text-purple-700"
                 >
                   {code}
                 </span>
               ),
             )
           ) : (
-            <span className="text-[9px] text-gray-300 italic">
+            <span className="text-[9px] italic text-gray-300">
               Sin códigos
             </span>
           )}
         </div>
       </div>
 
-      {product.comment && (
-        <div className="bg-gray-50 p-3 rounded-xl mt-3">
-          <FiMessageSquare
-            className="text-blue-500 mb-1"
-            size={12}
-          />
+      <div className="mt-4 space-y-2.5">
+        <ObservationItem
+          label="Recepción o inicio de góndola"
+          value={initialObservation}
+          variant="initial"
+        />
 
-          <p className="text-[9px] font-bold text-gray-600 italic break-words">
-            “{product.comment}”
-          </p>
-        </div>
-      )}
+        <ObservationItem
+          label="Término de góndola"
+          value={finalObservation}
+          variant="final"
+        />
+      </div>
     </article>
   );
 };
@@ -1343,6 +1602,9 @@ const VisitMobileCard = ({
               <ProductGrid
                 products={
                   visit.products
+                }
+                endOfDayObservation={
+                  visit.end_of_day_observation
                 }
               />
             </div>
