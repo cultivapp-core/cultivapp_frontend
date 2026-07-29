@@ -671,6 +671,12 @@ const VisitFlow = () => {
   const draftSaveTimerRef =
     useRef(null);
 
+  const photoQueueIdsRef =
+    useRef({});
+
+  const lastPhotoUploadResultRef =
+    useRef({});
+
   const BASE_URL =
     import.meta.env
       .VITE_API_URL ||
@@ -995,6 +1001,13 @@ const VisitFlow = () => {
   const exitPhotoReady =
     isPhotoReady(7);
 
+  useEffect(() => {
+    photoQueueIdsRef.current =
+      photoQueueIds;
+  }, [
+    photoQueueIds,
+  ]);
+
   const formatImageUrl =
     useCallback(
       (url) => {
@@ -1025,6 +1038,92 @@ const VisitFlow = () => {
         )}`;
       },
       [BASE_URL],
+    );
+
+  const buildVisitDraft =
+    useCallback(
+      (
+        overrides = {},
+      ) => ({
+        routeId: id,
+        visitStarted,
+        visitPendingSync,
+        step,
+        selectedBrand,
+        selectedProduct,
+        productStartTime,
+        scannedCodes,
+        answers,
+        comment:
+          step >= 7
+            ? endOfDayObservation
+            : gondolaFinalObservation,
+        gondolaInitialObservation,
+        gondolaFinalObservation,
+        endOfDayObservation,
+        photoFiles,
+        photoSync,
+        photoServerUrls,
+        photoQueueIds,
+        scanQueueItems,
+        status:
+          visitPendingSync
+            ? "pending_sync"
+            : "in_progress",
+        updatedAt:
+          new Date().toISOString(),
+        ...overrides,
+      }),
+      [
+        id,
+        visitStarted,
+        visitPendingSync,
+        step,
+        selectedBrand,
+        selectedProduct,
+        productStartTime,
+        scannedCodes,
+        answers,
+        gondolaInitialObservation,
+        gondolaFinalObservation,
+        endOfDayObservation,
+        photoFiles,
+        photoSync,
+        photoServerUrls,
+        photoQueueIds,
+        scanQueueItems,
+      ],
+    );
+
+  const persistVisitDraft =
+    useCallback(
+      async (
+        overrides = {},
+      ) => {
+        if (
+          !id ||
+          (
+            !visitStarted &&
+            !visitPendingSync &&
+            overrides.visitStarted !==
+              true
+          )
+        ) {
+          return;
+        }
+
+        await saveVisitDraft(
+          buildVisitDraft(
+            overrides,
+          ),
+        );
+      },
+      [
+        id,
+        visitStarted,
+        visitPendingSync,
+        buildVisitDraft,
+      ],
     );
 
   useEffect(() => {
@@ -1116,12 +1215,6 @@ const VisitFlow = () => {
             );
           }
 
-          setStep(
-            Number(
-              draft.step,
-            ) || 1,
-          );
-
           setSelectedBrand(
             draft.selectedBrand ||
               "",
@@ -1188,12 +1281,15 @@ const VisitFlow = () => {
               ),
           );
 
-          setPhotoSync(
+          const restoredPhotoSync =
             draft.photoSync &&
               typeof draft.photoSync ===
                 "object"
               ? draft.photoSync
-              : {},
+              : {};
+
+          setPhotoSync(
+            restoredPhotoSync,
           );
 
           const restoredServerUrls =
@@ -1207,12 +1303,18 @@ const VisitFlow = () => {
             restoredServerUrls,
           );
 
-          setPhotoQueueIds(
+          const restoredPhotoQueueIds =
             draft.photoQueueIds &&
               typeof draft.photoQueueIds ===
                 "object"
               ? draft.photoQueueIds
-              : {},
+              : {};
+
+          photoQueueIdsRef.current =
+            restoredPhotoQueueIds;
+
+          setPhotoQueueIds(
+            restoredPhotoQueueIds,
           );
 
           setScanQueueItems(
@@ -1237,6 +1339,34 @@ const VisitFlow = () => {
 
           setPhotoFiles(
             restoredFiles,
+          );
+
+          const hasRestoredFacade =
+            Boolean(
+              restoredFiles[1] ||
+              restoredFiles["1"] ||
+              restoredServerUrls[1] ||
+              restoredServerUrls["1"],
+            ) ||
+            [
+              PHOTO_STATUS.SUCCESS,
+              PHOTO_STATUS.QUEUED,
+              PHOTO_STATUS.PENDING,
+            ].includes(
+              restoredPhotoSync[1] ||
+              restoredPhotoSync["1"],
+            );
+
+          /*
+           * Si la fachada ya existe, nunca se vuelve a solicitar
+           * al continuar la visita. Un borrador antiguo podía
+           * conservar step = 1 aunque la foto ya estuviera guardada.
+           */
+          setStep(
+            restoredStep <= 1 &&
+              hasRestoredFacade
+              ? 2
+              : restoredStep,
           );
 
           Object.entries(
@@ -1413,35 +1543,7 @@ const VisitFlow = () => {
     draftSaveTimerRef.current =
       window.setTimeout(
         () => {
-          saveVisitDraft({
-            routeId: id,
-            visitStarted,
-            visitPendingSync,
-            step,
-            selectedBrand,
-            selectedProduct,
-            productStartTime,
-            scannedCodes,
-            answers,
-            comment:
-              step >= 7
-                ? endOfDayObservation
-                : gondolaFinalObservation,
-            gondolaInitialObservation,
-            gondolaFinalObservation,
-            endOfDayObservation,
-            photoFiles,
-            photoSync,
-            photoServerUrls,
-            photoQueueIds,
-            scanQueueItems,
-            status:
-              visitPendingSync
-                ? "pending_sync"
-                : "in_progress",
-            updatedAt:
-              new Date().toISOString(),
-          }).catch(
+          persistVisitDraft().catch(
             (error) =>
               console.error(
                 "Error guardando borrador offline:",
@@ -1463,19 +1565,7 @@ const VisitFlow = () => {
     visitStarted,
     visitPendingSync,
     step,
-    selectedBrand,
-    selectedProduct,
-    productStartTime,
-    scannedCodes,
-    answers,
-    gondolaInitialObservation,
-    gondolaFinalObservation,
-    endOfDayObservation,
-    photoFiles,
-    photoSync,
-    photoServerUrls,
-    photoQueueIds,
-    scanQueueItems,
+    persistVisitDraft,
   ]);
 
   useEffect(() => {
@@ -1963,6 +2053,15 @@ const VisitFlow = () => {
               photoType,
             );
 
+            /*
+             * El backend actualizado reemplaza la evidencia anterior
+             * de la misma visita y tipo.
+             */
+            formData.append(
+              "replace_existing",
+              "true",
+            );
+
             formData.append(
               "foto",
               file,
@@ -1974,6 +2073,26 @@ const VisitFlow = () => {
         const queuePhoto =
           async () => {
             try {
+              const previousQueuedId =
+                photoQueueIdsRef.current[
+                  stepKey
+                ];
+
+              /*
+               * Una etapa solo puede tener una foto pendiente.
+               * Si el usuario vuelve a capturarla, se elimina la
+               * operación anterior y se conserva únicamente la nueva.
+               */
+              if (previousQueuedId) {
+                await OfflineManager.remove(
+                  previousQueuedId,
+                );
+
+                delete photoQueueIdsRef.current[
+                  stepKey
+                ];
+              }
+
               const queued =
                 await OfflineManager.save(
                   `/routes/${id}/photo`,
@@ -1987,13 +2106,26 @@ const VisitFlow = () => {
                   },
                 );
 
+              photoQueueIdsRef.current = {
+                ...photoQueueIdsRef.current,
+                [stepKey]:
+                  queued.id,
+              };
+
               setPhotoQueueIds(
-                (current) => ({
-                  ...current,
-                  [stepKey]:
-                    queued.id,
-                }),
+                photoQueueIdsRef.current,
               );
+
+              lastPhotoUploadResultRef.current[
+                stepKey
+              ] = {
+                status:
+                  PHOTO_STATUS.QUEUED,
+                queueId:
+                  queued.id,
+                serverUrl:
+                  null,
+              };
 
               setPhotoSync(
                 (current) => ({
@@ -2085,7 +2217,7 @@ const VisitFlow = () => {
           }
 
           const queuedId =
-            photoQueueIds[
+            photoQueueIdsRef.current[
               stepKey
             ];
 
@@ -2094,20 +2226,33 @@ const VisitFlow = () => {
               queuedId,
             );
 
+            const nextQueueIds = {
+              ...photoQueueIdsRef.current,
+            };
+
+            delete nextQueueIds[
+              stepKey
+            ];
+
+            photoQueueIdsRef.current =
+              nextQueueIds;
+
             setPhotoQueueIds(
-              (current) => {
-                const next = {
-                  ...current,
-                };
-
-                delete next[
-                  stepKey
-                ];
-
-                return next;
-              },
+              nextQueueIds,
             );
           }
+
+          lastPhotoUploadResultRef.current[
+            stepKey
+          ] = {
+            status:
+              PHOTO_STATUS.SUCCESS,
+            queueId:
+              null,
+            serverUrl:
+              uploadedUrl ||
+              null,
+          };
 
           setPhotoSync(
             (current) => ({
@@ -2172,6 +2317,17 @@ const VisitFlow = () => {
             return queuePhoto();
           }
 
+          lastPhotoUploadResultRef.current[
+            stepKey
+          ] = {
+            status:
+              PHOTO_STATUS.ERROR,
+            queueId:
+              null,
+            serverUrl:
+              null,
+          };
+
           setPhotoSync(
             (current) => ({
               ...current,
@@ -2201,9 +2357,30 @@ const VisitFlow = () => {
       [
         id,
         selectedProduct,
-        photoQueueIds,
       ],
     );
+
+  const getPhotoByStep = (
+    stepKey,
+  ) => {
+    if (stepKey === 1) {
+      return fachadaPhoto;
+    }
+
+    if (stepKey === 2) {
+      return gondolaInicialPhoto;
+    }
+
+    if (stepKey === 5) {
+      return gondolaTerminoPhoto;
+    }
+
+    if (stepKey === 7) {
+      return exitPhoto;
+    }
+
+    return null;
+  };
 
   const setPhotoByStep = (
     stepKey,
@@ -2275,6 +2452,25 @@ const VisitFlow = () => {
             file;
         }
 
+        const previousPreview =
+          getPhotoByStep(
+            stepKey,
+          );
+
+        if (
+          previousPreview?.startsWith(
+            "blob:",
+          )
+        ) {
+          URL.revokeObjectURL(
+            previousPreview,
+          );
+
+          previewUrlsRef.current.delete(
+            previousPreview,
+          );
+        }
+
         const previewUrl =
           URL.createObjectURL(
             processedFile,
@@ -2309,7 +2505,62 @@ const VisitFlow = () => {
           stepKey === 1 &&
           photoReady
         ) {
+          const uploadResult =
+            lastPhotoUploadResultRef.current[
+              stepKey
+            ] || {};
+
+          const nextPhotoFiles = {
+            ...photoFiles,
+            [stepKey]:
+              processedFile,
+          };
+
+          const nextPhotoSync = {
+            ...photoSync,
+            [stepKey]:
+              uploadResult.status ||
+              PHOTO_STATUS.QUEUED,
+          };
+
+          const nextServerUrls = {
+            ...photoServerUrls,
+          };
+
+          if (
+            uploadResult.serverUrl
+          ) {
+            nextServerUrls[
+              stepKey
+            ] =
+              uploadResult.serverUrl;
+          }
+
+          const nextQueueIds = {
+            ...photoQueueIdsRef.current,
+          };
+
           setStep(2);
+
+          /*
+           * Se guarda inmediatamente, sin esperar el debounce.
+           * Así, aunque el usuario salga enseguida, al continuar
+           * la visita comienza en el paso 2 y no pide otra fachada.
+           */
+          await persistVisitDraft({
+            visitStarted:
+              true,
+            step:
+              2,
+            photoFiles:
+              nextPhotoFiles,
+            photoSync:
+              nextPhotoSync,
+            photoServerUrls:
+              nextServerUrls,
+            photoQueueIds:
+              nextQueueIds,
+          });
         }
       } catch (error) {
         console.error(
@@ -2379,6 +2630,9 @@ const VisitFlow = () => {
         delete next[
           stepKey
         ];
+
+        photoQueueIdsRef.current =
+          next;
 
         return next;
       },
@@ -3407,18 +3661,40 @@ const VisitFlow = () => {
       }
     };
 
-  const handleExitFlow = () => {
-    const shouldExit =
-      window.confirm(
-        "¿Deseas salir del flujo de visita? Los datos que aún no hayan sido enviados podrían perderse.",
+  const handleExitFlow =
+    async () => {
+      const shouldExit =
+        window.confirm(
+          "¿Deseas salir del flujo de visita? El avance quedará guardado para continuar después.",
+        );
+
+      if (!shouldExit) {
+        return;
+      }
+
+      window.clearTimeout(
+        draftSaveTimerRef.current,
       );
 
-    if (shouldExit) {
+      try {
+        await persistVisitDraft();
+      } catch (error) {
+        console.error(
+          "Error guardando la visita antes de salir:",
+          error,
+        );
+
+        toast.error(
+          "No fue posible guardar todo el avance antes de salir.",
+        );
+
+        return;
+      }
+
       navigate(
         "/usuario/home",
       );
-    }
-  };
+    };
 
   const renderSyncState = (
     stepKey,
