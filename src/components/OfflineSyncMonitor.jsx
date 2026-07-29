@@ -1,6 +1,7 @@
 import {
   FiAlertTriangle,
   FiCloudOff,
+  FiLogIn,
   FiRefreshCw,
   FiUploadCloud,
 } from "react-icons/fi";
@@ -18,13 +19,47 @@ const OfflineSyncMonitor = () => {
     totalCount,
     lastError,
     currentItem,
+    authRequired,
+    authMessage,
     startSync,
   } = useOfflineSync();
+
+  const handleReauthenticate =
+    () => {
+      /*
+       * Se eliminan solo las credenciales.
+       * IndexedDB y el borrador de la visita se conservan.
+       */
+      [
+        "token",
+        "user",
+        "mustChangePassword",
+        "must_change_password",
+      ].forEach(
+        (key) =>
+          localStorage.removeItem(
+            key,
+          ),
+      );
+
+      try {
+        sessionStorage.removeItem(
+          "cultivapp_offline_auth_required",
+        );
+      } catch {
+        // El almacenamiento puede estar restringido.
+      }
+
+      window.location.assign(
+        "/?error=session_expired",
+      );
+    };
 
   if (
     isOnline &&
     !syncing &&
-    totalCount === 0
+    totalCount === 0 &&
+    !authRequired
   ) {
     return null;
   }
@@ -36,7 +71,9 @@ const OfflineSyncMonitor = () => {
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
             syncing
               ? "bg-[#87be00]/20 text-[#a8d52c]"
-              : failedCount > 0
+              : authRequired
+                ? "bg-red-500/20 text-red-300"
+                : failedCount > 0
                 ? "bg-red-500/20 text-red-300"
                 : isOnline
                   ? "bg-blue-500/20 text-blue-300"
@@ -47,6 +84,10 @@ const OfflineSyncMonitor = () => {
             <FiRefreshCw
               size={17}
               className="animate-spin"
+            />
+          ) : authRequired ? (
+            <FiLogIn
+              size={17}
             />
           ) : failedCount > 0 ? (
             <FiAlertTriangle
@@ -67,7 +108,9 @@ const OfflineSyncMonitor = () => {
           <p className="text-[9px] font-black uppercase tracking-wider">
             {syncing
               ? "Sincronizando datos"
-              : failedCount > 0
+              : authRequired
+                ? "Sesión vencida"
+                : failedCount > 0
                 ? "Sincronización con errores"
                 : isOnline
                   ? "Datos pendientes"
@@ -78,18 +121,21 @@ const OfflineSyncMonitor = () => {
             {syncing &&
             currentItem
               ? `Procesando ${currentItem.index} de ${currentItem.total}: ${currentItem.type}.`
-              : `${pendingCount} pendiente${
-                  pendingCount === 1
-                    ? ""
-                    : "s"
-                }${
-                  failedCount > 0
-                    ? ` · ${failedCount} con error`
-                    : ""
-                }.`}
+              : authRequired
+                ? authMessage
+                : `${pendingCount} pendiente${
+                    pendingCount === 1
+                      ? ""
+                      : "s"
+                  }${
+                    failedCount > 0
+                      ? ` · ${failedCount} con error`
+                      : ""
+                  }.`}
           </p>
 
           {!syncing &&
+            !authRequired &&
             lastError && (
               <p className="mt-1 line-clamp-2 text-[8px] leading-relaxed text-red-300">
                 {lastError}
@@ -97,8 +143,27 @@ const OfflineSyncMonitor = () => {
             )}
         </div>
 
+        {!syncing &&
+          authRequired && (
+            <button
+              type="button"
+              onClick={
+                handleReauthenticate
+              }
+              disabled={
+                !isOnline
+              }
+              className="shrink-0 rounded-xl bg-red-500 px-3 py-2 text-[8px] font-black uppercase tracking-wider text-white transition hover:bg-red-600 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+            >
+              {isOnline
+                ? "Ingresar"
+                : "Sin conexión"}
+            </button>
+          )}
+
         {isOnline &&
           !syncing &&
+          !authRequired &&
           totalCount > 0 && (
             <button
               type="button"

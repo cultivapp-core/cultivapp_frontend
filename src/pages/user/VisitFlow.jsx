@@ -470,12 +470,182 @@ const getGpsErrorMessage = (
   );
 };
 
-const isNetworkError = (
+const AUTH_REQUIRED_STORAGE_KEY =
+  "cultivapp_offline_auth_required";
+
+const getHttpStatus = (
+  error,
+) => {
+  const rawStatus =
+    error?.response
+      ?.status ??
+    error?.status ??
+    error?.data
+      ?.status ??
+    null;
+
+  const parsedStatus =
+    Number(rawStatus);
+
+  return Number.isFinite(
+    parsedStatus,
+  )
+    ? parsedStatus
+    : null;
+};
+
+const getRequestErrorMessage = (
   error,
 ) =>
-  !error?.response ||
-  error?.code === "ERR_NETWORK" ||
-  error?.message === "Network Error";
+  error?.response
+    ?.data?.message ??
+  error?.data?.message ??
+  error?.message ??
+  "No fue posible completar la operación.";
+
+const isNetworkError = (
+  error,
+) => {
+  /*
+   * apiClient usa fetch y puede lanzar errores con
+   * { status, data }. Un error HTTP no debe confundirse
+   * con una desconexión real.
+   */
+  if (
+    getHttpStatus(
+      error,
+    )
+  ) {
+    return false;
+  }
+
+  const message =
+    String(
+      error?.message ||
+      "",
+    ).toLowerCase();
+
+  return (
+    error?.code ===
+      "ERR_NETWORK" ||
+    error?.name ===
+      "TypeError" ||
+    message.includes(
+      "network error",
+    ) ||
+    message.includes(
+      "failed to fetch",
+    ) ||
+    message.includes(
+      "load failed",
+    ) ||
+    (
+      !error?.response &&
+      !error?.data &&
+      !error?.status
+    )
+  );
+};
+
+const isSessionExpiredError = (
+  error,
+) => {
+  const status =
+    getHttpStatus(
+      error,
+    );
+
+  const message =
+    getRequestErrorMessage(
+      error,
+    ).toLowerCase();
+
+  return (
+    status === 401 ||
+    (
+      status === 403 &&
+      (
+        message.includes(
+          "sesión",
+        ) ||
+        message.includes(
+          "sesion",
+        ) ||
+        message.includes(
+          "token",
+        ) ||
+        message.includes(
+          "dispositivo",
+        ) ||
+        message.includes(
+          "unauthorized",
+        )
+      )
+    )
+  );
+};
+
+const shouldQueueLocally = (
+  error,
+) =>
+  isNetworkError(
+    error,
+  ) ||
+  isSessionExpiredError(
+    error,
+  );
+
+const notifySessionExpired = (
+  error,
+) => {
+  const backendMessage =
+    getRequestErrorMessage(
+      error,
+    );
+
+  const message =
+    backendMessage &&
+    backendMessage !==
+      "No fue posible completar la operación."
+      ? backendMessage
+      : "Tu sesión venció. El avance quedó guardado en este dispositivo.";
+
+  if (
+    typeof window !==
+    "undefined"
+  ) {
+    try {
+      sessionStorage.setItem(
+        AUTH_REQUIRED_STORAGE_KEY,
+        "true",
+      );
+    } catch {
+      // Safari puede bloquear almacenamiento en contextos privados.
+    }
+
+    window.dispatchEvent(
+      new CustomEvent(
+        OFFLINE_SYNC_EVENTS
+          .AUTH_REQUIRED,
+        {
+          detail: {
+            message,
+          },
+        },
+      ),
+    );
+  }
+
+  toast.error(
+    "Tu sesión venció porque se inició en otro dispositivo. El avance quedó guardado. Vuelve a ingresar desde este teléfono para sincronizar.",
+    {
+      id:
+        "offline-auth-required",
+      duration:
+        7000,
+    },
+  );
+};
 
 const VisitFlow = () => {
   const { id } = useParams();
@@ -1967,7 +2137,7 @@ const VisitFlow = () => {
           );
 
           if (
-            isNetworkError(
+            shouldQueueLocally(
               error,
             )
           ) {
@@ -1979,6 +2149,26 @@ const VisitFlow = () => {
               );
             }
 
+            if (
+              isSessionExpiredError(
+                error,
+              )
+            ) {
+              /*
+               * Se marca la sesión antes de guardar. Así evitamos
+               * que el monitor intente sincronizar inmediatamente
+               * con el mismo token que acaba de ser rechazado.
+               */
+              notifySessionExpired(
+                error,
+              );
+            }
+
+            /*
+             * Retorna true cuando IndexedDB guardó la foto.
+             * Esto permite que la fachada avance al paso 2 aunque
+             * la sesión haya vencido después del check-in.
+             */
             return queuePhoto();
           }
 
@@ -2374,10 +2564,20 @@ const VisitFlow = () => {
           );
         } catch (error) {
           if (
-            isNetworkError(
+            shouldQueueLocally(
               error,
             )
           ) {
+            if (
+              isSessionExpiredError(
+                error,
+              )
+            ) {
+              notifySessionExpired(
+                error,
+              );
+            }
+
             await saveQueuedScan();
             return;
           }
@@ -2805,10 +3005,20 @@ const VisitFlow = () => {
           );
         } catch (error) {
           if (
-            isNetworkError(
+            shouldQueueLocally(
               error,
             )
           ) {
+            if (
+              isSessionExpiredError(
+                error,
+              )
+            ) {
+              notifySessionExpired(
+                error,
+              );
+            }
+
             await queueTask();
             return;
           }
@@ -2987,6 +3197,20 @@ const VisitFlow = () => {
           "Ubicación validada. Visita iniciada.",
         );
       } catch (error) {
+        if (
+          isSessionExpiredError(
+            error,
+          )
+        ) {
+          /*
+           * El check-in no se guarda offline porque necesita
+           * validar el GPS actual. Se solicita reingreso.
+           */
+          notifySessionExpired(
+            error,
+          );
+        }
+
         const backendData =
           error?.response
             ?.data ??
@@ -3147,10 +3371,20 @@ const VisitFlow = () => {
           setStep(8);
         } catch (error) {
           if (
-            isNetworkError(
+            shouldQueueLocally(
               error,
             )
           ) {
+            if (
+              isSessionExpiredError(
+                error,
+              )
+            ) {
+              notifySessionExpired(
+                error,
+              );
+            }
+
             await queueFinish();
             return;
           }

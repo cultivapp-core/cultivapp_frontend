@@ -17,6 +17,35 @@ export const OFFLINE_SYNC_EVENTS = {
     "cultivapp:sync-item-error",
   SYNC_COMPLETE:
     "cultivapp:sync-complete",
+  AUTH_REQUIRED:
+    "cultivapp:offline-auth-required",
+};
+
+const AUTH_REQUIRED_STORAGE_KEY =
+  "cultivapp_offline_auth_required";
+
+const getStoredUser = () => {
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+    return null;
+  }
+
+  try {
+    const storedUser =
+      localStorage.getItem(
+        "user",
+      );
+
+    return storedUser
+      ? JSON.parse(
+          storedUser,
+        )
+      : null;
+  } catch {
+    return null;
+  }
 };
 
 const getOperationType = (
@@ -153,6 +182,9 @@ const OfflineManager = {
     const createdAt =
       new Date().toISOString();
 
+    const storedUser =
+      getStoredUser();
+
     const item = {
       type,
       routeId:
@@ -167,6 +199,14 @@ const OfflineManager = {
         body,
       metadata: {
         ...metadata,
+        ownerUserId:
+          metadata.ownerUserId ||
+          storedUser?.id ||
+          null,
+        ownerCompanyId:
+          metadata.ownerCompanyId ||
+          storedUser?.company_id ||
+          null,
         queuedAt:
           createdAt,
       },
@@ -204,10 +244,24 @@ const OfflineManager = {
       },
     );
 
+    let authRequired =
+      false;
+
+    try {
+      authRequired =
+        sessionStorage.getItem(
+          AUTH_REQUIRED_STORAGE_KEY,
+        ) === "true";
+    } catch {
+      authRequired =
+        false;
+    }
+
     if (
       typeof navigator !==
         "undefined" &&
-      navigator.onLine
+      navigator.onLine &&
+      !authRequired
     ) {
       dispatchEvent(
         OFFLINE_SYNC_EVENTS
