@@ -40,6 +40,7 @@ const OfflineSyncMonitor = () => {
     currentItem,
     authRequired,
     authMessage,
+    offlineEnabled,
     startSync,
   } = useOfflineSync();
 
@@ -79,6 +80,15 @@ const OfflineSyncMonitor = () => {
         "/?error=session_expired",
       );
     };
+
+  /*
+   * El modo offline de visitas pertenece únicamente a los perfiles
+   * USUARIO/MERCADERISTA. Un ADMIN_CLIENTE, ROOT o SUPERVISOR no
+   * debe intentar enviar operaciones guardadas por otro usuario.
+   */
+  if (!offlineEnabled) {
+    return null;
+  }
 
   /*
    * En Login y recuperación de contraseña no se muestra el banner.
