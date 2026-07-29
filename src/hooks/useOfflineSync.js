@@ -80,18 +80,39 @@ const isSessionAuthError = (
   );
 };
 
-const hasToken = () => {
+const getToken = () => {
   const token =
     localStorage.getItem(
       "token",
     );
 
-  return Boolean(
-    token &&
-    token !== "null" &&
-    token !== "undefined",
-  );
+  if (
+    !token ||
+    token === "null" ||
+    token === "undefined"
+  ) {
+    return null;
+  }
+
+  return token;
 };
+
+const hasToken = () =>
+  Boolean(
+    getToken(),
+  );
+
+const isPublicAuthPath = (
+  pathname,
+) =>
+  pathname === "/" ||
+  pathname === "/forgot-password" ||
+  pathname.startsWith(
+    "/reset-password/",
+  ) ||
+  pathname.startsWith(
+    "/verify/",
+  );
 
 const base64ToFile = (
   value,
@@ -594,6 +615,16 @@ export const useOfflineSync =
 
     const syncAgainRef =
       useRef(false);
+
+    /*
+     * Permite detectar cuando Login guarda un token nuevo en la
+     * misma pestaña. El evento storage no se dispara en la pestaña
+     * que realizó el cambio, por eso se compara periódicamente.
+     */
+    const lastTokenRef =
+      useRef(
+        getToken(),
+      );
 
     const refreshStats =
       useCallback(async () => {
@@ -1266,13 +1297,105 @@ export const useOfflineSync =
       );
 
     useEffect(() => {
+      const resumeAfterLogin =
+        () => {
+          const currentToken =
+            getToken();
+
+          const currentPath =
+            window.location
+              .pathname;
+
+          const isPrivatePage =
+            !isPublicAuthPath(
+              currentPath,
+            );
+
+          if (
+            !currentToken ||
+            !isPrivatePage
+          ) {
+            lastTokenRef.current =
+              currentToken;
+
+            return false;
+          }
+
+          const tokenChanged =
+            currentToken !==
+            lastTokenRef.current;
+
+          const wasWaitingForLogin =
+            authRequiredRef.current;
+
+          lastTokenRef.current =
+            currentToken;
+
+          if (
+            !tokenChanged &&
+            !wasWaitingForLogin
+          ) {
+            return false;
+          }
+
+          clearAuthRequired();
+
+          setAuthMessage(
+            "Sesión restaurada. Sincronizando datos guardados...",
+          );
+
+          toast.success(
+            "Sesión restaurada. Sincronizando datos pendientes...",
+            {
+              id:
+                "offline-auth-required",
+            },
+          );
+
+          scheduleSync(
+            400,
+            {
+              silent:
+                false,
+            },
+          );
+
+          return true;
+        };
+
       const initialize =
         async () => {
           await normalizeLegacySyncQueue();
           await refreshStats();
 
+          /*
+           * Al recargar directamente una ruta privada después del
+           * Login, el token nuevo ya existe antes de montar el hook.
+           */
           if (
-            navigator.onLine
+            authRequiredRef.current &&
+            hasToken() &&
+            !isPublicAuthPath(
+              window.location
+                .pathname,
+            )
+          ) {
+            clearAuthRequired();
+
+            scheduleSync(
+              400,
+              {
+                silent:
+                  false,
+              },
+            );
+
+            return;
+          }
+
+          if (
+            navigator.onLine &&
+            !authRequiredRef.current
           ) {
             scheduleSync(
               ONLINE_SYNC_DELAY_MS,
@@ -1378,8 +1501,19 @@ export const useOfflineSync =
       const handleVisible =
         () => {
           if (
-            document.visibilityState ===
-              "visible" &&
+            document.visibilityState !==
+              "visible"
+          ) {
+            return;
+          }
+
+          if (
+            resumeAfterLogin()
+          ) {
+            return;
+          }
+
+          if (
             navigator.onLine &&
             !authRequiredRef.current
           ) {
@@ -1449,6 +1583,18 @@ export const useOfflineSync =
           AUTO_RETRY_INTERVAL_MS,
         );
 
+      /*
+       * Detecta el token creado por Login sin exigir recargar la
+       * aplicación ni modificar el componente Login.
+       */
+      const authenticationWatcher =
+        window.setInterval(
+          () => {
+            resumeAfterLogin();
+          },
+          800,
+        );
+
       initialize();
 
       return () => {
@@ -1499,11 +1645,16 @@ export const useOfflineSync =
           interval,
         );
 
+        window.clearInterval(
+          authenticationWatcher,
+        );
+
         window.clearTimeout(
           scheduledTimerRef.current,
         );
       };
     }, [
+      clearAuthRequired,
       markAuthRequired,
       refreshStats,
       scheduleSync,

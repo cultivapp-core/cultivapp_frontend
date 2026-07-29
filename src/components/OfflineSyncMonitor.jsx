@@ -7,10 +7,29 @@ import {
 } from "react-icons/fi";
 
 import {
+  useLocation,
+} from "react-router-dom";
+
+import {
   useOfflineSync,
 } from "../hooks/useOfflineSync";
 
+const isPublicAuthRoute = (
+  pathname,
+) =>
+  pathname === "/" ||
+  pathname === "/forgot-password" ||
+  pathname.startsWith(
+    "/reset-password/",
+  ) ||
+  pathname.startsWith(
+    "/verify/",
+  );
+
 const OfflineSyncMonitor = () => {
+  const location =
+    useLocation();
+
   const {
     isOnline,
     syncing,
@@ -42,9 +61,15 @@ const OfflineSyncMonitor = () => {
           ),
       );
 
+      /*
+       * No se elimina la marca de autenticación pendiente.
+       * Se conserva mientras el usuario está en Login y se limpia
+       * automáticamente cuando se detecta un token nuevo.
+       */
       try {
-        sessionStorage.removeItem(
-          "cultivapp_offline_auth_required",
+        sessionStorage.setItem(
+          "cultivapp_offline_return_to",
+          `${window.location.pathname}${window.location.search}`,
         );
       } catch {
         // El almacenamiento puede estar restringido.
@@ -54,6 +79,18 @@ const OfflineSyncMonitor = () => {
         "/?error=session_expired",
       );
     };
+
+  /*
+   * En Login y recuperación de contraseña no se muestra el banner.
+   * La cola permanece intacta y useOfflineSync sigue montado.
+   */
+  if (
+    isPublicAuthRoute(
+      location.pathname,
+    )
+  ) {
+    return null;
+  }
 
   if (
     isOnline &&
