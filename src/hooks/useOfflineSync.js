@@ -26,6 +26,60 @@ const AUTO_RETRY_INTERVAL_MS =
 const ONLINE_SYNC_DELAY_MS =
   800;
 
+const AUTH_REQUIRED_STORAGE_KEY =
+  "cultivapp_offline_auth_required";
+
+const getStoredUser = () => {
+  try {
+    const rawUser =
+      localStorage.getItem(
+        "user",
+      );
+
+    return rawUser
+      ? JSON.parse(
+          rawUser,
+        )
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const isSessionAuthError = (
+  statusCode,
+  message,
+) => {
+  const normalizedMessage =
+    String(
+      message || "",
+    ).toLowerCase();
+
+  return (
+    statusCode === 401 ||
+    (
+      statusCode === 403 &&
+      (
+        normalizedMessage.includes(
+          "sesión",
+        ) ||
+        normalizedMessage.includes(
+          "sesion",
+        ) ||
+        normalizedMessage.includes(
+          "token",
+        ) ||
+        normalizedMessage.includes(
+          "dispositivo",
+        ) ||
+        normalizedMessage.includes(
+          "unauthorized",
+        )
+      )
+    )
+  );
+};
+
 const hasToken = () => {
   const token =
     localStorage.getItem(
@@ -458,8 +512,82 @@ export const useOfflineSync =
       setLastResult,
     ] = useState(null);
 
+    const [
+      authRequired,
+      setAuthRequired,
+    ] = useState(() => {
+      try {
+        return (
+          sessionStorage.getItem(
+            AUTH_REQUIRED_STORAGE_KEY,
+          ) === "true"
+        );
+      } catch {
+        return false;
+      }
+    });
+
+    const [
+      authMessage,
+      setAuthMessage,
+    ] = useState(
+      "Tu sesión venció. Vuelve a ingresar en este dispositivo para sincronizar.",
+    );
+
     const isSyncingRef =
       useRef(false);
+
+    const authRequiredRef =
+      useRef(
+        authRequired,
+      );
+
+    const markAuthRequired =
+      useCallback(
+        (
+          message =
+            "Tu sesión venció. Vuelve a ingresar en este dispositivo para sincronizar.",
+        ) => {
+          authRequiredRef.current =
+            true;
+
+          setAuthRequired(
+            true,
+          );
+
+          setAuthMessage(
+            message,
+          );
+
+          try {
+            sessionStorage.setItem(
+              AUTH_REQUIRED_STORAGE_KEY,
+              "true",
+            );
+          } catch {
+            // El almacenamiento puede estar restringido.
+          }
+        },
+        [],
+      );
+
+    const clearAuthRequired =
+      useCallback(() => {
+        authRequiredRef.current =
+          false;
+
+        setAuthRequired(
+          false,
+        );
+
+        try {
+          sessionStorage.removeItem(
+            AUTH_REQUIRED_STORAGE_KEY,
+          );
+        } catch {
+          // El almacenamiento puede estar restringido.
+        }
+      }, []);
 
     const scheduledTimerRef =
       useRef(null);
@@ -529,6 +657,33 @@ export const useOfflineSync =
         }
 
         if (
+          authRequiredRef.current
+        ) {
+          const message =
+            authMessage ||
+            "Tu sesión venció. Vuelve a ingresar para sincronizar.";
+
+          setLastResult({
+            ok: false,
+            message,
+          });
+
+          if (!silent) {
+            toast.error(
+              message,
+              {
+                id:
+                  "offline-sync",
+              },
+            );
+          }
+
+          await refreshStats();
+
+          return null;
+        }
+
+        if (
           isSyncingRef.current
         ) {
           syncAgainRef.current =
@@ -539,7 +694,11 @@ export const useOfflineSync =
 
         if (!hasToken()) {
           const message =
-            "No existe una sesión válida. Cierra sesión e inicia nuevamente para sincronizar.";
+            "No existe una sesión válida. Vuelve a ingresar para sincronizar los datos guardados.";
+
+          markAuthRequired(
+            message,
+          );
 
           setLastResult({
             ok: false,
@@ -725,6 +884,35 @@ export const useOfflineSync =
                 throw error;
               }
 
+              const storedUser =
+                getStoredUser();
+
+              const ownerUserId =
+                item.metadata
+                  ?.ownerUserId ||
+                null;
+
+              if (
+                ownerUserId &&
+                storedUser?.id &&
+                String(
+                  ownerUserId,
+                ) !==
+                  String(
+                    storedUser.id,
+                  )
+              ) {
+                const error =
+                  new Error(
+                    "Los datos pendientes pertenecen a otro usuario. Ingresa con el usuario que realizó la visita.",
+                  );
+
+                error.status =
+                  401;
+
+                throw error;
+              }
+
               const body =
                 rebuildBody(
                   item.payload,
@@ -735,6 +923,8 @@ export const useOfflineSync =
                   item,
                   body,
                 );
+
+              clearAuthRequired();
 
               await removeFromSyncQueue(
                 item.id,
@@ -798,27 +988,72 @@ export const useOfflineSync =
               }
 
               if (
-                statusCode ===
-                  401 ||
-                statusCode ===
-                  403
+                isSessionAuthError(
+                  statusCode,
+                  message,
+                )
               ) {
+                const authErrorMessage =
+                  message ||
+                  "Tu sesión venció. Vuelve a ingresar en este dispositivo.";
+
                 await markSyncItemRetry(
                   item.id,
-                  message,
+                  authErrorMessage,
                 );
 
                 blockedRoutes.add(
                   routeKey,
                 );
 
+                markAuthRequired(
+                  authErrorMessage,
+                );
+
                 setLastResult({
                   ok: false,
                   message:
-                    "La sesión expiró o no tiene permisos. Inicia sesión nuevamente.",
+                    authErrorMessage,
                 });
 
+                dispatchSyncEvent(
+                  OFFLINE_SYNC_EVENTS
+                    .AUTH_REQUIRED,
+                  {
+                    item,
+                    message:
+                      authErrorMessage,
+                  },
+                );
+
                 break;
+              }
+
+              if (
+                statusCode ===
+                  403
+              ) {
+                await markSyncItemFailed(
+                  item.id,
+                  message,
+                );
+
+                failedCount +=
+                  1;
+
+                dispatchSyncEvent(
+                  OFFLINE_SYNC_EVENTS
+                    .ITEM_ERROR,
+                  {
+                    item,
+                    error:
+                      message,
+                    permanent:
+                      true,
+                  },
+                );
+
+                continue;
               }
 
               if (
@@ -989,6 +1224,9 @@ export const useOfflineSync =
           }
         }
       }, [
+        authMessage,
+        clearAuthRequired,
+        markAuthRequired,
         refreshStats,
       ]);
 
@@ -1048,6 +1286,20 @@ export const useOfflineSync =
             true,
           );
 
+          if (
+            authRequiredRef.current
+          ) {
+            toast.error(
+              "La conexión volvió, pero debes ingresar nuevamente para sincronizar.",
+              {
+                id:
+                  "offline-online",
+              },
+            );
+
+            return;
+          }
+
           toast.success(
             "Conexión restablecida. Sincronizando datos...",
             {
@@ -1085,7 +1337,8 @@ export const useOfflineSync =
           refreshStats();
 
           if (
-            navigator.onLine
+            navigator.onLine &&
+            !authRequiredRef.current
           ) {
             scheduleSync(
               250,
@@ -1096,7 +1349,8 @@ export const useOfflineSync =
       const handleSyncRequested =
         () => {
           if (
-            navigator.onLine
+            navigator.onLine &&
+            !authRequiredRef.current
           ) {
             startSync({
               silent:
@@ -1107,12 +1361,27 @@ export const useOfflineSync =
           }
         };
 
+      const handleAuthRequired =
+        (event) => {
+          const message =
+            event?.detail
+              ?.message ||
+            "Tu sesión venció. Vuelve a ingresar en este dispositivo para sincronizar.";
+
+          markAuthRequired(
+            message,
+          );
+
+          refreshStats();
+        };
+
       const handleVisible =
         () => {
           if (
             document.visibilityState ===
               "visible" &&
-            navigator.onLine
+            navigator.onLine &&
+            !authRequiredRef.current
           ) {
             scheduleSync(
               300,
@@ -1152,6 +1421,12 @@ export const useOfflineSync =
         handleSyncRequested,
       );
 
+      window.addEventListener(
+        OFFLINE_SYNC_EVENTS
+          .AUTH_REQUIRED,
+        handleAuthRequired,
+      );
+
       document.addEventListener(
         "visibilitychange",
         handleVisible,
@@ -1162,7 +1437,8 @@ export const useOfflineSync =
           () => {
             if (
               navigator.onLine &&
-              !isSyncingRef.current
+              !isSyncingRef.current &&
+              !authRequiredRef.current
             ) {
               startSync({
                 silent:
@@ -1208,6 +1484,12 @@ export const useOfflineSync =
           handleSyncRequested,
         );
 
+        window.removeEventListener(
+          OFFLINE_SYNC_EVENTS
+            .AUTH_REQUIRED,
+          handleAuthRequired,
+        );
+
         document.removeEventListener(
           "visibilitychange",
           handleVisible,
@@ -1222,6 +1504,7 @@ export const useOfflineSync =
         );
       };
     }, [
+      markAuthRequired,
       refreshStats,
       scheduleSync,
       startSync,
@@ -1240,6 +1523,8 @@ export const useOfflineSync =
         queueStats.lastError,
       currentItem,
       lastResult,
+      authRequired,
+      authMessage,
       startSync,
       refreshStats,
     };
