@@ -172,9 +172,12 @@ const OfflineManager = {
       },
       status:
         "pending",
-      retryCount: 0,
-      lastError: null,
-      nextRetryAt: null,
+      retryCount:
+        0,
+      lastError:
+        null,
+      nextRetryAt:
+        null,
       createdAt,
       updatedAt:
         createdAt,
@@ -201,11 +204,6 @@ const OfflineManager = {
       },
     );
 
-    /*
-     * Si el navegador cree tener conexión, solicita al hook global
-     * que procese inmediatamente la cola. El hook también reintenta
-     * cuando vuelve internet, al regresar a la pestaña y por intervalo.
-     */
     if (
       typeof navigator !==
         "undefined" &&
@@ -217,8 +215,6 @@ const OfflineManager = {
         {
           reason:
             "QUEUE_ITEM_ADDED",
-          item:
-            savedItem,
         },
       );
     }

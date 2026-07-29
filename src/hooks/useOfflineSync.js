@@ -8,10 +8,13 @@ import toast from "react-hot-toast";
 
 import api from "../api/apiClient";
 import {
-  countPendingSync,
   getPendingSync,
+  getSyncQueueStats,
+  markSyncItemFailed,
   markSyncItemRetry,
+  normalizeLegacySyncQueue,
   removeFromSyncQueue,
+  retryAllSyncItems,
 } from "../utils/db";
 import {
   OFFLINE_SYNC_EVENTS,
@@ -21,48 +24,19 @@ const AUTO_RETRY_INTERVAL_MS =
   15_000;
 
 const ONLINE_SYNC_DELAY_MS =
-  1_000;
+  800;
 
-const getStoredUser = () => {
-  try {
-    const stored =
-      localStorage.getItem(
-        "user",
-      );
-
-    return stored
-      ? JSON.parse(stored)
-      : null;
-  } catch {
-    return null;
-  }
-};
-
-const hasValidSession = () => {
+const hasToken = () => {
   const token =
     localStorage.getItem(
       "token",
     );
 
-  if (
-    !token ||
-    token === "null" ||
-    token ===
-      "undefined"
-  ) {
-    return false;
-  }
-
-  const role =
-    String(
-      getStoredUser()?.role ||
-      "",
-    ).toUpperCase();
-
-  return [
-    "USUARIO",
-    "MERCADERISTA",
-  ].includes(role);
+  return Boolean(
+    token &&
+    token !== "null" &&
+    token !== "undefined",
+  );
 };
 
 const base64ToFile = (
@@ -123,20 +97,23 @@ const appendFormValue = (
     value?.__type ===
     "File"
   ) {
+    const sourceBlob =
+      value.blob;
+
     const file =
-      value.blob instanceof
+      sourceBlob instanceof
         File
-        ? value.blob
+        ? sourceBlob
         : new File(
             [
-              value.blob,
+              sourceBlob,
             ],
             value.name ||
               `archivo-${Date.now()}`,
             {
               type:
                 value.mimeType ||
-                value.blob
+                sourceBlob
                   ?.type ||
                 "application/octet-stream",
               lastModified:
@@ -208,18 +185,38 @@ const rebuildBody = (
     const formData =
       new FormData();
 
-    const entries =
+    if (
       Array.isArray(
         payload.entries,
       )
-        ? payload.entries
-        : [];
+    ) {
+      payload.entries.forEach(
+        ({
+          key,
+          value,
+        }) => {
+          appendFormValue(
+            formData,
+            key,
+            value,
+          );
+        },
+      );
 
-    entries.forEach(
-      ({
+      return formData;
+    }
+
+    /*
+     * Compatibilidad con el formato antiguo:
+     * { __type: "FormData", data: { ... } }
+     */
+    Object.entries(
+      payload.data || {},
+    ).forEach(
+      ([
         key,
         value,
-      }) => {
+      ]) => {
         appendFormValue(
           formData,
           key,
@@ -247,36 +244,73 @@ const rebuildBody = (
   return payload;
 };
 
-const dispatchSyncEvent = (
-  eventName,
-  detail,
+const endpointForLegacyItem = (
+  item,
 ) => {
-  if (
-    typeof window ===
-    "undefined"
-  ) {
-    return;
+  const routeId =
+    item?.routeId
+      ? String(
+          item.routeId,
+        )
+      : null;
+
+  if (!routeId) {
+    return null;
   }
 
-  window.dispatchEvent(
-    new CustomEvent(
-      eventName,
-      {
-        detail,
-      },
-    ),
-  );
+  switch (
+    String(
+      item?.type ||
+      "",
+    ).toUpperCase()
+  ) {
+    case "PHOTO":
+      return `/routes/${routeId}/photo`;
+
+    case "SCAN":
+      return `/routes/${routeId}/scans`;
+
+    case "TASK":
+      return `/routes/${routeId}/task`;
+
+    case "FINISH":
+      return `/routes/${routeId}/finish`;
+
+    case "CHECK_IN":
+      return `/routes/${routeId}/check-in`;
+
+    default:
+      return null;
+  }
 };
 
 const executeRequest = async (
   item,
   body,
 ) => {
+  const endpoint =
+    item.endpoint ||
+    endpointForLegacyItem(
+      item,
+    );
+
   const method =
     String(
       item.method ||
       "POST",
     ).toLowerCase();
+
+  if (!endpoint) {
+    const error =
+      new Error(
+        "La operación offline no tiene endpoint ni routeId válido.",
+      );
+
+    error.permanent =
+      true;
+
+    throw error;
+  }
 
   if (
     typeof api[
@@ -298,7 +332,7 @@ const executeRequest = async (
     method === "delete"
   ) {
     return api.delete(
-      item.endpoint,
+      endpoint,
       {
         data:
           body,
@@ -310,7 +344,7 @@ const executeRequest = async (
     method === "get"
   ) {
     return api.get(
-      item.endpoint,
+      endpoint,
       {
         params:
           body || undefined,
@@ -321,8 +355,29 @@ const executeRequest = async (
   return api[
     method
   ](
-    item.endpoint,
+    endpoint,
     body,
+  );
+};
+
+const dispatchSyncEvent = (
+  eventName,
+  detail,
+) => {
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(
+      eventName,
+      {
+        detail,
+      },
+    ),
   );
 };
 
@@ -343,28 +398,12 @@ const getErrorMessage = (
   error?.message ||
   "Error de sincronización";
 
-const isNetworkFailure = (
-  error,
-) =>
-  !error?.response ||
-  error?.code ===
-    "ERR_NETWORK" ||
-  error?.message ===
-    "Network Error" ||
-  error?.name ===
-    "AbortError";
-
 const isPermanentError = (
   error,
-) => {
-  if (
-    error?.permanent ===
-      true
-  ) {
-    return true;
-  }
-
-  return [
+) =>
+  error?.permanent ===
+    true ||
+  [
     400,
     404,
     413,
@@ -372,7 +411,6 @@ const isPermanentError = (
   ].includes(
     getStatusCode(error),
   );
-};
 
 const routeKeyForItem = (
   item,
@@ -401,57 +439,93 @@ export const useOfflineSync =
     ] = useState(false);
 
     const [
-      pendingCount,
-      setPendingCount,
-    ] = useState(0);
+      queueStats,
+      setQueueStats,
+    ] = useState({
+      pendingCount: 0,
+      failedCount: 0,
+      totalCount: 0,
+      lastError: null,
+    });
+
+    const [
+      currentItem,
+      setCurrentItem,
+    ] = useState(null);
+
+    const [
+      lastResult,
+      setLastResult,
+    ] = useState(null);
 
     const isSyncingRef =
-      useRef(false);
-
-    const syncAgainRef =
       useRef(false);
 
     const scheduledTimerRef =
       useRef(null);
 
-    const updatePendingCount =
+    const syncAgainRef =
+      useRef(false);
+
+    const refreshStats =
       useCallback(async () => {
         try {
-          const count =
-            await countPendingSync();
+          const stats =
+            await getSyncQueueStats();
 
-          setPendingCount(
-            count,
+          setQueueStats(
+            stats,
           );
 
-          return count;
+          return stats;
         } catch (error) {
           console.error(
-            "Error contando operaciones offline:",
+            "Error leyendo cola offline:",
             error,
           );
 
-          return 0;
+          return {
+            pendingCount: 0,
+            failedCount: 0,
+            totalCount: 0,
+            lastError:
+              error?.message ||
+              "No se pudo leer IndexedDB.",
+          };
         }
       }, []);
 
     const startSync =
       useCallback(async ({
         silent = false,
+        force = false,
       } = {}) => {
         if (
           typeof navigator !==
             "undefined" &&
           !navigator.onLine
         ) {
-          return {
-            synchronizedCount:
-              0,
-            discardedCount:
-              0,
-            pendingCount:
-              await updatePendingCount(),
-          };
+          const message =
+            "El dispositivo todavía no tiene conexión.";
+
+          setLastResult({
+            ok: false,
+            message,
+          });
+
+          if (!silent) {
+            toast.error(
+              message,
+              {
+                id:
+                  "offline-sync",
+              },
+            );
+          }
+
+          await refreshStats();
+
+          return null;
         }
 
         if (
@@ -463,36 +537,82 @@ export const useOfflineSync =
           return null;
         }
 
-        if (
-          !hasValidSession()
-        ) {
-          await updatePendingCount();
+        if (!hasToken()) {
+          const message =
+            "No existe una sesión válida. Cierra sesión e inicia nuevamente para sincronizar.";
+
+          setLastResult({
+            ok: false,
+            message,
+          });
+
+          if (!silent) {
+            toast.error(
+              message,
+              {
+                id:
+                  "offline-sync",
+              },
+            );
+          }
+
+          await refreshStats();
 
           return null;
         }
 
+        if (force) {
+          await retryAllSyncItems();
+        }
+
+        await normalizeLegacySyncQueue();
+
         const pending =
-          await getPendingSync();
+          await getPendingSync({
+            includeDeferred:
+              force,
+          });
 
         if (
           pending.length === 0
         ) {
-          await updatePendingCount();
+          const stats =
+            await refreshStats();
+
+          const message =
+            stats.totalCount > 0
+              ? "Las operaciones están esperando su próximo reintento. Presiona Sincronizar para forzarlo."
+              : "No existen datos pendientes.";
+
+          setLastResult({
+            ok:
+              stats.totalCount === 0,
+            message,
+          });
 
           if (!silent) {
-            toast.dismiss(
-              "offline-sync",
-            );
+            if (
+              stats.totalCount === 0
+            ) {
+              toast.success(
+                message,
+                {
+                  id:
+                    "offline-sync",
+                },
+              );
+            } else {
+              toast.error(
+                message,
+                {
+                  id:
+                    "offline-sync",
+                },
+              );
+            }
           }
 
-          return {
-            synchronizedCount:
-              0,
-            discardedCount:
-              0,
-            pendingCount:
-              0,
-          };
+          return null;
         }
 
         isSyncingRef.current =
@@ -503,21 +623,20 @@ export const useOfflineSync =
 
         setSyncing(true);
 
-        let synchronizedCount =
-          0;
-
-        let discardedCount =
-          0;
-
-        let deferredCount =
-          0;
+        let synchronizedCount = 0;
+        let failedCount = 0;
+        let deferredCount = 0;
 
         const blockedRoutes =
           new Set();
 
         if (!silent) {
           toast.loading(
-            "Sincronizando datos pendientes...",
+            `Sincronizando ${pending.length} operación${
+              pending.length === 1
+                ? ""
+                : "es"
+            }...`,
             {
               id:
                 "offline-sync",
@@ -536,9 +655,26 @@ export const useOfflineSync =
 
         try {
           for (
-            const item of
-            pending
+            let index = 0;
+            index < pending.length;
+            index += 1
           ) {
+            const item =
+              pending[index];
+
+            setCurrentItem({
+              index:
+                index + 1,
+              total:
+                pending.length,
+              type:
+                item.type ||
+                "OTHER",
+              routeId:
+                item.routeId ||
+                null,
+            });
+
             if (
               typeof navigator !==
                 "undefined" &&
@@ -552,11 +688,6 @@ export const useOfflineSync =
                 item,
               );
 
-            /*
-             * Si una operación de una visita falla temporalmente,
-             * las posteriores de esa misma visita deben esperar.
-             * Las visitas distintas sí pueden continuar.
-             */
             if (
               blockedRoutes.has(
                 routeKey,
@@ -570,7 +701,10 @@ export const useOfflineSync =
 
             try {
               const isCheckIn =
-                item.type ===
+                String(
+                  item.type ||
+                  "",
+                ).toUpperCase() ===
                   "CHECK_IN" ||
                 String(
                   item.endpoint ||
@@ -582,7 +716,7 @@ export const useOfflineSync =
               if (isCheckIn) {
                 const error =
                   new Error(
-                    "El check-in GPS debe realizarse en línea.",
+                    "El check-in GPS no puede sincronizarse desde la cola porque requiere validar la ubicación actual.",
                   );
 
                 error.permanent =
@@ -630,10 +764,25 @@ export const useOfflineSync =
                   error,
                 );
 
-              /*
-               * Conflicto suele significar que la operación ya había
-               * sido procesada antes de un cierre o recarga.
-               */
+              console.error(
+                "❌ Error sincronizando operación offline:",
+                {
+                  id:
+                    item.id,
+                  type:
+                    item.type,
+                  routeId:
+                    item.routeId,
+                  endpoint:
+                    item.endpoint ||
+                    endpointForLegacyItem(
+                      item,
+                    ),
+                  statusCode,
+                  message,
+                },
+              );
+
               if (
                 statusCode ===
                   409
@@ -644,20 +793,6 @@ export const useOfflineSync =
 
                 synchronizedCount +=
                   1;
-
-                dispatchSyncEvent(
-                  OFFLINE_SYNC_EVENTS
-                    .ITEM_SUCCESS,
-                  {
-                    item,
-                    response:
-                      error?.response
-                        ?.data ||
-                      null,
-                    recovered:
-                      true,
-                  },
-                );
 
                 continue;
               }
@@ -673,25 +808,15 @@ export const useOfflineSync =
                   message,
                 );
 
-                dispatchSyncEvent(
-                  OFFLINE_SYNC_EVENTS
-                    .ITEM_ERROR,
-                  {
-                    item,
-                    error:
-                      message,
-                    permanent:
-                      false,
-                  },
+                blockedRoutes.add(
+                  routeKey,
                 );
 
-                toast.error(
-                  "La sesión expiró o no tiene permisos. Inicia sesión nuevamente para sincronizar.",
-                  {
-                    id:
-                      "offline-sync",
-                  },
-                );
+                setLastResult({
+                  ok: false,
+                  message:
+                    "La sesión expiró o no tiene permisos. Inicia sesión nuevamente.",
+                });
 
                 break;
               }
@@ -701,11 +826,16 @@ export const useOfflineSync =
                   error,
                 )
               ) {
-                await removeFromSyncQueue(
+                /*
+                 * No se elimina el dato. Se marca fallido para que
+                 * pueda revisarse y reintentarse manualmente.
+                 */
+                await markSyncItemFailed(
                   item.id,
+                  message,
                 );
 
-                discardedCount +=
+                failedCount +=
                   1;
 
                 dispatchSyncEvent(
@@ -720,10 +850,6 @@ export const useOfflineSync =
                   },
                 );
 
-                /*
-                 * No bloquear la visita por un dato irrecuperable:
-                 * se descarta y continúa con la siguiente operación.
-                 */
                 continue;
               }
 
@@ -748,35 +874,52 @@ export const useOfflineSync =
                     message,
                   permanent:
                     false,
-                  network:
-                    isNetworkFailure(
-                      error,
-                    ),
                 },
               );
             }
           }
 
-          const remaining =
-            await updatePendingCount();
+          const stats =
+            await refreshStats();
+
+          const summary = {
+            synchronizedCount,
+            failedCount,
+            deferredCount,
+            pendingCount:
+              stats.pendingCount,
+            totalCount:
+              stats.totalCount,
+          };
+
+          setLastResult({
+            ok:
+              synchronizedCount > 0 &&
+              stats.totalCount === 0,
+            message:
+              synchronizedCount > 0
+                ? `${synchronizedCount} operación${
+                    synchronizedCount === 1
+                      ? ""
+                      : "es"
+                  } sincronizada${
+                    synchronizedCount === 1
+                      ? ""
+                      : "s"
+                  }.`
+                : stats.lastError ||
+                  "No se pudo sincronizar ninguna operación.",
+          });
 
           if (!silent) {
             if (
-              synchronizedCount >
-                0 &&
-              remaining === 0
+              stats.totalCount === 0
             ) {
               toast.success(
-                `${synchronizedCount} operación${
-                  synchronizedCount ===
-                  1
+                `Sincronización completa: ${synchronizedCount} operación${
+                  synchronizedCount === 1
                     ? ""
                     : "es"
-                } sincronizada${
-                  synchronizedCount ===
-                  1
-                    ? ""
-                    : "s"
                 }.`,
                 {
                   id:
@@ -784,61 +927,30 @@ export const useOfflineSync =
                 },
               );
             } else if (
-              synchronizedCount >
-              0
+              synchronizedCount > 0
             ) {
               toast.success(
                 `${synchronizedCount} sincronizada${
-                  synchronizedCount ===
-                  1
+                  synchronizedCount === 1
                     ? ""
                     : "s"
-                }. Quedan ${remaining} pendiente${
-                  remaining ===
-                  1
-                    ? ""
-                    : "s"
-                }.`,
-                {
-                  id:
-                    "offline-sync",
-                },
-              );
-            } else if (
-              discardedCount >
-              0
-            ) {
-              toast.error(
-                `${discardedCount} operación${
-                  discardedCount ===
-                  1
-                    ? ""
-                    : "es"
-                } no pudo${
-                  discardedCount ===
-                  1
-                    ? ""
-                    : "ieron"
-                } recuperarse.`,
+                }. Quedan ${stats.totalCount}.`,
                 {
                   id:
                     "offline-sync",
                 },
               );
             } else {
-              toast.dismiss(
-                "offline-sync",
+              toast.error(
+                stats.lastError ||
+                "No se pudo sincronizar. Revisa la conexión y la sesión.",
+                {
+                  id:
+                    "offline-sync",
+                },
               );
             }
           }
-
-          const summary = {
-            synchronizedCount,
-            discardedCount,
-            deferredCount,
-            pendingCount:
-              remaining,
-          };
 
           dispatchSyncEvent(
             OFFLINE_SYNC_EVENTS
@@ -852,6 +964,10 @@ export const useOfflineSync =
             false;
 
           setSyncing(false);
+
+          setCurrentItem(
+            null,
+          );
 
           if (
             syncAgainRef.current &&
@@ -868,12 +984,12 @@ export const useOfflineSync =
                   silent:
                     true,
                 }),
-              300,
+              500,
             );
           }
         }
       }, [
-        updatePendingCount,
+        refreshStats,
       ]);
 
     const scheduleSync =
@@ -883,12 +999,12 @@ export const useOfflineSync =
             ONLINE_SYNC_DELAY_MS,
           {
             silent =
-              false,
+              true,
           } = {},
         ) => {
           if (
             typeof window ===
-            "undefined"
+              "undefined"
           ) {
             return;
           }
@@ -899,11 +1015,10 @@ export const useOfflineSync =
 
           scheduledTimerRef.current =
             window.setTimeout(
-              () => {
+              () =>
                 startSync({
                   silent,
-                });
-              },
+                }),
               delay,
             );
         },
@@ -913,6 +1028,20 @@ export const useOfflineSync =
       );
 
     useEffect(() => {
+      const initialize =
+        async () => {
+          await normalizeLegacySyncQueue();
+          await refreshStats();
+
+          if (
+            navigator.onLine
+          ) {
+            scheduleSync(
+              ONLINE_SYNC_DELAY_MS,
+            );
+          }
+        };
+
       const handleOnline =
         () => {
           setIsOnline(
@@ -929,6 +1058,10 @@ export const useOfflineSync =
 
           scheduleSync(
             ONLINE_SYNC_DELAY_MS,
+            {
+              silent:
+                false,
+            },
           );
         };
 
@@ -939,7 +1072,7 @@ export const useOfflineSync =
           );
 
           toast.error(
-            "Sin conexión. El avance se guardará en el dispositivo.",
+            "Sin conexión. El avance seguirá guardado en el dispositivo.",
             {
               id:
                 "offline-online",
@@ -947,35 +1080,15 @@ export const useOfflineSync =
           );
         };
 
-      const handleVisibility =
+      const handleQueueChanged =
         () => {
-          if (
-            document
-              .visibilityState ===
-              "visible" &&
-            navigator.onLine
-          ) {
-            scheduleSync(
-              300,
-              {
-                silent:
-                  true,
-              },
-            );
-          }
-        };
+          refreshStats();
 
-      const handleFocus =
-        () => {
           if (
             navigator.onLine
           ) {
             scheduleSync(
-              300,
-              {
-                silent:
-                  true,
-              },
+              250,
             );
           }
         };
@@ -985,29 +1098,24 @@ export const useOfflineSync =
           if (
             navigator.onLine
           ) {
-            scheduleSync(
-              200,
-              {
-                silent:
-                  true,
-              },
-            );
+            startSync({
+              silent:
+                true,
+              force:
+                true,
+            });
           }
         };
 
-      const handleQueueUpdated =
+      const handleVisible =
         () => {
-          updatePendingCount();
-
           if (
+            document.visibilityState ===
+              "visible" &&
             navigator.onLine
           ) {
             scheduleSync(
-              250,
-              {
-                silent:
-                  true,
-              },
+              300,
             );
           }
         };
@@ -1024,12 +1132,18 @@ export const useOfflineSync =
 
       window.addEventListener(
         "focus",
-        handleFocus,
+        handleVisible,
       );
 
       window.addEventListener(
         "pageshow",
-        handleFocus,
+        handleVisible,
+      );
+
+      window.addEventListener(
+        OFFLINE_SYNC_EVENTS
+          .QUEUE_UPDATED,
+        handleQueueChanged,
       );
 
       window.addEventListener(
@@ -1038,18 +1152,12 @@ export const useOfflineSync =
         handleSyncRequested,
       );
 
-      window.addEventListener(
-        OFFLINE_SYNC_EVENTS
-          .QUEUE_UPDATED,
-        handleQueueUpdated,
-      );
-
       document.addEventListener(
         "visibilitychange",
-        handleVisibility,
+        handleVisible,
       );
 
-      const backupInterval =
+      const interval =
         window.setInterval(
           () => {
             if (
@@ -1065,19 +1173,7 @@ export const useOfflineSync =
           AUTO_RETRY_INTERVAL_MS,
         );
 
-      updatePendingCount();
-
-      if (
-        navigator.onLine
-      ) {
-        scheduleSync(
-          ONLINE_SYNC_DELAY_MS,
-          {
-            silent:
-              true,
-          },
-        );
-      }
+      initialize();
 
       return () => {
         window.removeEventListener(
@@ -1092,12 +1188,18 @@ export const useOfflineSync =
 
         window.removeEventListener(
           "focus",
-          handleFocus,
+          handleVisible,
         );
 
         window.removeEventListener(
           "pageshow",
-          handleFocus,
+          handleVisible,
+        );
+
+        window.removeEventListener(
+          OFFLINE_SYNC_EVENTS
+            .QUEUE_UPDATED,
+          handleQueueChanged,
         );
 
         window.removeEventListener(
@@ -1106,19 +1208,13 @@ export const useOfflineSync =
           handleSyncRequested,
         );
 
-        window.removeEventListener(
-          OFFLINE_SYNC_EVENTS
-            .QUEUE_UPDATED,
-          handleQueueUpdated,
-        );
-
         document.removeEventListener(
           "visibilitychange",
-          handleVisibility,
+          handleVisible,
         );
 
         window.clearInterval(
-          backupInterval,
+          interval,
         );
 
         window.clearTimeout(
@@ -1126,15 +1222,25 @@ export const useOfflineSync =
         );
       };
     }, [
+      refreshStats,
       scheduleSync,
       startSync,
-      updatePendingCount,
     ]);
 
     return {
       isOnline,
       syncing,
-      pendingCount,
+      pendingCount:
+        queueStats.pendingCount,
+      failedCount:
+        queueStats.failedCount,
+      totalCount:
+        queueStats.totalCount,
+      lastError:
+        queueStats.lastError,
+      currentItem,
+      lastResult,
       startSync,
+      refreshStats,
     };
   };

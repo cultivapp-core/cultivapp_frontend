@@ -24,11 +24,24 @@ db.version(3).stores({
     "routeId, updatedAt, step, status",
 });
 
-/*
- * La versión 4 conserva la información existente y agrega campos
- * utilizados para reintentos automáticos y diagnóstico.
- */
 db.version(4).stores({
+  visits:
+    "id, cadena, direccion, status",
+  questions:
+    "id, question, is_required",
+  syncQueue:
+    "++id, status, routeId, type, createdAt, nextRetryAt, [status+routeId]",
+  visitDrafts:
+    "routeId, updatedAt, step, status",
+});
+
+/*
+ * Versión 5:
+ * - conserva la cola existente;
+ * - permite distinguir pendientes y fallidos;
+ * - mantiene compatibilidad con registros antiguos.
+ */
+db.version(5).stores({
   visits:
     "id, cadena, direccion, status",
   questions:
@@ -112,6 +125,119 @@ const serializeIfNeeded = (
   return payload;
 };
 
+const endpointForLegacyItem = (
+  item,
+) => {
+  const routeId =
+    item?.routeId
+      ? String(
+          item.routeId,
+        )
+      : null;
+
+  if (!routeId) {
+    return null;
+  }
+
+  switch (
+    String(
+      item?.type ||
+      "",
+    ).toUpperCase()
+  ) {
+    case "PHOTO":
+      return `/routes/${routeId}/photo`;
+
+    case "SCAN":
+      return `/routes/${routeId}/scans`;
+
+    case "TASK":
+      return `/routes/${routeId}/task`;
+
+    case "FINISH":
+      return `/routes/${routeId}/finish`;
+
+    case "CHECK_IN":
+      return `/routes/${routeId}/check-in`;
+
+    default:
+      return null;
+  }
+};
+
+export const normalizeLegacySyncQueue =
+  async () => {
+    const items =
+      await db.syncQueue
+        .toArray();
+
+    if (
+      items.length === 0
+    ) {
+      return 0;
+    }
+
+    let normalizedCount = 0;
+
+    await db.transaction(
+      "rw",
+      db.syncQueue,
+      async () => {
+        for (const item of items) {
+          const endpoint =
+            item.endpoint ||
+            endpointForLegacyItem(
+              item,
+            );
+
+          const method =
+            String(
+              item.method ||
+              "POST",
+            ).toUpperCase();
+
+          const status =
+            [
+              "pending",
+              "failed",
+            ].includes(
+              item.status,
+            )
+              ? item.status
+              : "pending";
+
+          const changes = {
+            endpoint,
+            method,
+            status,
+            retryCount:
+              Number(
+                item.retryCount,
+              ) || 0,
+            lastError:
+              item.lastError ||
+              null,
+            nextRetryAt:
+              item.nextRetryAt ||
+              null,
+            updatedAt:
+              item.updatedAt ||
+              new Date().toISOString(),
+          };
+
+          await db.syncQueue.update(
+            item.id,
+            changes,
+          );
+
+          normalizedCount += 1;
+        }
+      },
+    );
+
+    return normalizedCount;
+  };
+
 export const addToSyncQueue =
   async (item) => {
     const now =
@@ -126,6 +252,16 @@ export const addToSyncQueue =
                 item.routeId,
               )
             : null,
+        endpoint:
+          item.endpoint ||
+          endpointForLegacyItem(
+            item,
+          ),
+        method:
+          String(
+            item.method ||
+            "POST",
+          ).toUpperCase(),
         payload:
           serializeIfNeeded(
             item.payload,
@@ -137,10 +273,8 @@ export const addToSyncQueue =
             item.retryCount,
           ) || 0,
         lastError:
-          item.lastError ||
           null,
         nextRetryAt:
-          item.nextRetryAt ||
           null,
         createdAt:
           item.createdAt ||
@@ -200,28 +334,69 @@ export const getPendingSync =
       );
   };
 
+export const getSyncQueueStats =
+  async () => {
+    const [
+      pendingItems,
+      failedItems,
+    ] = await Promise.all([
+      db.syncQueue
+        .where("status")
+        .equals("pending")
+        .toArray(),
+      db.syncQueue
+        .where("status")
+        .equals("failed")
+        .toArray(),
+    ]);
+
+    const allItems = [
+      ...pendingItems,
+      ...failedItems,
+    ].sort(
+      (first, second) =>
+        Number(second.id) -
+        Number(first.id),
+    );
+
+    const errorItem =
+      allItems.find(
+        (item) =>
+          item.lastError,
+      );
+
+    return {
+      pendingCount:
+        pendingItems.length,
+      failedCount:
+        failedItems.length,
+      totalCount:
+        pendingItems.length +
+        failedItems.length,
+      lastError:
+        errorItem?.lastError ||
+        null,
+      lastErrorItem:
+        errorItem ||
+        null,
+    };
+  };
+
 export const getPendingSyncByRoute =
   async (routeId) => {
     if (!routeId) {
       return [];
     }
 
-    const items =
-      await db.syncQueue
-        .where(
-          "[status+routeId]",
-        )
-        .equals([
-          "pending",
-          String(routeId),
-        ])
-        .toArray();
-
-    return items.sort(
-      (first, second) =>
-        Number(first.id) -
-        Number(second.id),
-    );
+    return db.syncQueue
+      .where(
+        "[status+routeId]",
+      )
+      .equals([
+        "pending",
+        String(routeId),
+      ])
+      .sortBy("id");
   };
 
 export const countPendingSyncByRoute =
@@ -242,11 +417,12 @@ export const countPendingSyncByRoute =
   };
 
 export const countPendingSync =
-  async () =>
-    db.syncQueue
-      .where("status")
-      .equals("pending")
-      .count();
+  async () => {
+    const stats =
+      await getSyncQueueStats();
+
+    return stats.totalCount;
+  };
 
 export const markSyncItemRetry =
   async (
@@ -267,11 +443,6 @@ export const markSyncItemRetry =
         current.retryCount,
       ) + 1;
 
-    /*
-     * Backoff:
-     * 5 s, 10 s, 20 s, 40 s...
-     * Máximo 5 minutos.
-     */
     const delayMs =
       Math.min(
         5_000 *
@@ -292,7 +463,7 @@ export const markSyncItemRetry =
         lastError:
           String(
             errorMessage ||
-            "Error de sincronización",
+            "Error temporal de sincronización",
           ),
         nextRetryAt:
           new Date(
@@ -303,6 +474,57 @@ export const markSyncItemRetry =
           new Date().toISOString(),
       },
     );
+  };
+
+export const markSyncItemFailed =
+  async (
+    id,
+    errorMessage,
+  ) => {
+    await db.syncQueue.update(
+      id,
+      {
+        status:
+          "failed",
+        lastError:
+          String(
+            errorMessage ||
+            "La operación no pudo sincronizarse.",
+          ),
+        nextRetryAt:
+          null,
+        updatedAt:
+          new Date().toISOString(),
+      },
+    );
+  };
+
+export const retryAllSyncItems =
+  async () => {
+    const ids =
+      await db.syncQueue
+        .toCollection()
+        .primaryKeys();
+
+    if (
+      ids.length === 0
+    ) {
+      return 0;
+    }
+
+    await db.syncQueue
+      .where("id")
+      .anyOf(ids)
+      .modify({
+        status:
+          "pending",
+        nextRetryAt:
+          null,
+        updatedAt:
+          new Date().toISOString(),
+      });
+
+    return ids.length;
   };
 
 export const clearSyncItemRetry =
