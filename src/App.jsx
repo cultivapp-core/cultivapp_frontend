@@ -9,6 +9,7 @@ import { getDeviceInfo } from "./utils/deviceInfo"
 
 // --- SINCRONIZACIÓN OFFLINE GLOBAL ---
 import OfflineSyncMonitor from "./components/OfflineSyncMonitor"
+import { OFFLINE_SYNC_EVENTS } from "./services/offlineManager"
 
 // --- AUTH PAGES ---
 import Login from "./pages/Login"
@@ -83,8 +84,70 @@ const HeartbeatMonitor = () => {
     if (!user?.id) return;
 
     const socket = presenceSocket;
+    let authBlocked = false;
+
+    const markSessionExpired = (
+      error,
+    ) => {
+      const status =
+        Number(
+          error?.response
+            ?.status ??
+          error?.status ??
+          0,
+        );
+
+      const message =
+        error?.response
+          ?.data?.message ??
+        error?.data?.message ??
+        error?.message ??
+        "";
+
+      if (
+        status !== 401 &&
+        !String(
+          message,
+        ).toLowerCase()
+          .includes(
+            "sesión",
+          )
+      ) {
+        return false;
+      }
+
+      authBlocked = true;
+
+      try {
+        sessionStorage.setItem(
+          "cultivapp_offline_auth_required",
+          "true",
+        );
+      } catch {
+        // El almacenamiento puede estar restringido.
+      }
+
+      window.dispatchEvent(
+        new CustomEvent(
+          OFFLINE_SYNC_EVENTS
+            .AUTH_REQUIRED,
+          {
+            detail: {
+              message:
+                message ||
+                "Tu sesión venció.",
+            },
+          },
+        ),
+      );
+
+      socket.disconnect();
+
+      return true;
+    };
 
     const registerPresence = () => {
+      if (authBlocked) return;
       if (!socket.connected) return;
 
       const deviceInfo = getDeviceInfo();
@@ -103,7 +166,12 @@ const HeartbeatMonitor = () => {
     };
 
     const sendPresencePing = () => {
-      if (!socket.connected) return;
+      if (
+        authBlocked ||
+        !socket.connected
+      ) {
+        return;
+      }
 
       socket.emit("presence_ping", {
         user_id: user.id,
@@ -115,6 +183,17 @@ const HeartbeatMonitor = () => {
       try {
         await api.post("/users/ping");
       } catch (error) {
+        if (
+          markSessionExpired(
+            error,
+          )
+        ) {
+          console.warn(
+            "⚠️ Heartbeat detenido: sesión vencida."
+          );
+          return;
+        }
+
         console.warn(
           "⚠️ Ping HTTP fallido:",
           error?.message || error
@@ -123,6 +202,8 @@ const HeartbeatMonitor = () => {
     };
 
     const handleConnect = () => {
+      if (authBlocked) return;
+
       console.log(
         "🟢 Socket de presencia conectado:",
         socket.id
@@ -134,6 +215,8 @@ const HeartbeatMonitor = () => {
     };
 
     const handleReconnect = () => {
+      if (authBlocked) return;
+
       console.log(
         "🔄 Socket de presencia reconectado:",
         socket.id
@@ -162,7 +245,10 @@ const HeartbeatMonitor = () => {
     };
 
     const restorePresence = () => {
-      if (document.visibilityState !== "visible") {
+      if (
+        authBlocked ||
+        document.visibilityState !== "visible"
+      ) {
         return;
       }
 
@@ -177,6 +263,8 @@ const HeartbeatMonitor = () => {
     };
 
     const handleOnline = () => {
+      if (authBlocked) return;
+
       if (!socket.connected) {
         socket.connect();
         return;
@@ -212,6 +300,18 @@ const HeartbeatMonitor = () => {
       handleOnline
     );
 
+    const handleAuthRequired =
+      () => {
+        authBlocked = true;
+        socket.disconnect();
+      };
+
+    window.addEventListener(
+      OFFLINE_SYNC_EVENTS
+        .AUTH_REQUIRED,
+      handleAuthRequired
+    );
+
     console.log("🧪 HeartbeatMonitor montado:", {
       userId: user.id,
       apiUrl: import.meta.env.VITE_API_URL,
@@ -225,7 +325,12 @@ const HeartbeatMonitor = () => {
     }
 
     const presenceInterval = window.setInterval(() => {
-      if (!navigator.onLine) return;
+      if (
+        authBlocked ||
+        !navigator.onLine
+      ) {
+        return;
+      }
 
       if (!socket.connected) {
         socket.connect();
@@ -262,6 +367,12 @@ const HeartbeatMonitor = () => {
       window.removeEventListener(
         "online",
         handleOnline
+      );
+
+      window.removeEventListener(
+        OFFLINE_SYNC_EVENTS
+          .AUTH_REQUIRED,
+        handleAuthRequired
       );
 
       socket.off("connect", handleConnect);
