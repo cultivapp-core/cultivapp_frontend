@@ -24,11 +24,28 @@ db.version(3).stores({
     "routeId, updatedAt, step, status",
 });
 
+/*
+ * La versión 4 conserva la información existente y agrega campos
+ * utilizados para reintentos automáticos y diagnóstico.
+ */
+db.version(4).stores({
+  visits:
+    "id, cadena, direccion, status",
+  questions:
+    "id, question, is_required",
+  syncQueue:
+    "++id, status, routeId, type, createdAt, nextRetryAt, [status+routeId]",
+  visitDrafts:
+    "routeId, updatedAt, step, status",
+});
+
 const serializeFile = (
   value,
 ) => ({
-  __type: "File",
-  blob: value,
+  __type:
+    "File",
+  blob:
+    value,
   name:
     value?.name ||
     `archivo-${Date.now()}`,
@@ -58,8 +75,10 @@ const serializeIfNeeded = (
   }
 
   if (
+    typeof FormData !==
+      "undefined" &&
     payload instanceof
-    FormData
+      FormData
   ) {
     const entries = [];
 
@@ -72,7 +91,10 @@ const serializeIfNeeded = (
       entries.push({
         key,
         value:
-          value instanceof Blob
+          typeof Blob !==
+            "undefined" &&
+          value instanceof
+            Blob
             ? serializeFile(
                 value,
               )
@@ -81,7 +103,8 @@ const serializeIfNeeded = (
     }
 
     return {
-      __type: "FormData",
+      __type:
+        "FormData",
       entries,
     };
   }
@@ -91,65 +114,90 @@ const serializeIfNeeded = (
 
 export const addToSyncQueue =
   async (item) => {
-    try {
-      const now =
-        new Date().toISOString();
+    const now =
+      new Date().toISOString();
 
-      const safePayload =
-        serializeIfNeeded(
-          item.payload,
-        );
+    const id =
+      await db.syncQueue.add({
+        ...item,
+        routeId:
+          item.routeId
+            ? String(
+                item.routeId,
+              )
+            : null,
+        payload:
+          serializeIfNeeded(
+            item.payload,
+          ),
+        status:
+          "pending",
+        retryCount:
+          Number(
+            item.retryCount,
+          ) || 0,
+        lastError:
+          item.lastError ||
+          null,
+        nextRetryAt:
+          item.nextRetryAt ||
+          null,
+        createdAt:
+          item.createdAt ||
+          now,
+        updatedAt:
+          now,
+      });
 
-      const id =
-        await db.syncQueue.add({
-          ...item,
-          payload:
-            safePayload,
-          status:
-            item.status ||
-            "pending",
-          retryCount:
-            Number(
-              item.retryCount,
-            ) || 0,
-          lastError:
-            item.lastError ||
-            null,
-          createdAt:
-            item.createdAt ||
-            now,
-          updatedAt:
-            now,
-        });
+    console.log(
+      `📍 Operación offline guardada. ID: ${id}`,
+    );
 
-      console.log(
-        `📍 Guardado en cola ID: ${id}`,
-      );
-
-      return id;
-    } catch (error) {
-      console.error(
-        "❌ Dexie error:",
-        error,
-      );
-
-      throw error;
-    }
+    return id;
   };
 
 export const getPendingSync =
-  async () => {
+  async ({
+    includeDeferred =
+      false,
+  } = {}) => {
     const items =
       await db.syncQueue
         .where("status")
         .equals("pending")
         .toArray();
 
-    return items.sort(
-      (a, b) =>
-        Number(a.id) -
-        Number(b.id),
-    );
+    const now =
+      Date.now();
+
+    return items
+      .filter(
+        (item) => {
+          if (
+            includeDeferred ||
+            !item.nextRetryAt
+          ) {
+            return true;
+          }
+
+          const retryDate =
+            new Date(
+              item.nextRetryAt,
+            ).getTime();
+
+          return (
+            !Number.isFinite(
+              retryDate,
+            ) ||
+            retryDate <= now
+          );
+        },
+      )
+      .sort(
+        (first, second) =>
+          Number(first.id) -
+          Number(second.id),
+      );
   };
 
 export const getPendingSyncByRoute =
@@ -160,7 +208,9 @@ export const getPendingSyncByRoute =
 
     const items =
       await db.syncQueue
-        .where("[status+routeId]")
+        .where(
+          "[status+routeId]",
+        )
         .equals([
           "pending",
           String(routeId),
@@ -168,9 +218,9 @@ export const getPendingSyncByRoute =
         .toArray();
 
     return items.sort(
-      (a, b) =>
-        Number(a.id) -
-        Number(b.id),
+      (first, second) =>
+        Number(first.id) -
+        Number(second.id),
     );
   };
 
@@ -181,13 +231,22 @@ export const countPendingSyncByRoute =
     }
 
     return db.syncQueue
-      .where("[status+routeId]")
+      .where(
+        "[status+routeId]",
+      )
       .equals([
         "pending",
         String(routeId),
       ])
       .count();
   };
+
+export const countPendingSync =
+  async () =>
+    db.syncQueue
+      .where("status")
+      .equals("pending")
+      .count();
 
 export const markSyncItemRetry =
   async (
@@ -203,18 +262,67 @@ export const markSyncItemRetry =
       return;
     }
 
+    const retryCount =
+      Number(
+        current.retryCount,
+      ) + 1;
+
+    /*
+     * Backoff:
+     * 5 s, 10 s, 20 s, 40 s...
+     * Máximo 5 minutos.
+     */
+    const delayMs =
+      Math.min(
+        5_000 *
+          2 **
+            Math.max(
+              retryCount - 1,
+              0,
+            ),
+        300_000,
+      );
+
     await db.syncQueue.update(
       id,
       {
-        retryCount:
-          Number(
-            current.retryCount,
-          ) + 1,
+        status:
+          "pending",
+        retryCount,
         lastError:
           String(
             errorMessage ||
             "Error de sincronización",
           ),
+        nextRetryAt:
+          new Date(
+            Date.now() +
+              delayMs,
+          ).toISOString(),
+        updatedAt:
+          new Date().toISOString(),
+      },
+    );
+  };
+
+export const clearSyncItemRetry =
+  async (id) => {
+    if (
+      id === undefined ||
+      id === null
+    ) {
+      return;
+    }
+
+    await db.syncQueue.update(
+      id,
+      {
+        retryCount:
+          0,
+        lastError:
+          null,
+        nextRetryAt:
+          null,
         updatedAt:
           new Date().toISOString(),
       },
@@ -234,6 +342,12 @@ export const removeFromSyncQueue =
       id,
     );
   };
+
+export const getSyncQueueSnapshot =
+  async () =>
+    db.syncQueue
+      .orderBy("id")
+      .toArray();
 
 export const saveVisitDraft =
   async (draft) => {
