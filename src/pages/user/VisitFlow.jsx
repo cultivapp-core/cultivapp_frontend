@@ -647,12 +647,19 @@ const VisitFlow = () => {
   const [answers, setAnswers] =
     useState({});
 
-  const [comment, setComment] =
-    useState("");
-
   const [
     gondolaInitialObservation,
     setGondolaInitialObservation,
+  ] = useState("");
+
+  const [
+    gondolaFinalObservation,
+    setGondolaFinalObservation,
+  ] = useState("");
+
+  const [
+    endOfDayObservation,
+    setEndOfDayObservation,
   ] = useState("");
 
   const [
@@ -976,15 +983,39 @@ const VisitFlow = () => {
               : {},
           );
 
-          setComment(
+          const restoredStep =
+            Number(
+              draft.step,
+            ) || 1;
+
+          const legacyComment =
             draft.comment ||
-              "",
-          );
+            "";
 
           setGondolaInitialObservation(
             draft.gondolaInitialObservation ||
               draft.initialObservation ||
               "",
+          );
+
+          setGondolaFinalObservation(
+            draft.gondolaFinalObservation ||
+              draft.finalObservation ||
+              (
+                restoredStep <= 6
+                  ? legacyComment
+                  : ""
+              ),
+          );
+
+          setEndOfDayObservation(
+            draft.endOfDayObservation ||
+              draft.journeyEndObservation ||
+              (
+                restoredStep >= 7
+                  ? legacyComment
+                  : ""
+              ),
           );
 
           setPhotoSync(
@@ -1222,8 +1253,13 @@ const VisitFlow = () => {
             productStartTime,
             scannedCodes,
             answers,
-            comment,
+            comment:
+              step >= 7
+                ? endOfDayObservation
+                : gondolaFinalObservation,
             gondolaInitialObservation,
+            gondolaFinalObservation,
+            endOfDayObservation,
             photoFiles,
             photoSync,
             photoServerUrls,
@@ -1262,8 +1298,9 @@ const VisitFlow = () => {
     productStartTime,
     scannedCodes,
     answers,
-    comment,
     gondolaInitialObservation,
+    gondolaFinalObservation,
+    endOfDayObservation,
     photoFiles,
     photoSync,
     photoServerUrls,
@@ -2498,8 +2535,8 @@ const VisitFlow = () => {
     } = {}) => {
       setScannedCodes([]);
       setAnswers({});
-      setComment("");
       setGondolaInitialObservation("");
+      setGondolaFinalObservation("");
 
       removePhoto(
         gondolaInicialPhoto,
@@ -2643,6 +2680,12 @@ const VisitFlow = () => {
             : "Guardando gestión localmente...",
         );
 
+      const initialObservation =
+        gondolaInitialObservation.trim();
+
+      const finalObservation =
+        gondolaFinalObservation.trim();
+
       const taskData = {
         product_id:
           selectedProduct,
@@ -2652,9 +2695,27 @@ const VisitFlow = () => {
           productStartTime,
         end_time:
           new Date().toISOString(),
-        responses: answers,
+
+        responses: {
+          ...answers,
+          gondola_initial_observation:
+            initialObservation,
+          gondola_final_observation:
+            finalObservation,
+          observacion_gondola_inicio:
+            initialObservation,
+          observacion_gondola_termino:
+            finalObservation,
+        },
+
         comment:
-          gondolaInitialObservation.trim(),
+          initialObservation,
+
+        gondola_initial_observation:
+          initialObservation,
+        gondola_final_observation:
+          finalObservation,
+
         photo_before:
           photoServerUrls[2] ||
           null,
@@ -2693,7 +2754,9 @@ const VisitFlow = () => {
                 productId:
                   selectedProduct,
                 initialObservation:
-                  gondolaInitialObservation.trim(),
+                  initialObservation,
+                finalObservation:
+                  finalObservation,
               },
             },
           );
@@ -2996,10 +3059,18 @@ const VisitFlow = () => {
             : "Guardando cierre localmente...",
         );
 
+      const finalJourneyObservation =
+        endOfDayObservation.trim();
+
       const finishData = {
         status:
           "completed",
-        comment,
+        comment:
+          finalJourneyObservation,
+        end_of_day_observation:
+          finalJourneyObservation,
+        observacion_termino_jornada:
+          finalJourneyObservation,
         exit_photo:
           photoServerUrls[7] ||
           null,
@@ -3014,6 +3085,8 @@ const VisitFlow = () => {
             {
               metadata: {
                 finalStep: true,
+                endOfDayObservation:
+                  finalJourneyObservation,
               },
             },
           );
@@ -4711,21 +4784,27 @@ const VisitFlow = () => {
                 )}
 
                 <label className="block">
-                  <span className="mb-1.5 block pl-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
-                    Observaciones del producto
+                  <span className="mb-1.5 flex items-center gap-2 pl-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
+                    <FiMessageSquare
+                      size={12}
+                    />
+                    Observación de término de góndola
                   </span>
 
                   <textarea
-                    value={comment}
+                    value={
+                      gondolaFinalObservation
+                    }
                     onChange={(
                       event,
                     ) =>
-                      setComment(
+                      setGondolaFinalObservation(
                         event.target
                           .value,
                       )
                     }
-                    placeholder="Describe cualquier situación relevante..."
+                    maxLength={500}
+                    placeholder="Describe cómo quedó la góndola después de la gestión..."
                     className="h-28 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#87be00]/50 focus:bg-white focus:ring-4 focus:ring-[#87be00]/10"
                   />
                 </label>
@@ -4775,17 +4854,36 @@ const VisitFlow = () => {
                       "Producto seleccionado"}
                   </h2>
 
-                  {gondolaInitialObservation.trim() && (
-                    <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
-                      <p className="text-[7px] font-black uppercase tracking-wider text-[#a8d52c]">
-                        Observación inicial
-                      </p>
+                  {(gondolaInitialObservation.trim() ||
+                    gondolaFinalObservation.trim()) && (
+                    <div className="mt-4 space-y-2">
+                      {gondolaInitialObservation.trim() && (
+                        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                          <p className="text-[7px] font-black uppercase tracking-wider text-[#a8d52c]">
+                            Observación inicial
+                          </p>
 
-                      <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-200">
-                        {
-                          gondolaInitialObservation
-                        }
-                      </p>
+                          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-200">
+                            {
+                              gondolaInitialObservation
+                            }
+                          </p>
+                        </div>
+                      )}
+
+                      {gondolaFinalObservation.trim() && (
+                        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                          <p className="text-[7px] font-black uppercase tracking-wider text-[#a8d52c]">
+                            Observación final
+                          </p>
+
+                          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-200">
+                            {
+                              gondolaFinalObservation
+                            }
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -4897,21 +4995,27 @@ const VisitFlow = () => {
                 )}
 
                 <label className="block">
-                  <span className="mb-1.5 block pl-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
-                    Observaciones finales
+                  <span className="mb-1.5 flex items-center gap-2 pl-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
+                    <FiMessageSquare
+                      size={12}
+                    />
+                    Observación de término de jornada
                   </span>
 
                   <textarea
-                    value={comment}
+                    value={
+                      endOfDayObservation
+                    }
                     onChange={(
                       event,
                     ) =>
-                      setComment(
+                      setEndOfDayObservation(
                         event.target
                           .value,
                       )
                     }
-                    placeholder="Agrega una observación general de la visita..."
+                    maxLength={500}
+                    placeholder="Agrega una observación general del cierre de la visita..."
                     className="h-28 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#87be00]/50 focus:bg-white focus:ring-4 focus:ring-[#87be00]/10"
                   />
                 </label>

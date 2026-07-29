@@ -195,6 +195,7 @@ const getInitialObservation = (
         "reception_observation",
         "observacion_gondola_inicio",
         "observacion_recepcion_gondola",
+        "__gondola_initial_observation",
       ],
     ),
     /*
@@ -221,6 +222,7 @@ const getFinalObservation = (
         "final_observation",
         "observacion_gondola_termino",
         "observacion_termino_gondola",
+        "__gondola_final_observation",
       ],
     ),
   );
@@ -246,6 +248,7 @@ const getEndOfDayObservation = (
         "journey_end_observation",
         "observacion_termino_jornada",
         "observacion_fin_jornada",
+        "__end_of_day_observation",
       ],
     ),
   );
@@ -1385,7 +1388,7 @@ const ObservationItem = ({
             }`}
           >
             {value ||
-              "Sin observación registrada."}
+              "Sin observación registrada en esta visita."}
           </p>
         </div>
       </div>
