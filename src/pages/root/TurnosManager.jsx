@@ -6,7 +6,9 @@ import {
 } from "react";
 import {
   FiBriefcase,
+  FiCalendar,
   FiCheck,
+  FiChevronDown,
   FiClock,
   FiEdit3,
   FiLayers,
@@ -16,6 +18,7 @@ import {
   FiShield,
   FiTrash2,
   FiX,
+  FiZap,
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import api from "../../api/apiClient";
@@ -63,13 +66,124 @@ const DAYS = [
   },
 ];
 
+const SCHEDULE_MODES = [
+  {
+    value: "GENERAL",
+    label: "Horario general",
+    description:
+      "Aplica la misma entrada y salida a todos los días seleccionados.",
+  },
+  {
+    value: "POR_DIA",
+    label: "Horario por día",
+    description:
+      "Permite definir una entrada y salida diferente para cada día.",
+  },
+];
+
+const SCHEDULE_PRESETS = [
+  {
+    value: "MERCADERISTA_FULL",
+    label: "Mercaderista Full",
+    entrada: "07:30",
+    salida: "15:30",
+  },
+  {
+    value: "OFICINA",
+    label: "Jornada oficina",
+    entrada: "09:00",
+    salida: "18:00",
+  },
+  {
+    value: "MANANA",
+    label: "Turno mañana",
+    entrada: "08:00",
+    salida: "14:00",
+  },
+  {
+    value: "TARDE",
+    label: "Turno tarde",
+    entrada: "14:00",
+    salida: "20:00",
+  },
+  {
+    value: "NOCHE",
+    label: "Turno noche",
+    entrada: "22:00",
+    salida: "06:00",
+  },
+  {
+    value: "PERSONALIZADO",
+    label: "Horario personalizado",
+    entrada: null,
+    salida: null,
+  },
+];
+
+const getPresetByValue = (
+  presetValue,
+) =>
+  SCHEDULE_PRESETS.find(
+    (preset) =>
+      preset.value ===
+      presetValue,
+  ) ||
+  SCHEDULE_PRESETS[
+    SCHEDULE_PRESETS.length - 1
+  ];
+
+const inferPresetValue = (
+  entrada,
+  salida,
+) =>
+  SCHEDULE_PRESETS.find(
+    (preset) =>
+      preset.entrada ===
+        normalizeTime(
+          entrada,
+        ) &&
+      preset.salida ===
+        normalizeTime(
+          salida,
+        ),
+  )?.value ||
+  "PERSONALIZADO";
+
+const createDaySchedule = (
+  entrada = "07:30",
+  salida = "15:30",
+  presetValue,
+) => ({
+  entrada:
+    normalizeTime(
+      entrada,
+    ) ||
+    "07:30",
+  salida:
+    normalizeTime(
+      salida,
+    ) ||
+    "15:30",
+  preset:
+    presetValue ||
+    inferPresetValue(
+      entrada,
+      salida,
+    ),
+});
+
 const INITIAL_FORM = {
   nombre_turno: "",
   categoria_rol:
     "Mercaderista Full",
   days: [],
+  tipo_horario:
+    "GENERAL",
+  plantilla_horario:
+    "MERCADERISTA_FULL",
   entrada: "07:30",
   salida: "15:30",
+  day_schedules: {},
   company_id: "",
 };
 
@@ -82,7 +196,103 @@ const getResponseData = (
 };
 
 const normalizeTime = (value) =>
-  String(value || "").slice(0, 5);
+  String(value || "")
+    .trim()
+    .slice(0, 5);
+
+const parseMetadata = (
+  value,
+) => {
+  if (
+    value &&
+    typeof value ===
+      "object" &&
+    !Array.isArray(value)
+  ) {
+    return value;
+  }
+
+  if (
+    typeof value !==
+    "string" ||
+    !value.trim()
+  ) {
+    return {};
+  }
+
+  try {
+    const parsed =
+      JSON.parse(value);
+
+    return (
+      parsed &&
+      typeof parsed ===
+        "object" &&
+      !Array.isArray(parsed)
+        ? parsed
+        : {}
+    );
+  } catch {
+    return {};
+  }
+};
+
+const normalizeScheduleMode = (
+  value,
+) => {
+  const normalized =
+    String(value || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "_");
+
+  return [
+    "POR_DIA",
+    "POR_DÍA",
+    "BY_DAY",
+    "DAILY",
+  ].includes(normalized)
+    ? "POR_DIA"
+    : "GENERAL";
+};
+
+const getScheduleMetadata = (
+  row,
+) => {
+  const metadata =
+    parseMetadata(
+      row?.metadata,
+    );
+
+  return {
+    tipo_horario:
+      normalizeScheduleMode(
+        row?.tipo_horario ||
+        row?.schedule_type ||
+        row?.schedule_mode ||
+        row?.horario_tipo ||
+        metadata.tipo_horario ||
+        metadata.schedule_type ||
+        metadata.schedule_mode,
+      ),
+    plantilla_horario:
+      String(
+        row?.plantilla_horario ||
+        row?.schedule_preset ||
+        row?.preset ||
+        metadata.plantilla_horario ||
+        metadata.schedule_preset ||
+        metadata.preset ||
+        "",
+      )
+        .trim()
+        .toUpperCase() ||
+      inferPresetValue(
+        row?.entrada,
+        row?.salida,
+      ),
+  };
+};
 
 const TurnosManager = () => {
   const { user } = useAuth();
@@ -244,32 +454,31 @@ const TurnosManager = () => {
       (accumulator, current) => {
         const companyId =
           current.company_id || "";
-        const shiftName = String(
-          current.nombre_turno || "",
-        )
-          .trim()
-          .toUpperCase();
 
-        const role = String(
-          current.categoria_rol || "",
-        ).trim();
+        const shiftName =
+          String(
+            current.nombre_turno ||
+              "",
+          )
+            .trim()
+            .toUpperCase();
 
-        const entry =
-          normalizeTime(
-            current.entrada,
-          );
-        const exit =
-          normalizeTime(
-            current.salida,
-          );
+        const role =
+          String(
+            current.categoria_rol ||
+              "",
+          ).trim();
 
         const key = [
           companyId,
           shiftName,
           role,
-          entry,
-          exit,
         ].join("|");
+
+        const scheduleMetadata =
+          getScheduleMetadata(
+            current,
+          );
 
         if (!accumulator[key]) {
           accumulator[key] = {
@@ -277,20 +486,46 @@ const TurnosManager = () => {
             key,
             dias: [],
             ids: [],
+            day_schedules: {},
+            explicit_schedule_modes:
+              new Set(),
           };
         }
 
+        accumulator[
+          key
+        ].explicit_schedule_modes.add(
+          scheduleMetadata.tipo_horario,
+        );
+
+        const day =
+          Number(
+            current.day_of_week,
+          );
+
         if (
+          Number.isInteger(day) &&
           !accumulator[
             key
-          ].dias.includes(
-            current.day_of_week,
-          )
+          ].dias.includes(day)
         ) {
           accumulator[
             key
-          ].dias.push(
-            current.day_of_week,
+          ].dias.push(day);
+        }
+
+        if (
+          Number.isInteger(day)
+        ) {
+          accumulator[
+            key
+          ].day_schedules[
+            day
+          ] = createDaySchedule(
+            current.entrada,
+            current.salida,
+            scheduleMetadata
+              .plantilla_horario,
           );
         }
 
@@ -304,12 +539,72 @@ const TurnosManager = () => {
     );
 
     return Object.values(groups)
-      .map((group) => ({
-        ...group,
-        dias: [...group.dias].sort(
-          (a, b) => a - b,
-        ),
-      }))
+      .map((group) => {
+        const dias =
+          [...group.dias].sort(
+            (a, b) => a - b,
+          );
+
+        const schedules =
+          dias.map(
+            (day) =>
+              group.day_schedules[
+                day
+              ] ||
+              createDaySchedule(),
+          );
+
+        const signatures =
+          new Set(
+            schedules.map(
+              (schedule) =>
+                `${schedule.entrada}|${schedule.salida}`,
+            ),
+          );
+
+        const firstSchedule =
+          schedules[0] ||
+          createDaySchedule();
+
+        const explicitModes =
+          Array.from(
+            group
+              .explicit_schedule_modes ||
+            [],
+          );
+
+        const tipoHorario =
+          signatures.size > 1 ||
+          explicitModes.includes(
+            "POR_DIA",
+          )
+            ? "POR_DIA"
+            : "GENERAL";
+
+        const {
+          explicit_schedule_modes,
+          ...publicGroup
+        } = group;
+
+        return {
+          ...publicGroup,
+          dias,
+          tipo_horario:
+            tipoHorario,
+          plantilla_horario:
+            tipoHorario ===
+            "GENERAL"
+              ? inferPresetValue(
+                  firstSchedule.entrada,
+                  firstSchedule.salida,
+                )
+              : "PERSONALIZADO",
+          entrada:
+            firstSchedule.entrada,
+          salida:
+            firstSchedule.salida,
+        };
+      })
       .sort((a, b) => {
         const companyCompare =
           String(
@@ -371,7 +666,17 @@ const TurnosManager = () => {
       categoria_rol:
         group.categoria_rol ||
         "Mercaderista Full",
-      days: group.dias || [],
+      days:
+        group.dias || [],
+      tipo_horario:
+        group.tipo_horario ||
+        "GENERAL",
+      plantilla_horario:
+        group.plantilla_horario ||
+        inferPresetValue(
+          group.entrada,
+          group.salida,
+        ),
       entrada:
         normalizeTime(
           group.entrada,
@@ -380,6 +685,9 @@ const TurnosManager = () => {
         normalizeTime(
           group.salida,
         ) || "15:30",
+      day_schedules:
+        group.day_schedules ||
+        {},
       company_id:
         group.company_id || "",
     });
@@ -402,12 +710,14 @@ const TurnosManager = () => {
   const toggleDay = (
     dayIndex,
   ) => {
-    setForm((current) => ({
-      ...current,
-      days:
+    setForm((current) => {
+      const isSelected =
         current.days.includes(
           dayIndex,
-        )
+        );
+
+      const nextDays =
+        isSelected
           ? current.days.filter(
               (day) =>
                 day !== dayIndex,
@@ -417,9 +727,248 @@ const TurnosManager = () => {
               dayIndex,
             ].sort(
               (a, b) => a - b,
-            ),
-    }));
+            );
+
+      const nextSchedules = {
+        ...current.day_schedules,
+      };
+
+      if (isSelected) {
+        delete nextSchedules[
+          dayIndex
+        ];
+      } else {
+        nextSchedules[
+          dayIndex
+        ] = createDaySchedule(
+          current.entrada,
+          current.salida,
+          current.plantilla_horario,
+        );
+      }
+
+      return {
+        ...current,
+        days:
+          nextDays,
+        day_schedules:
+          nextSchedules,
+      };
+    });
   };
+
+  const handleScheduleModeChange =
+    (
+      nextMode,
+    ) => {
+      setForm((current) => {
+        if (
+          nextMode ===
+          current.tipo_horario
+        ) {
+          return current;
+        }
+
+        if (
+          nextMode ===
+          "POR_DIA"
+        ) {
+          const nextSchedules = {
+            ...current.day_schedules,
+          };
+
+          current.days.forEach(
+            (day) => {
+              if (
+                !nextSchedules[
+                  day
+                ]
+              ) {
+                nextSchedules[
+                  day
+                ] =
+                  createDaySchedule(
+                    current.entrada,
+                    current.salida,
+                    current.plantilla_horario,
+                  );
+              }
+            },
+          );
+
+          return {
+            ...current,
+            tipo_horario:
+              nextMode,
+            day_schedules:
+              nextSchedules,
+          };
+        }
+
+        const firstDay =
+          current.days[0];
+
+        const firstSchedule =
+          current.day_schedules[
+            firstDay
+          ] ||
+          createDaySchedule(
+            current.entrada,
+            current.salida,
+            current.plantilla_horario,
+          );
+
+        return {
+          ...current,
+          tipo_horario:
+            "GENERAL",
+          entrada:
+            firstSchedule.entrada,
+          salida:
+            firstSchedule.salida,
+          plantilla_horario:
+            inferPresetValue(
+              firstSchedule.entrada,
+              firstSchedule.salida,
+            ),
+        };
+      });
+    };
+
+  const handleGeneralPresetChange =
+    (
+      presetValue,
+    ) => {
+      const preset =
+        getPresetByValue(
+          presetValue,
+        );
+
+      setForm((current) => {
+        const nextForm = {
+          ...current,
+          plantilla_horario:
+            presetValue,
+        };
+
+        if (
+          preset.entrada &&
+          preset.salida
+        ) {
+          nextForm.entrada =
+            preset.entrada;
+
+          nextForm.salida =
+            preset.salida;
+        }
+
+        return nextForm;
+      });
+    };
+
+  const handleGeneralTimeChange =
+    (
+      field,
+      value,
+    ) => {
+      setForm((current) => {
+        const nextForm = {
+          ...current,
+          [field]:
+            value,
+        };
+
+        nextForm.plantilla_horario =
+          inferPresetValue(
+            field === "entrada"
+              ? value
+              : current.entrada,
+            field === "salida"
+              ? value
+              : current.salida,
+          );
+
+        return nextForm;
+      });
+    };
+
+  const handleDayPresetChange =
+    (
+      day,
+      presetValue,
+    ) => {
+      const preset =
+        getPresetByValue(
+          presetValue,
+        );
+
+      setForm((current) => {
+        const previous =
+          current.day_schedules[
+            day
+          ] ||
+          createDaySchedule(
+            current.entrada,
+            current.salida,
+          );
+
+        return {
+          ...current,
+          day_schedules: {
+            ...current.day_schedules,
+            [day]: {
+              entrada:
+                preset.entrada ||
+                previous.entrada,
+              salida:
+                preset.salida ||
+                previous.salida,
+              preset:
+                presetValue,
+            },
+          },
+        };
+      });
+    };
+
+  const handleDayTimeChange =
+    (
+      day,
+      field,
+      value,
+    ) => {
+      setForm((current) => {
+        const previous =
+          current.day_schedules[
+            day
+          ] ||
+          createDaySchedule(
+            current.entrada,
+            current.salida,
+          );
+
+        const nextSchedule = {
+          ...previous,
+          [field]:
+            value,
+        };
+
+        nextSchedule.preset =
+          inferPresetValue(
+            nextSchedule.entrada,
+            nextSchedule.salida,
+          );
+
+        return {
+          ...current,
+          day_schedules: {
+            ...current.day_schedules,
+            [day]:
+              nextSchedule,
+          },
+        };
+      });
+    };
 
   const validateForm = () => {
     if (
@@ -442,17 +991,52 @@ const TurnosManager = () => {
     }
 
     if (
-      !form.entrada ||
-      !form.salida
+      form.tipo_horario ===
+      "GENERAL"
     ) {
-      return "Completa el horario de entrada y salida.";
-    }
+      if (
+        !form.entrada ||
+        !form.salida
+      ) {
+        return "Completa el horario de entrada y salida.";
+      }
 
-    if (
-      form.entrada ===
-      form.salida
-    ) {
-      return "La hora de entrada y salida no pueden ser iguales.";
+      if (
+        form.entrada ===
+        form.salida
+      ) {
+        return "La hora de entrada y salida no pueden ser iguales.";
+      }
+    } else {
+      for (
+        const day of form.days
+      ) {
+        const schedule =
+          form.day_schedules[
+            day
+          ];
+
+        const dayName =
+          DAYS.find(
+            (item) =>
+              item.id === day,
+          )?.name ||
+          "el día seleccionado";
+
+        if (
+          !schedule?.entrada ||
+          !schedule?.salida
+        ) {
+          return `Completa el horario de ${dayName}.`;
+        }
+
+        if (
+          schedule.entrada ===
+          schedule.salida
+        ) {
+          return `La entrada y salida de ${dayName} no pueden ser iguales.`;
+        }
+      }
     }
 
     const duplicate =
@@ -521,15 +1105,125 @@ const TurnosManager = () => {
 
     setSubmitting(true);
 
+    const normalizedDays =
+      [...form.days].sort(
+        (a, b) => a - b,
+      );
+
+    const normalizedSchedules =
+      normalizedDays.map(
+        (day) => {
+          const schedule =
+            form.tipo_horario ===
+            "POR_DIA"
+              ? form.day_schedules[
+                  day
+                ]
+              : createDaySchedule(
+                  form.entrada,
+                  form.salida,
+                  form.plantilla_horario,
+                );
+
+          return {
+            day_of_week:
+              day,
+            entrada:
+              normalizeTime(
+                schedule?.entrada,
+              ),
+            salida:
+              normalizeTime(
+                schedule?.salida,
+              ),
+            plantilla_horario:
+              schedule?.preset ||
+              inferPresetValue(
+                schedule?.entrada,
+                schedule?.salida,
+              ),
+          };
+        },
+      );
+
+    const firstSchedule =
+      normalizedSchedules[0] ||
+      createDaySchedule(
+        form.entrada,
+        form.salida,
+        form.plantilla_horario,
+      );
+
+    const resolvedMode =
+      normalizeScheduleMode(
+        form.tipo_horario,
+      );
+
+    const schedulesToSave =
+      normalizedSchedules.map(
+        (schedule) => ({
+          ...schedule,
+          day:
+            schedule.day_of_week,
+          start_time:
+            schedule.entrada,
+          end_time:
+            schedule.salida,
+          preset:
+            schedule.plantilla_horario,
+          tipo_horario:
+            resolvedMode,
+          metadata: {
+            tipo_horario:
+              resolvedMode,
+            plantilla_horario:
+              schedule.plantilla_horario,
+          },
+        }),
+      );
+
     const payload = {
       ...form,
       nombre_turno:
         form.nombre_turno
           .trim()
           .toUpperCase(),
-      days: [...form.days].sort(
-        (a, b) => a - b,
-      ),
+      days:
+        normalizedDays,
+      selectedDays:
+        normalizedDays,
+      tipo_horario:
+        resolvedMode,
+      schedule_type:
+        resolvedMode,
+      plantilla_horario:
+        resolvedMode ===
+        "POR_DIA"
+          ? "PERSONALIZADO"
+          : form.plantilla_horario,
+      entrada:
+        firstSchedule.entrada,
+      salida:
+        firstSchedule.salida,
+      start_time:
+        firstSchedule.entrada,
+      end_time:
+        firstSchedule.salida,
+      day_schedules:
+        schedulesToSave,
+      schedules:
+        schedulesToSave,
+      horarios_por_dia:
+        schedulesToSave,
+      metadata: {
+        tipo_horario:
+          resolvedMode,
+        plantilla_horario:
+          resolvedMode ===
+          "POR_DIA"
+            ? "PERSONALIZADO"
+            : form.plantilla_horario,
+      },
     };
 
     try {
@@ -752,8 +1446,7 @@ const TurnosManager = () => {
                 </h2>
 
                 <p className="text-[10px] text-gray-400 mt-1">
-                  Configura rol, días y
-                  horario.
+                  Configura rol, días y horarios automáticos.
                 </p>
               </div>
 
@@ -876,6 +1569,53 @@ const TurnosManager = () => {
                     }`}
                   />
                 </Field>
+
+                <Field label="Tipo de horario">
+                  <div className="relative">
+                    <FiCalendar
+                      size={15}
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]"
+                    />
+
+                    <select
+                      value={
+                        form.tipo_horario
+                      }
+                      onChange={(event) =>
+                        handleScheduleModeChange(
+                          event.target.value,
+                        )
+                      }
+                      className={`${inputClass} appearance-none pl-11 pr-11`}
+                    >
+                      {SCHEDULE_MODES.map(
+                        (mode) => (
+                          <option
+                            key={mode.value}
+                            value={mode.value}
+                          >
+                            {mode.label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+
+                    <FiChevronDown
+                      size={15}
+                      className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+                  </div>
+
+                  <p className="ml-1 mt-2 text-[9px] font-semibold leading-relaxed text-gray-400">
+                    {
+                      SCHEDULE_MODES.find(
+                        (mode) =>
+                          mode.value ===
+                          form.tipo_horario,
+                      )?.description
+                    }
+                  </p>
+                </Field>
               </div>
 
               <div className="lg:col-span-8 space-y-6">
@@ -917,43 +1657,205 @@ const TurnosManager = () => {
                   </div>
                 </Field>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Hora de entrada">
-                    <input
-                      type="time"
-                      value={form.entrada}
-                      onChange={(event) =>
-                        setForm(
-                          (current) => ({
-                            ...current,
-                            entrada:
-                              event.target
-                                .value,
-                          }),
-                        )
-                      }
-                      className={inputClass}
-                    />
-                  </Field>
+                {form.tipo_horario ===
+                "GENERAL" ? (
+                  <div className="space-y-4 rounded-[1.5rem] border border-[#87be00]/15 bg-[#87be00]/5 p-4 sm:p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#87be00]/15 text-[#87be00]">
+                        <FiZap size={17} />
+                      </span>
 
-                  <Field label="Hora de salida">
-                    <input
-                      type="time"
-                      value={form.salida}
-                      onChange={(event) =>
-                        setForm(
-                          (current) => ({
-                            ...current,
-                            salida:
-                              event.target
-                                .value,
-                          }),
-                        )
-                      }
-                      className={inputClass}
-                    />
-                  </Field>
-                </div>
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#679300]">
+                          Automatización del horario
+                        </p>
+                        <p className="mt-1 text-[10px] font-semibold text-gray-500">
+                          Selecciona una plantilla o configura las horas manualmente.
+                        </p>
+                      </div>
+                    </div>
+
+                    <Field label="Plantilla de horario">
+                      <div className="relative">
+                        <FiClock
+                          size={15}
+                          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#87be00]"
+                        />
+                        <select
+                          value={form.plantilla_horario}
+                          onChange={(event) =>
+                            handleGeneralPresetChange(
+                              event.target.value,
+                            )
+                          }
+                          className={`${inputClass} appearance-none pl-11 pr-11`}
+                        >
+                          {SCHEDULE_PRESETS.map(
+                            (preset) => (
+                              <option
+                                key={preset.value}
+                                value={preset.value}
+                              >
+                                {preset.label}
+                                {preset.entrada && preset.salida
+                                  ? ` · ${preset.entrada} — ${preset.salida}`
+                                  : ""}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                        <FiChevronDown
+                          size={15}
+                          className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
+                      </div>
+                    </Field>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <Field label="Hora de entrada">
+                        <input
+                          type="time"
+                          value={form.entrada}
+                          onChange={(event) =>
+                            handleGeneralTimeChange(
+                              "entrada",
+                              event.target.value,
+                            )
+                          }
+                          className={inputClass}
+                        />
+                      </Field>
+
+                      <Field label="Hora de salida">
+                        <input
+                          type="time"
+                          value={form.salida}
+                          onChange={(event) =>
+                            handleGeneralTimeChange(
+                              "salida",
+                              event.target.value,
+                            )
+                          }
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="rounded-[1.5rem] border border-blue-100 bg-blue-50/70 p-4">
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-blue-700">
+                        Horario individual por día
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold leading-relaxed text-blue-600/80">
+                        Cada día seleccionado puede utilizar una plantilla y horas diferentes.
+                      </p>
+                    </div>
+
+                    {form.days.length === 0 ? (
+                      <div className="rounded-[1.5rem] border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
+                        <FiCalendar size={22} className="mx-auto text-gray-300" />
+                        <p className="mt-3 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                          Selecciona al menos un día
+                        </p>
+                      </div>
+                    ) : (
+                      form.days.map((dayId) => {
+                        const day = DAYS.find((item) => item.id === dayId);
+                        const schedule =
+                          form.day_schedules[dayId] ||
+                          createDaySchedule(
+                            form.entrada,
+                            form.salida,
+                            form.plantilla_horario,
+                          );
+
+                        return (
+                          <div
+                            key={dayId}
+                            className="rounded-[1.5rem] border border-gray-100 bg-white p-4 shadow-sm"
+                          >
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#87be00] text-[11px] font-black text-white">
+                                  {day?.label}
+                                </span>
+                                <div>
+                                  <p className="text-xs font-black text-gray-900">
+                                    {day?.name}
+                                  </p>
+                                  <p className="mt-0.5 text-[8px] font-black uppercase tracking-wider text-gray-400">
+                                    Configuración diaria
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="rounded-full border border-[#87be00]/20 bg-[#87be00]/10 px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-[#679300]">
+                                {schedule.entrada} — {schedule.salida}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                              <Field label="Tipo de horario">
+                                <select
+                                  value={
+                                    schedule.preset ||
+                                    inferPresetValue(
+                                      schedule.entrada,
+                                      schedule.salida,
+                                    )
+                                  }
+                                  onChange={(event) =>
+                                    handleDayPresetChange(
+                                      dayId,
+                                      event.target.value,
+                                    )
+                                  }
+                                  className={inputClass}
+                                >
+                                  {SCHEDULE_PRESETS.map((preset) => (
+                                    <option key={preset.value} value={preset.value}>
+                                      {preset.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+
+                              <Field label="Entrada">
+                                <input
+                                  type="time"
+                                  value={schedule.entrada}
+                                  onChange={(event) =>
+                                    handleDayTimeChange(
+                                      dayId,
+                                      "entrada",
+                                      event.target.value,
+                                    )
+                                  }
+                                  className={inputClass}
+                                />
+                              </Field>
+
+                              <Field label="Salida">
+                                <input
+                                  type="time"
+                                  value={schedule.salida}
+                                  onChange={(event) =>
+                                    handleDayTimeChange(
+                                      dayId,
+                                      "salida",
+                                      event.target.value,
+                                    )
+                                  }
+                                  className={inputClass}
+                                />
+                              </Field>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
 
                 <Button
                   type="submit"
@@ -1040,12 +1942,27 @@ const TurnosManager = () => {
                     }`}
                   >
                     <div className="min-w-0">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-100 rounded-full text-[8px] font-black uppercase text-gray-500">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#87be00]" />
-                        {
-                          shift.categoria_rol
-                        }
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-100 rounded-full text-[8px] font-black uppercase text-gray-500">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#87be00]" />
+                          {shift.categoria_rol}
+                        </span>
+
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[8px] font-black uppercase tracking-wider ${
+                            shift.tipo_horario === "POR_DIA"
+                              ? "border-blue-100 bg-blue-50 text-blue-700"
+                              : "border-[#87be00]/20 bg-[#87be00]/10 text-[#679300]"
+                          }`}
+                        >
+                          {shift.tipo_horario === "POR_DIA" ? (
+                            <FiCalendar size={10} />
+                          ) : (
+                            <FiClock size={10} />
+                          )}
+                          {shift.tipo_horario === "POR_DIA" ? "Por día" : "General"}
+                        </span>
+                      </div>
 
                       <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight truncate mt-4">
                         {
@@ -1111,29 +2028,46 @@ const TurnosManager = () => {
                     </div>
                   </div>
 
-                  <div className="mt-5 flex items-center gap-3">
-                    <div className="w-11 h-11 bg-[#87be00]/10 rounded-xl text-[#87be00] flex items-center justify-center shrink-0">
-                      <FiClock
-                        size={18}
-                      />
-                    </div>
-
-                    <div>
-                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider">
-                        Horario de jornada
+                  {shift.tipo_horario === "POR_DIA" ? (
+                    <div className="mt-5 space-y-2">
+                      <p className="text-[8px] font-black uppercase tracking-wider text-gray-400">
+                        Horario por día
                       </p>
+                      {shift.dias.map((dayId) => {
+                        const day = DAYS.find((item) => item.id === dayId);
+                        const schedule =
+                          shift.day_schedules[dayId] || createDaySchedule();
 
-                      <p className="text-lg font-black text-gray-900 mt-1">
-                        {normalizeTime(
-                          shift.entrada,
-                        )}{" "}
-                        —{" "}
-                        {normalizeTime(
-                          shift.salida,
-                        )}
-                      </p>
+                        return (
+                          <div
+                            key={dayId}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5"
+                          >
+                            <span className="text-[9px] font-black uppercase tracking-wider text-gray-500">
+                              {day?.name}
+                            </span>
+                            <span className="text-[11px] font-black text-gray-900">
+                              {schedule.entrada} — {schedule.salida}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                  </div>
+                  ) : (
+                    <div className="mt-5 flex items-center gap-3">
+                      <div className="w-11 h-11 bg-[#87be00]/10 rounded-xl text-[#87be00] flex items-center justify-center shrink-0">
+                        <FiClock size={18} />
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider">
+                          Horario de jornada
+                        </p>
+                        <p className="text-lg font-black text-gray-900 mt-1">
+                          {normalizeTime(shift.entrada)} — {normalizeTime(shift.salida)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </article>
               ),
             )}
