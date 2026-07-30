@@ -184,11 +184,390 @@ const parseMonthKey = (monthKey) => {
   );
 };
 
+const MONTH_NAME_TO_NUMBER = {
+  enero: 1,
+  febrero: 2,
+  marzo: 3,
+  abril: 4,
+  mayo: 5,
+  junio: 6,
+  julio: 7,
+  agosto: 8,
+  septiembre: 9,
+  setiembre: 9,
+  octubre: 10,
+  noviembre: 11,
+  diciembre: 12,
+};
+
+const normalizeMonthNumber = (value) => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const numeric = Number.parseInt(
+    String(value).trim(),
+    10,
+  );
+
+  if (
+    Number.isInteger(numeric) &&
+    numeric >= 1 &&
+    numeric <= 12
+  ) {
+    return numeric;
+  }
+
+  const normalizedName =
+    String(value)
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  return (
+    MONTH_NAME_TO_NUMBER[
+      normalizedName
+    ] || null
+  );
+};
+
+const normalizePlanningYear = (value) => {
+  const parsed = Number.parseInt(
+    String(value || "").trim(),
+    10,
+  );
+
+  return (
+    Number.isInteger(parsed) &&
+    parsed >= 2000 &&
+    parsed <= 2100
+  )
+    ? parsed
+    : null;
+};
+
+const buildMonthKey = (
+  yearValue,
+  monthValue,
+) => {
+  const year =
+    normalizePlanningYear(
+      yearValue,
+    );
+
+  const month =
+    normalizeMonthNumber(
+      monthValue,
+    );
+
+  if (!year || !month) {
+    return "";
+  }
+
+  return `${year}-${String(
+    month,
+  ).padStart(2, "0")}`;
+};
+
+const normalizeDirectMonthKey = (
+  value,
+) => {
+  if (!value) {
+    return "";
+  }
+
+  const raw =
+    String(value).trim();
+
+  const directMatch =
+    raw.match(
+      /^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/,
+    );
+
+  if (directMatch) {
+    return buildMonthKey(
+      directMatch[1],
+      directMatch[2],
+    );
+  }
+
+  const reverseMatch =
+    raw.match(
+      /^(\d{1,2})[/-](\d{4})$/,
+    );
+
+  if (reverseMatch) {
+    return buildMonthKey(
+      reverseMatch[2],
+      reverseMatch[1],
+    );
+  }
+
+  return "";
+};
+
+const resolvePlanningMonthKey = (
+  route,
+  fallbackMonthKey = "",
+) => {
+  const metadata =
+    route?.metadata &&
+    typeof route.metadata ===
+      "object"
+      ? route.metadata
+      : {};
+
+  const directDate =
+    resolveRouteDate(route) ||
+    resolvePeriodStart(route) ||
+    resolvePeriodEnd(route);
+
+  if (directDate) {
+    return directDate.slice(
+      0,
+      7,
+    );
+  }
+
+  const directMonthCandidates = [
+    route?.planning_month_key,
+    route?.month_key,
+    route?.schedule_month_key,
+    route?.period_month,
+    route?.selected_month,
+    metadata?.planning_month_key,
+    metadata?.month_key,
+  ];
+
+  for (
+    const candidate of
+    directMonthCandidates
+  ) {
+    const monthKey =
+      normalizeDirectMonthKey(
+        candidate,
+      );
+
+    if (monthKey) {
+      return monthKey;
+    }
+  }
+
+  const year =
+    route?.planning_year ??
+    route?.schedule_year ??
+    route?.period_year ??
+    route?.year ??
+    route?.anio ??
+    route?.["año"] ??
+    route?.planning_period?.year ??
+    metadata?.planning_year ??
+    metadata?.year;
+
+  const month =
+    route?.planning_month ??
+    route?.schedule_month ??
+    route?.month ??
+    route?.mes ??
+    route?.planning_period?.month ??
+    metadata?.planning_month ??
+    metadata?.month;
+
+  return (
+    buildMonthKey(
+      year,
+      month,
+    ) ||
+    normalizeDirectMonthKey(
+      fallbackMonthKey,
+    ) ||
+    fallbackMonthKey ||
+    ""
+  );
+};
+
+const getMonthBounds = (
+  monthKey,
+) => {
+  const monthDate =
+    parseMonthKey(
+      monthKey,
+    );
+
+  const start =
+    new Date(
+      monthDate.getFullYear(),
+      monthDate.getMonth(),
+      1,
+      12,
+      0,
+      0,
+      0,
+    );
+
+  const end =
+    new Date(
+      monthDate.getFullYear(),
+      monthDate.getMonth() + 1,
+      0,
+      12,
+      0,
+      0,
+      0,
+    );
+
+  return {
+    start:
+      toDateKey(start),
+    end:
+      toDateKey(end),
+  };
+};
+
+const resolveGroupMonthKey = (
+  group,
+  fallbackMonthKey,
+) => {
+  const explicitGroupMonth =
+    normalizeDirectMonthKey(
+      group?.planning_month_key,
+    );
+
+  if (explicitGroupMonth) {
+    return explicitGroupMonth;
+  }
+
+  const itemMonth =
+    group?.scheduled_items
+      ?.map(
+        (item) =>
+          item?.month_key ||
+          (
+            item?.date
+              ? toMonthKey(
+                  item.date,
+                )
+              : ""
+          ),
+      )
+      .find(Boolean);
+
+  if (itemMonth) {
+    return itemMonth;
+  }
+
+  return (
+    resolvePlanningMonthKey(
+      group,
+      fallbackMonthKey,
+    ) ||
+    fallbackMonthKey
+  );
+};
+
 const addDays = (date, amount) => {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
   next.setHours(12, 0, 0, 0);
   return next;
+};
+
+const getCalendarWeeksMondayFirst = (
+  monthDate,
+) => {
+  const monthStart =
+    new Date(
+      monthDate.getFullYear(),
+      monthDate.getMonth(),
+      1,
+      12,
+      0,
+      0,
+      0,
+    );
+
+  const monthEnd =
+    new Date(
+      monthDate.getFullYear(),
+      monthDate.getMonth() + 1,
+      0,
+      12,
+      0,
+      0,
+      0,
+    );
+
+  /*
+   * JavaScript:
+   * 0 = domingo
+   * 1 = lunes
+   * ...
+   * 6 = sábado
+   *
+   * El calendario visual comienza el lunes.
+   */
+  const startOffset =
+    monthStart.getDay() === 0
+      ? 6
+      : monthStart.getDay() - 1;
+
+  const calendarStart =
+    addDays(
+      monthStart,
+      -startOffset,
+    );
+
+  const endOffset =
+    monthEnd.getDay() === 0
+      ? 0
+      : 7 - monthEnd.getDay();
+
+  const calendarEnd =
+    addDays(
+      monthEnd,
+      endOffset,
+    );
+
+  const weeks = [];
+  let cursor =
+    new Date(
+      calendarStart,
+    );
+
+  while (
+    cursor <= calendarEnd
+  ) {
+    const start =
+      new Date(
+        cursor,
+      );
+
+    const end =
+      addDays(
+        start,
+        6,
+      );
+
+    weeks.push({
+      id:
+        weeks.length + 1,
+      start,
+      end,
+    });
+
+    cursor =
+      addDays(
+        cursor,
+        7,
+      );
+  }
+
+  return weeks;
 };
 
 const getDateForWeekDay = (week, dayId) => {
@@ -222,6 +601,9 @@ const resolveRouteDate = (route) =>
       route?.fecha ||
       route?.date ||
       route?.fecha_planificacion ||
+      route?.fecha_planificada ||
+      route?.planned_date ||
+      route?.effective_date ||
       route?.planning_date ||
       route?.selected_date ||
       route?.route_date,
@@ -231,6 +613,8 @@ const resolvePeriodStart = (route) =>
   toDateKey(
     route?.period_start_date ||
       route?.planning_start_date ||
+      route?.fecha_inicio_planificacion ||
+      route?.effective_from ||
       route?.start_date ||
       resolveRouteDate(route),
   );
@@ -239,6 +623,8 @@ const resolvePeriodEnd = (route) =>
   toDateKey(
     route?.period_end_date ||
       route?.planning_end_date ||
+      route?.fecha_fin_planificacion ||
+      route?.effective_to ||
       route?.end_date ||
       resolveRouteDate(route),
   );
@@ -500,12 +886,19 @@ const PlanningMonthGrid = ({
   monthDate,
 }) => {
   const weeks = useMemo(
-    () => getWeeksOfMonthCalendar(monthDate),
+    () =>
+      getCalendarWeeksMondayFirst(
+        monthDate,
+      ),
     [monthDate],
   );
 
   const itemsByDate = useMemo(() => {
     const result = {};
+    const targetMonthKey =
+      toMonthKey(
+        monthDate,
+      );
 
     scheduledItems.forEach((item) => {
       const dateKey =
@@ -516,7 +909,11 @@ const PlanningMonthGrid = ({
           Number(item.day),
         );
 
-      if (!dateKey) {
+      if (
+        !dateKey ||
+        toMonthKey(dateKey) !==
+          targetMonthKey
+      ) {
         return;
       }
 
@@ -568,7 +965,9 @@ const PlanningMonthGrid = ({
 
               const isCurrentMonth =
                 date.getMonth() ===
-                monthDate.getMonth();
+                  monthDate.getMonth() &&
+                date.getFullYear() ===
+                  monthDate.getFullYear();
 
               const isActive =
                 assignments.length > 0;
@@ -900,11 +1299,11 @@ const AdminRoutes = () => {
 
     const routeMonths = routes
       .map((route) =>
-        resolveRouteDate(route) ||
-        resolvePeriodStart(route),
+        resolvePlanningMonthKey(
+          route,
+        ),
       )
       .filter(Boolean)
-      .map(toMonthKey)
       .sort();
 
     if (
@@ -1190,6 +1589,40 @@ const AdminRoutes = () => {
       "Analizando Excel...",
     );
 
+    const normalizeExcelHeader = (value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+
+    const getBackendError = (error) => {
+      const payload =
+        error?.response?.data ||
+        error?.data ||
+        {};
+
+      const details = [
+        ...(Array.isArray(payload?.errors)
+          ? payload.errors
+          : []),
+        ...(Array.isArray(payload?.warnings)
+          ? payload.warnings
+          : []),
+      ];
+
+      return {
+        message:
+          payload?.message ||
+          error?.message ||
+          "Error al procesar el archivo.",
+        details,
+        payload,
+      };
+    };
+
     reader.onload = async (loadEvent) => {
       try {
         const data = new Uint8Array(
@@ -1198,18 +1631,34 @@ const AdminRoutes = () => {
 
         const workbook = XLSX.read(data, {
           type: "array",
+          cellDates: true,
         });
+
+        const planningSheetName =
+          workbook.SheetNames.find(
+            (name) =>
+              normalizeExcelHeader(name) ===
+              "planificacion",
+          ) ||
+          workbook.SheetNames[0];
 
         const worksheet =
           workbook.Sheets[
-            workbook.SheetNames[0]
+            planningSheetName
           ];
+
+        if (!worksheet) {
+          throw new Error(
+            "No se encontró la hoja Planificacion.",
+          );
+        }
 
         const rawJson =
           XLSX.utils.sheet_to_json(
             worksheet,
             {
               defval: "",
+              raw: true,
             },
           );
 
@@ -1217,89 +1666,282 @@ const AdminRoutes = () => {
           .map((row) => {
             const normalized = {};
 
-            Object.keys(row).forEach(
-              (key) => {
-                const lowerKey =
-                  String(key)
-                    .toLowerCase()
-                    .trim();
+            Object.entries(row).forEach(
+              ([key, rawValue]) => {
+                const header =
+                  normalizeExcelHeader(
+                    key,
+                  );
 
-                const value =
-                  String(row[key]).trim();
+                const stringValue =
+                  String(
+                    rawValue ?? "",
+                  ).trim();
 
-                if (
-                  lowerKey.includes("rut")
-                ) {
-                  normalized.Rut_Mercaderista =
-                    value;
-                } else if (
-                  lowerKey.includes("cod")
-                ) {
-                  normalized.Codigo =
-                    value;
-                } else if (
-                  lowerKey.includes("semana") ||
-                  lowerKey.includes("turno")
-                ) {
-                  normalized[key.trim()] =
-                    value;
+                switch (header) {
+                  case "rut_mercaderista":
+                  case "rut":
+                    normalized.Rut_Mercaderista =
+                      stringValue;
+                    break;
+
+                  case "codigo":
+                  case "codigo_local":
+                  case "cod":
+                    normalized.Codigo =
+                      stringValue;
+                    break;
+
+                  case "fecha_inicio":
+                  case "fecha_desde":
+                  case "desde":
+                  case "planning_start_date":
+                    /*
+                     * Se conserva el valor original. Puede llegar como
+                     * Date, serial de Excel o texto YYYY-MM-DD.
+                     */
+                    normalized.Fecha_Inicio =
+                      rawValue;
+                    break;
+
+                  case "fecha_termino":
+                  case "fecha_fin":
+                  case "hasta":
+                  case "planning_end_date":
+                    normalized.Fecha_Termino =
+                      rawValue;
+                    break;
+
+                  case "turno":
+                  case "nombre_turno":
+                    normalized.Turno =
+                      stringValue;
+                    break;
+
+                  case "tipo_periodo":
+                  case "periodo":
+                  case "planning_period":
+                    normalized.Tipo_Periodo =
+                      stringValue.toUpperCase();
+                    break;
+
+                  case "observacion":
+                  case "observaciones":
+                    normalized.Observacion =
+                      stringValue;
+                    break;
+
+                  case "anio":
+                  case "ano":
+                  case "year":
+                  case "planning_year":
+                    normalized.Anio =
+                      rawValue;
+                    break;
+
+                  case "mes":
+                  case "month":
+                  case "planning_month":
+                    normalized.Mes =
+                      rawValue;
+                    break;
+
+                  default:
+                    /*
+                     * Compatibilidad con el formato anterior:
+                     * Turno Semana 1 ... Turno Semana 5.
+                     */
+                    if (
+                      (
+                        header.includes(
+                          "semana",
+                        ) ||
+                        header.startsWith(
+                          "turno_",
+                        )
+                      ) &&
+                      /\d+/.test(
+                        header,
+                      )
+                    ) {
+                      normalized[
+                        key.trim()
+                      ] = stringValue;
+                    }
+                    break;
                 }
               },
             );
 
             return normalized;
           })
-          .filter(
-            (item) =>
+          .filter((item) => {
+            const hasIdentity =
               item.Rut_Mercaderista &&
-              item.Codigo,
-          );
+              item.Codigo;
+
+            const hasRangeFormat =
+              item.Fecha_Inicio ||
+              item.Fecha_Termino ||
+              item.Turno ||
+              item.Tipo_Periodo;
+
+            const hasWeeklyFormat =
+              Object.keys(item).some(
+                (key) =>
+                  /semana\s*\d+/i.test(
+                    key,
+                  ),
+              );
+
+            return (
+              hasIdentity &&
+              (
+                hasRangeFormat ||
+                hasWeeklyFormat
+              )
+            );
+          });
 
         if (finalData.length === 0) {
-          toast.error(
-            "El Excel no contiene datos válidos.",
-            { id: toastId },
+          throw new Error(
+            "El Excel no contiene filas válidas en la hoja Planificacion.",
           );
-          return;
         }
 
         const targetMonth =
           visibleMonthDate;
 
-        await api.post(
-          "/routes/bulk-create",
+        const payload = {
+          month:
+            targetMonth.getMonth() + 1,
+          year:
+            targetMonth.getFullYear(),
+          routes:
+            finalData,
+        };
+
+        if (
+          canManageCompanies &&
+          filterCompany
+        ) {
+          payload.company_id =
+            filterCompany;
+        }
+
+        console.log(
+          "📤 PAYLOAD EXCEL MULTIMES:",
           {
-            month:
-              targetMonth.getMonth() + 1,
-            year:
-              targetMonth.getFullYear(),
-            routes:
-              finalData,
+            sheet:
+              planningSheetName,
+            rows:
+              finalData.length,
+            first_row:
+              finalData[0],
+            payload,
           },
         );
 
+        const response =
+          await api.post(
+            "/routes/bulk-create",
+            payload,
+          );
+
+        const result =
+          response?.data ||
+          response;
+
+        if (!result?.success) {
+          const requestError =
+            new Error(
+              result?.message ||
+              "La carga masiva no fue procesada.",
+            );
+
+          requestError.data =
+            result;
+
+          throw requestError;
+        }
+
+        const warnings = [
+          ...(Array.isArray(
+            result?.errors,
+          )
+            ? result.errors
+            : []),
+          ...(Array.isArray(
+            result?.warnings,
+          )
+            ? result.warnings
+            : []),
+        ];
+
+        if (warnings.length > 0) {
+          console.warn(
+            "⚠️ Advertencias carga multimes:",
+            warnings,
+          );
+        }
+
         toast.success(
-          "Carga masiva completada.",
-          { id: toastId },
+          `${
+            result?.count || 0
+          } rutas creadas correctamente.`,
+          {
+            id:
+              toastId,
+            duration:
+              warnings.length > 0
+                ? 6500
+                : 3500,
+          },
         );
 
         await fetchData();
       } catch (error) {
+        const {
+          message,
+          details,
+          payload,
+        } =
+          getBackendError(
+            error,
+          );
+
         console.error(
           "❌ Error procesando Excel:",
-          error,
+          {
+            message,
+            details,
+            payload,
+            error,
+          },
         );
 
+        const detailText =
+          details.length > 0
+            ? ` ${details
+                .slice(0, 2)
+                .join(" | ")}`
+            : "";
+
         toast.error(
-          error?.response?.data?.message ||
-            "Error al procesar el archivo.",
-          { id: toastId },
+          `${message}${detailText}`,
+          {
+            id:
+              toastId,
+            duration:
+              9000,
+          },
         );
+      } finally {
+        event.target.value = "";
       }
     };
 
     reader.readAsArrayBuffer(file);
-    event.target.value = "";
   };
 
   const groupedRoutes = useMemo(() => {
@@ -1429,25 +2071,6 @@ const AdminRoutes = () => {
       const periodEnd =
         resolvePeriodEnd(route);
 
-      const dateAnchor =
-        periodStart ||
-        (
-          routeDate
-            ? `${routeDate.slice(0, 7)}-01`
-            : ""
-        );
-
-      const groupKey =
-        route.schedule_group_id
-          ? `group-${route.schedule_group_id}`
-          : [
-              "local",
-              route.local_id,
-              dateAnchor ||
-                route.origin ||
-                "legacy",
-            ].join("-");
-
       const finalWeek =
         resolveWeekNumber(
           route,
@@ -1459,6 +2082,58 @@ const AdminRoutes = () => {
           route,
           routeDate,
         );
+
+      const routeMonthKey =
+        resolvePlanningMonthKey(
+          route,
+          calendarMonth,
+        );
+
+      const routeMonthDate =
+        parseMonthKey(
+          routeMonthKey,
+        );
+
+      const effectiveRouteDate =
+        routeDate ||
+        (
+          finalDay !== null &&
+          Number.isInteger(
+            finalDay,
+          )
+            ? deriveLegacyDate(
+                routeMonthDate,
+                finalWeek,
+                finalDay,
+              )
+            : ""
+        );
+
+      const dateAnchor =
+        periodStart ||
+        effectiveRouteDate ||
+        (
+          routeMonthKey
+            ? `${routeMonthKey}-01`
+            : ""
+        );
+
+      /*
+       * La clave incluye el mes. De esta forma una planificación
+       * de agosto y otra de septiembre nunca se mezclan aunque
+       * compartan local o schedule_group_id.
+       */
+      const groupKey =
+        route.schedule_group_id
+          ? `group-${route.schedule_group_id}-${routeMonthKey}`
+          : [
+              "local",
+              route.local_id,
+              routeMonthKey ||
+                dateAnchor ||
+                route.origin ||
+                "legacy",
+            ].join("-");
 
       const hasDay =
         finalDay !== null &&
@@ -1485,7 +2160,9 @@ const AdminRoutes = () => {
             route_id:
               route.id,
             date:
-              routeDate,
+              effectiveRouteDate,
+            month_key:
+              routeMonthKey,
             day:
               finalDay,
             week:
@@ -1557,7 +2234,32 @@ const AdminRoutes = () => {
             route.planning_period ||
             route.period_type ||
             "",
+          planning_month_key:
+            routeMonthKey,
         };
+
+        const monthBounds =
+          getMonthBounds(
+            routeMonthKey,
+          );
+
+        if (
+          !groups[groupKey]
+            .period_start_date
+        ) {
+          groups[groupKey]
+            .period_start_date =
+            monthBounds.start;
+        }
+
+        if (
+          !groups[groupKey]
+            .period_end_date
+        ) {
+          groups[groupKey]
+            .period_end_date =
+            monthBounds.end;
+        }
 
         return;
       }
@@ -1655,8 +2357,21 @@ const AdminRoutes = () => {
           ] ||
           "";
 
+        const planningMonthKey =
+          resolveGroupMonthKey(
+            group,
+            calendarMonth,
+          );
+
+        const monthBounds =
+          getMonthBounds(
+            planningMonthKey,
+          );
+
         return {
           ...group,
+          planning_month_key:
+            planningMonthKey,
           users:
             Array.from(
               group.users,
@@ -1673,9 +2388,11 @@ const AdminRoutes = () => {
                   Number(b.day),
             ),
           period_start_date:
-            periodStart,
+            periodStart ||
+            monthBounds.start,
           period_end_date:
-            periodEnd,
+            periodEnd ||
+            monthBounds.end,
           displayStatus:
             getGroupDisplayStatus(
               group.all_statuses,
@@ -1683,77 +2400,20 @@ const AdminRoutes = () => {
         };
       })
       .filter((group) => {
-        const itemsForMonth =
-          group.scheduled_items.filter(
-            (item) => {
-              const itemDate =
-                item.date ||
-                deriveLegacyDate(
-                  visibleMonthDate,
-                  Number(item.week),
-                  Number(item.day),
-                );
-
-              return (
-                itemDate &&
-                toMonthKey(itemDate) ===
-                  calendarMonth
-              );
-            },
+        const groupMonthKey =
+          resolveGroupMonthKey(
+            group,
+            calendarMonth,
           );
 
-        const periodIntersectsMonth = (() => {
-          const start =
-            parseDateKey(
-              group.period_start_date,
-            );
-
-          const end =
-            parseDateKey(
-              group.period_end_date,
-            );
-
-          if (!start && !end) {
-            return true;
-          }
-
-          const monthStart =
-            new Date(
-              visibleMonthDate.getFullYear(),
-              visibleMonthDate.getMonth(),
-              1,
-              0,
-              0,
-              0,
-              0,
-            );
-
-          const monthEnd =
-            new Date(
-              visibleMonthDate.getFullYear(),
-              visibleMonthDate.getMonth() + 1,
-              0,
-              23,
-              59,
-              59,
-              999,
-            );
-
-          const resolvedStart =
-            start || end;
-
-          const resolvedEnd =
-            end || start;
-
-          return (
-            resolvedStart <= monthEnd &&
-            resolvedEnd >= monthStart
-          );
-        })();
-
+        /*
+         * Cada tarjeta pertenece a un único mes.
+         * Ya no se usa una intersección amplia que podía mantener
+         * visibles planificaciones de agosto/septiembre bajo julio.
+         */
         if (
-          itemsForMonth.length === 0 &&
-          !periodIntersectsMonth
+          groupMonthKey !==
+          calendarMonth
         ) {
           return false;
         }
@@ -1764,16 +2424,19 @@ const AdminRoutes = () => {
 
         return group.scheduled_items.some(
           (item) => {
-            if (item.date) {
-              return item.date ===
-                targetDateInfo.date;
-            }
+            const itemDate =
+              item.date ||
+              deriveLegacyDate(
+                parseMonthKey(
+                  groupMonthKey,
+                ),
+                Number(item.week),
+                Number(item.day),
+              );
 
             return (
-              Number(item.week) ===
-                targetDateInfo.weekNum &&
-              Number(item.day) ===
-                targetDateInfo.dayId
+              itemDate ===
+              targetDateInfo.date
             );
           },
         );
@@ -1888,13 +2551,29 @@ const AdminRoutes = () => {
     group,
     index,
   ) => {
+    const groupMonthKey =
+      resolveGroupMonthKey(
+        group,
+        calendarMonth,
+      );
+
+    const groupMonthDate =
+      parseMonthKey(
+        groupMonthKey,
+      );
+
+    const groupMonthBounds =
+      getMonthBounds(
+        groupMonthKey,
+      );
+
     const monthItems =
       group.scheduled_items.filter(
         (item) => {
           const itemDate =
             item.date ||
             deriveLegacyDate(
-              visibleMonthDate,
+              groupMonthDate,
               Number(item.week),
               Number(item.day),
             );
@@ -1902,7 +2581,7 @@ const AdminRoutes = () => {
           return (
             itemDate &&
             toMonthKey(itemDate) ===
-              calendarMonth
+              groupMonthKey
           );
         },
       );
@@ -1969,8 +2648,10 @@ const AdminRoutes = () => {
 
               <p className="mt-1.5 text-[10px] font-black leading-relaxed text-slate-800">
                 {formatPeriod(
-                  group.period_start_date,
-                  group.period_end_date,
+                  group.period_start_date ||
+                    groupMonthBounds.start,
+                  group.period_end_date ||
+                    groupMonthBounds.end,
                 )}
               </p>
             </div>
@@ -1998,7 +2679,7 @@ const AdminRoutes = () => {
               </p>
 
               <span className="text-[8px] font-black uppercase tracking-wider text-[#679300]">
-                {formatDate(visibleMonthDate, {
+                {formatDate(groupMonthDate, {
                   month: "long",
                   year: "numeric",
                 })}
@@ -2011,7 +2692,7 @@ const AdminRoutes = () => {
                   group.scheduled_items
                 }
                 monthDate={
-                  visibleMonthDate
+                  groupMonthDate
                 }
               />
             </div>
@@ -2677,10 +3358,25 @@ const AdminRoutes = () => {
                           <td className="px-6 py-5">
                             <div className="max-w-sm">
                               <p className="text-[9px] font-black uppercase tracking-wider text-[#679300]">
-                                {formatPeriod(
-                                  group.period_start_date,
-                                  group.period_end_date,
-                                )}
+                                {(() => {
+                                  const groupMonthKey =
+                                    resolveGroupMonthKey(
+                                      group,
+                                      calendarMonth,
+                                    );
+
+                                  const bounds =
+                                    getMonthBounds(
+                                      groupMonthKey,
+                                    );
+
+                                  return formatPeriod(
+                                    group.period_start_date ||
+                                      bounds.start,
+                                    group.period_end_date ||
+                                      bounds.end,
+                                  );
+                                })()}
                               </p>
 
                               <div className="mt-3 flex items-center gap-2">
@@ -2706,7 +3402,12 @@ const AdminRoutes = () => {
                                   group.scheduled_items
                                 }
                                 monthDate={
-                                  visibleMonthDate
+                                  parseMonthKey(
+                                    resolveGroupMonthKey(
+                                      group,
+                                      calendarMonth,
+                                    ),
+                                  )
                                 }
                               />
                             </div>
@@ -2802,15 +3503,368 @@ const AdminRoutes = () => {
 /* SUBCOMPONENTE: AYUDA Y PLANTILLA DE CARGA MASIVA */
 const BulkPlanningHelpModal = ({ onClose }) => {
   /*
-   * La plantilla se genera con SheetJS al presionar el botón.
-   * De esta forma no depende de una ruta estática de Vercel
-   * que pueda devolver index.html con extensión .xlsx.
+   * La plantilla multimes se genera directamente con SheetJS.
+   *
+   * Esto evita depender de una ruta pública que pueda ser
+   * interceptada por el fallback SPA de Vercel.
+   *
+   * El archivo generado contiene:
+   * - Planificacion
+   * - Ejemplos
+   * - Formato_Mensual
+   * - Instrucciones
    */
   const handleDownloadTemplate = () => {
-    const templateRows = [
+    const workbook =
+      XLSX.utils.book_new();
+
+    const createLocalDate = (
+      year,
+      month,
+      day,
+    ) =>
+      new Date(
+        year,
+        month - 1,
+        day,
+        12,
+        0,
+        0,
+        0,
+      );
+
+    /*
+     * HOJA 1: FORMATO PRINCIPAL
+     *
+     * Se agregan filas vacías para que el usuario pueda comenzar
+     * a completar la plantilla sin modificar los encabezados.
+     */
+    const planningRows = [
       [
         "Rut_Mercaderista",
         "Codigo",
+        "Fecha_Inicio",
+        "Fecha_Termino",
+        "Turno",
+        "Tipo_Periodo",
+        "Observacion",
+      ],
+      ...Array.from(
+        {
+          length: 100,
+        },
+        () => [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+        ],
+      ),
+    ];
+
+    const planningSheet =
+      XLSX.utils.aoa_to_sheet(
+        planningRows,
+        {
+          cellDates: true,
+        },
+      );
+
+    planningSheet["!cols"] = [
+      {
+        wch: 22,
+      },
+      {
+        wch: 34,
+      },
+      {
+        wch: 18,
+      },
+      {
+        wch: 18,
+      },
+      {
+        wch: 30,
+      },
+      {
+        wch: 18,
+      },
+      {
+        wch: 44,
+      },
+    ];
+
+    planningSheet["!autofilter"] = {
+      ref: "A1:G101",
+    };
+
+    planningSheet["!rows"] = [
+      {
+        hpt: 24,
+      },
+    ];
+
+    for (
+      let row = 2;
+      row <= 101;
+      row += 1
+    ) {
+      const startCell =
+        planningSheet[
+          `C${row}`
+        ];
+
+      const endCell =
+        planningSheet[
+          `D${row}`
+        ];
+
+      if (startCell) {
+        startCell.z =
+          "yyyy-mm-dd";
+      }
+
+      if (endCell) {
+        endCell.z =
+          "yyyy-mm-dd";
+      }
+    }
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      planningSheet,
+      "Planificacion",
+    );
+
+    /*
+     * HOJA 2: EJEMPLOS
+     *
+     * Incluye:
+     * - un turno durante varios meses;
+     * - dos turnos para el mismo usuario y local;
+     * - turnos diferentes por mes.
+     */
+    const examplesRows = [
+      [
+        "Rut_Mercaderista",
+        "Codigo",
+        "Fecha_Inicio",
+        "Fecha_Termino",
+        "Turno",
+        "Tipo_Periodo",
+        "Observacion",
+        "Dias_Cubiertos",
+        "Meses_Cubiertos",
+      ],
+      [
+        "16.925.489-3",
+        "HIPERSANJOAQUIN",
+        createLocalDate(
+          2026,
+          8,
+          1,
+        ),
+        createLocalDate(
+          2026,
+          10,
+          30,
+        ),
+        "TURNO PRUEBA POR DIA",
+        "RANGO",
+        "Un mismo turno desde agosto hasta octubre.",
+        null,
+        null,
+      ],
+      [
+        "18.083.379-K",
+        "CASA",
+        createLocalDate(
+          2026,
+          8,
+          3,
+        ),
+        createLocalDate(
+          2026,
+          9,
+          30,
+        ),
+        "TURNO VENDEDOR",
+        "RANGO",
+        "Primer turno para el mismo usuario y local: lunes y viernes.",
+        null,
+        null,
+      ],
+      [
+        "18.083.379-K",
+        "CASA",
+        createLocalDate(
+          2026,
+          8,
+          3,
+        ),
+        createLocalDate(
+          2026,
+          9,
+          30,
+        ),
+        "TURNO VENDEDOR B",
+        "RANGO",
+        "Segundo turno para el mismo usuario y local: martes y miércoles.",
+        null,
+        null,
+      ],
+      [
+        "16.925.489-3",
+        "LIDERHIPERLIDERSANTAAMALIA",
+        createLocalDate(
+          2026,
+          8,
+          1,
+        ),
+        createLocalDate(
+          2026,
+          8,
+          31,
+        ),
+        "TURNO AGOSTO",
+        "MES",
+        "Ejemplo con un turno diferente para agosto.",
+        null,
+        null,
+      ],
+      [
+        "16.925.489-3",
+        "LIDERHIPERLIDERSANTAAMALIA",
+        createLocalDate(
+          2026,
+          9,
+          1,
+        ),
+        createLocalDate(
+          2026,
+          9,
+          30,
+        ),
+        "TURNO SEPTIEMBRE",
+        "MES",
+        "Ejemplo con un turno diferente para septiembre.",
+        null,
+        null,
+      ],
+      [
+        "16.925.489-3",
+        "LIDERHIPERLIDERSANTAAMALIA",
+        createLocalDate(
+          2026,
+          10,
+          1,
+        ),
+        createLocalDate(
+          2026,
+          10,
+          31,
+        ),
+        "TURNO OCTUBRE",
+        "MES",
+        "Ejemplo con un turno diferente para octubre.",
+        null,
+        null,
+      ],
+    ];
+
+    const examplesSheet =
+      XLSX.utils.aoa_to_sheet(
+        examplesRows,
+        {
+          cellDates: true,
+        },
+      );
+
+    examplesSheet["!cols"] = [
+      {
+        wch: 22,
+      },
+      {
+        wch: 34,
+      },
+      {
+        wch: 18,
+      },
+      {
+        wch: 18,
+      },
+      {
+        wch: 30,
+      },
+      {
+        wch: 18,
+      },
+      {
+        wch: 58,
+      },
+      {
+        wch: 18,
+      },
+      {
+        wch: 18,
+      },
+    ];
+
+    examplesSheet["!autofilter"] = {
+      ref: `A1:I${examplesRows.length}`,
+    };
+
+    for (
+      let row = 2;
+      row <= examplesRows.length;
+      row += 1
+    ) {
+      examplesSheet[
+        `C${row}`
+      ].z = "yyyy-mm-dd";
+
+      examplesSheet[
+        `D${row}`
+      ].z = "yyyy-mm-dd";
+
+      examplesSheet[
+        `H${row}`
+      ] = {
+        t: "n",
+        f:
+          `D${row}-C${row}+1`,
+      };
+
+      examplesSheet[
+        `I${row}`
+      ] = {
+        t: "n",
+        f:
+          `DATEDIF(C${row},D${row},"m")+1`,
+      };
+    }
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      examplesSheet,
+      "Ejemplos",
+    );
+
+    /*
+     * HOJA 3: FORMATO ANTERIOR
+     *
+     * Se conserva para compatibilidad con la planificación
+     * mensual por semanas.
+     */
+    const legacyRows = [
+      [
+        "Rut_Mercaderista",
+        "Codigo",
+        "Anio",
+        "Mes",
         "Turno Semana 1",
         "Turno Semana 2",
         "Turno Semana 3",
@@ -2820,6 +3874,8 @@ const BulkPlanningHelpModal = ({ onClose }) => {
       [
         "16.925.489-3",
         "HIPERSANJOAQUIN",
+        2026,
+        8,
         "TURNO YANIXSA",
         "TURNO YANIXSA",
         "TURNO YANIXSA",
@@ -2828,7 +3884,20 @@ const BulkPlanningHelpModal = ({ onClose }) => {
       ],
       [
         "16.925.489-3",
-        "LIDERHIPERLIDERSANTAAMALIA",
+        "HIPERSANJOAQUIN",
+        2026,
+        9,
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "TURNO YANIXSA",
+        "",
+      ],
+      [
+        "16.925.489-3",
+        "HIPERSANJOAQUIN",
+        2026,
+        10,
         "TURNO YANIXSA",
         "TURNO YANIXSA",
         "TURNO YANIXSA",
@@ -2837,87 +3906,266 @@ const BulkPlanningHelpModal = ({ onClose }) => {
       ],
     ];
 
-    const worksheet =
+    const legacySheet =
       XLSX.utils.aoa_to_sheet(
-        templateRows,
+        legacyRows,
       );
 
-    worksheet["!cols"] = [
-      { wch: 20 },
-      { wch: 34 },
-      { wch: 22 },
-      { wch: 22 },
-      { wch: 22 },
-      { wch: 22 },
-      { wch: 22 },
+    legacySheet["!cols"] = [
+      {
+        wch: 22,
+      },
+      {
+        wch: 34,
+      },
+      {
+        wch: 12,
+      },
+      {
+        wch: 12,
+      },
+      {
+        wch: 24,
+      },
+      {
+        wch: 24,
+      },
+      {
+        wch: 24,
+      },
+      {
+        wch: 24,
+      },
+      {
+        wch: 24,
+      },
     ];
 
-    worksheet["!autofilter"] = {
-      ref: "A1:G3",
+    legacySheet["!autofilter"] = {
+      ref: `A1:I${legacyRows.length}`,
     };
-
-    const workbook =
-      XLSX.utils.book_new();
 
     XLSX.utils.book_append_sheet(
       workbook,
-      worksheet,
-      "Planificacion",
+      legacySheet,
+      "Formato_Mensual",
+    );
+
+    /*
+     * HOJA 4: INSTRUCCIONES
+     */
+    const instructionsRows = [
+      [
+        "CULTIVAPP · CARGA MASIVA DE PLANIFICACIONES MULTIMES",
+        "",
+      ],
+      [
+        "",
+        "",
+      ],
+      [
+        "Formato recomendado",
+        "Usa la hoja Planificacion. Cada fila representa un turno aplicado a un mercaderista y un local durante un periodo.",
+      ],
+      [
+        "Planificación de varios meses",
+        "Ejemplo: Fecha_Inicio 2026-08-01 y Fecha_Termino 2026-10-30. Usa Tipo_Periodo RANGO.",
+      ],
+      [
+        "Dos turnos para el mismo usuario y local",
+        "Usa dos filas con el mismo Rut_Mercaderista, Codigo, Fecha_Inicio y Fecha_Termino. En cada fila escribe un Turno diferente.",
+      ],
+      [
+        "Turnos diferentes por mes",
+        "Usa una fila por periodo. Por ejemplo, una fila para agosto, otra para septiembre y otra para octubre.",
+      ],
+      [
+        "Nombre del turno",
+        "Debe coincidir exactamente con un turno activo creado en CultivApp.",
+      ],
+      [
+        "Horario por día",
+        "La carga toma los días, entrada y salida configurados en turnos_config para el turno seleccionado.",
+      ],
+      [
+        "Formato de fechas",
+        "Usa YYYY-MM-DD. Fecha_Termino no puede ser anterior a Fecha_Inicio.",
+      ],
+      [
+        "Tipo_Periodo",
+        "RANGO: varias semanas o meses. MES: un solo mes. SEMANA: máximo siete días.",
+      ],
+      [
+        "Cruce de turnos",
+        "Dos turnos pueden compartir usuario y local cuando sus días no generan una visita duplicada para la misma fecha.",
+      ],
+      [
+        "Hoja correcta",
+        "Importa siempre la hoja Planificacion. Las hojas Ejemplos, Formato_Mensual e Instrucciones son solo de apoyo.",
+      ],
+      [
+        "Filas vacías",
+        "No dejes filas completamente vacías entre registros ya completados.",
+      ],
+      [
+        "Celdas combinadas",
+        "No combines celdas ni cambies los nombres de la fila de encabezados.",
+      ],
+      [
+        "Respuesta del backend",
+        "La API informa rutas creadas, filas procesadas, advertencias y errores.",
+      ],
+      [
+        "",
+        "",
+      ],
+      [
+        "PAYLOAD RECOMENDADO PARA EL BACKEND",
+        "",
+      ],
+      [
+        `{
+  "company_id": "UUID_EMPRESA",
+  "routes": [
+    {
+      "Rut_Mercaderista": "18.083.379-K",
+      "Codigo": "CASA",
+      "Fecha_Inicio": "2026-08-03",
+      "Fecha_Termino": "2026-09-30",
+      "Turno": "TURNO VENDEDOR",
+      "Tipo_Periodo": "RANGO"
+    },
+    {
+      "Rut_Mercaderista": "18.083.379-K",
+      "Codigo": "CASA",
+      "Fecha_Inicio": "2026-08-03",
+      "Fecha_Termino": "2026-09-30",
+      "Turno": "TURNO VENDEDOR B",
+      "Tipo_Periodo": "RANGO"
+    }
+  ]
+}`,
+        "",
+      ],
+    ];
+
+    const instructionsSheet =
+      XLSX.utils.aoa_to_sheet(
+        instructionsRows,
+      );
+
+    instructionsSheet["!cols"] = [
+      {
+        wch: 40,
+      },
+      {
+        wch: 108,
+      },
+    ];
+
+    instructionsSheet["!rows"] = [
+      {
+        hpt: 28,
+      },
+      {
+        hpt: 12,
+      },
+      ...Array.from(
+        {
+          length:
+            instructionsRows.length - 2,
+        },
+        () => ({
+          hpt: 32,
+        }),
+      ),
+    ];
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      instructionsSheet,
+      "Instrucciones",
     );
 
     XLSX.writeFile(
       workbook,
-      "plantilla_planificacion_masiva.xlsx",
+      "plantilla_planificacion_masiva_multimes.xlsx",
       {
         bookType: "xlsx",
         compression: true,
+        cellDates: true,
       },
     );
   };
 
   const requiredColumns = [
     {
-      name: "Rut_Mercaderista",
+      name:
+        "Rut_Mercaderista",
       description:
-        "RUT del mercaderista con dígito verificador. Debe existir en CultivApp.",
-      example: "16.925.489-3",
+        "RUT del mercaderista con dígito verificador. Debe existir y pertenecer a la empresa seleccionada.",
+      example:
+        "18.083.379-K",
     },
     {
-      name: "Codigo",
+      name:
+        "Codigo",
       description:
         "Código interno exacto del local registrado en CultivApp.",
-      example: "HIPERSANJOAQUIN",
+      example:
+        "CASA",
     },
     {
-      name: "Turno Semana 1",
+      name:
+        "Fecha_Inicio",
       description:
-        "Nombre exacto del turno que se aplicará durante la semana 1.",
-      example: "TURNO YANIXSA",
+        "Primer día del periodo que se planificará. Usa el formato YYYY-MM-DD.",
+      example:
+        "2026-08-03",
     },
     {
-      name: "Turno Semana 2",
+      name:
+        "Fecha_Termino",
       description:
-        "Nombre exacto del turno que se aplicará durante la semana 2.",
-      example: "TURNO YANIXSA",
+        "Último día incluido en la planificación. Puede pertenecer a otro mes cuando Tipo_Periodo es RANGO.",
+      example:
+        "2026-09-30",
     },
     {
-      name: "Turno Semana 3",
+      name:
+        "Turno",
       description:
-        "Nombre exacto del turno que se aplicará durante la semana 3.",
-      example: "TURNO YANIXSA",
+        "Nombre exacto de un turno activo. Sus días y horarios se obtienen automáticamente desde la configuración.",
+      example:
+        "TURNO VENDEDOR",
     },
     {
-      name: "Turno Semana 4",
+      name:
+        "Tipo_Periodo",
       description:
-        "Nombre exacto del turno que se aplicará durante la semana 4.",
-      example: "TURNO YANIXSA",
+        "Usa SEMANA, MES o RANGO. Para planificar varios meses utiliza RANGO.",
+      example:
+        "RANGO",
     },
     {
-      name: "Turno Semana 5",
+      name:
+        "Observacion",
       description:
-        "Utilízala en meses que tengan semana 5. En los demás meses puede quedar vacía.",
-      example: "TURNO YANIXSA",
+        "Campo opcional para identificar el objetivo o alcance de la fila.",
+      example:
+        "Turno de lunes y viernes",
     },
+  ];
+
+  const rules = [
+    "Usa una fila por cada turno que quieras aplicar.",
+    "Para dos turnos en el mismo usuario y local, repite RUT, código y fechas en dos filas.",
+    "Mantén una sola hoja principal llamada Planificacion.",
+    "No cambies los nombres de los encabezados.",
+    "Usa el código exacto del local.",
+    "Usa el nombre exacto del turno.",
+    "No combines celdas.",
+    "Guarda el archivo en formato .xlsx.",
   ];
 
   return (
@@ -2927,7 +4175,7 @@ const BulkPlanningHelpModal = ({ onClose }) => {
       aria-modal="true"
       aria-labelledby="bulk-planning-help-title"
     >
-      <div className="relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         <header className="relative shrink-0 border-b border-gray-100 bg-white px-5 py-5 sm:px-7 sm:py-6">
           <div className="absolute inset-x-0 top-0 h-1 bg-[#87be00]" />
 
@@ -2939,7 +4187,7 @@ const BulkPlanningHelpModal = ({ onClose }) => {
 
               <div className="min-w-0">
                 <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#87be00]">
-                  Carga masiva
+                  Carga masiva multimes
                 </p>
 
                 <h2
@@ -2950,7 +4198,7 @@ const BulkPlanningHelpModal = ({ onClose }) => {
                 </h2>
 
                 <p className="mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
-                  Descarga la plantilla oficial y conserva exactamente los nombres de sus columnas.
+                  Descarga la plantilla para semanas, meses, rangos multimes y varios turnos por usuario/local.
                 </p>
               </div>
             </div>
@@ -2976,13 +4224,92 @@ const BulkPlanningHelpModal = ({ onClose }) => {
 
               <div>
                 <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-[#679300]">
-                  Reglas importantes
+                  Regla para varios turnos
                 </h3>
 
                 <p className="mt-2 text-[11px] font-semibold leading-relaxed text-gray-600">
-                  No cambies, elimines ni agregues nombres en la fila de encabezados. Cada fila debe representar la planificación de un mercaderista para un local.
+                  Cada fila representa un turno. Para asignar TURNO VENDEDOR y TURNO VENDEDOR B al mismo usuario y local, crea dos filas con el mismo RUT, código y periodo.
                 </p>
               </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-[1.6rem] border border-gray-100 bg-white shadow-sm">
+            <div className="border-b border-gray-100 px-4 py-4 sm:px-5">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-800">
+                Ejemplo: dos turnos
+              </h3>
+
+              <p className="mt-1 text-[10px] font-medium leading-relaxed text-gray-400">
+                Ambas filas se aplicarán al mismo mercaderista, local y rango de fechas.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-[820px] w-full text-left">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {[
+                      "RUT",
+                      "Código",
+                      "Inicio",
+                      "Término",
+                      "Turno",
+                      "Periodo",
+                    ].map(
+                      (heading) => (
+                        <th
+                          key={heading}
+                          className="px-4 py-3 text-[8px] font-black uppercase tracking-wider text-gray-400"
+                        >
+                          {heading}
+                        </th>
+                      ),
+                    )}
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-gray-100">
+                  {[
+                    [
+                      "18.083.379-K",
+                      "CASA",
+                      "2026-08-03",
+                      "2026-09-30",
+                      "TURNO VENDEDOR",
+                      "RANGO",
+                    ],
+                    [
+                      "18.083.379-K",
+                      "CASA",
+                      "2026-08-03",
+                      "2026-09-30",
+                      "TURNO VENDEDOR B",
+                      "RANGO",
+                    ],
+                  ].map(
+                    (row) => (
+                      <tr
+                        key={row[4]}
+                      >
+                        {row.map(
+                          (
+                            cell,
+                            index,
+                          ) => (
+                            <td
+                              key={`${row[4]}-${index}`}
+                              className="whitespace-nowrap px-4 py-3 text-[9px] font-bold text-gray-600"
+                            >
+                              {cell}
+                            </td>
+                          ),
+                        )}
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
             </div>
           </section>
 
@@ -2993,36 +4320,46 @@ const BulkPlanningHelpModal = ({ onClose }) => {
               </h3>
 
               <p className="mt-1 text-[10px] font-medium text-gray-400">
-                El RUT, código del local y nombres de turno deben coincidir con los registros existentes.
+                El RUT, código del local y nombre del turno deben coincidir con los registros existentes.
               </p>
             </div>
 
             <div className="divide-y divide-gray-100">
-              {requiredColumns.map((column) => (
-                <div
-                  key={column.name}
-                  className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-[170px_1fr] sm:px-5"
-                >
-                  <div>
-                    <span className="inline-flex rounded-lg border border-[#87be00]/20 bg-[#87be00]/10 px-2.5 py-1 font-mono text-[9px] font-black text-[#679300]">
-                      {column.name}
-                    </span>
-                  </div>
+              {requiredColumns.map(
+                (column) => (
+                  <div
+                    key={
+                      column.name
+                    }
+                    className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-[170px_1fr] sm:px-5"
+                  >
+                    <div>
+                      <span className="inline-flex rounded-lg border border-[#87be00]/20 bg-[#87be00]/10 px-2.5 py-1 font-mono text-[9px] font-black text-[#679300]">
+                        {
+                          column.name
+                        }
+                      </span>
+                    </div>
 
-                  <div>
-                    <p className="text-[10px] font-semibold leading-relaxed text-gray-600">
-                      {column.description}
-                    </p>
+                    <div>
+                      <p className="text-[10px] font-semibold leading-relaxed text-gray-600">
+                        {
+                          column.description
+                        }
+                      </p>
 
-                    <p className="mt-1 text-[9px] font-medium text-gray-400">
-                      Ejemplo:{" "}
-                      <strong className="text-gray-600">
-                        {column.example}
-                      </strong>
-                    </p>
+                      <p className="mt-1 text-[9px] font-medium text-gray-400">
+                        Ejemplo:{" "}
+                        <strong className="text-gray-600">
+                          {
+                            column.example
+                          }
+                        </strong>
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ),
+              )}
             </div>
           </section>
 
@@ -3032,28 +4369,23 @@ const BulkPlanningHelpModal = ({ onClose }) => {
             </h3>
 
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {[
-                "Mantén una sola hoja llamada Planificacion.",
-                "No dejes filas vacías entre registros.",
-                "Usa el código exacto del local.",
-                "Usa el nombre exacto del turno.",
-                "No combines celdas.",
-                "Guarda el archivo en formato .xlsx.",
-              ].map((rule) => (
-                <div
-                  key={rule}
-                  className="flex items-start gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-3.5 py-3"
-                >
-                  <FiCheckCircle
-                    className="mt-0.5 shrink-0 text-[#87be00]"
-                    size={14}
-                  />
+              {rules.map(
+                (rule) => (
+                  <div
+                    key={rule}
+                    className="flex items-start gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-3.5 py-3"
+                  >
+                    <FiCheckCircle
+                      className="mt-0.5 shrink-0 text-[#87be00]"
+                      size={14}
+                    />
 
-                  <span className="text-[10px] font-semibold leading-relaxed text-gray-600">
-                    {rule}
-                  </span>
-                </div>
-              ))}
+                    <span className="text-[10px] font-semibold leading-relaxed text-gray-600">
+                      {rule}
+                    </span>
+                  </div>
+                ),
+              )}
             </div>
           </section>
         </div>
@@ -3069,11 +4401,15 @@ const BulkPlanningHelpModal = ({ onClose }) => {
 
           <button
             type="button"
-            onClick={handleDownloadTemplate}
+            onClick={
+              handleDownloadTemplate
+            }
             className="order-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-900 px-6 py-3.5 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-gray-200 transition-all hover:bg-[#87be00] sm:order-2"
           >
-            <FiDownload size={15} />
-            Descargar plantilla oficial
+            <FiDownload
+              size={15}
+            />
+            Descargar plantilla multimes
           </button>
         </footer>
       </div>
