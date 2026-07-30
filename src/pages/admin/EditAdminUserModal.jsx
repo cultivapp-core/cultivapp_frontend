@@ -1,11 +1,158 @@
-import { useState, useEffect } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { 
-  FiX, FiUploadCloud, FiFileText, FiCheck, FiSave, FiUser, FiShield, FiBriefcase, FiCamera 
+  FiX,
+  FiUploadCloud,
+  FiFileText,
+  FiCheck,
+  FiSave,
+  FiUser,
+  FiShield,
+  FiBriefcase,
+  FiCamera,
+  FiChevronDown,
+  FiEye,
+  FiUsers,
 } from "react-icons/fi";
 import api from "../../api/apiClient";
 import { Button, IconButton } from "../../components/ui";
+import { useAuth } from "../../context/AuthContext";
+
+const ROLE_OPTIONS = [
+  {
+    value: "ADMIN_CLIENTE",
+    label: "Administrador",
+    description:
+      "Gestiona usuarios, locales, planificación y configuración de su empresa.",
+    icon: FiShield,
+    accent:
+      "border-violet-200 bg-violet-50 text-violet-700",
+  },
+  {
+    value: "SUPERVISOR",
+    label: "Supervisor",
+    description:
+      "Supervisa rutas, visitas, equipos y resultados operacionales.",
+    icon: FiUsers,
+    accent:
+      "border-blue-200 bg-blue-50 text-blue-700",
+  },
+  {
+    value: "USUARIO",
+    label: "Mercaderista",
+    description:
+      "Ejecuta visitas, evidencia fotográfica, escaneos y tareas asignadas.",
+    icon: FiUser,
+    accent:
+      "border-[#87be00]/25 bg-[#87be00]/10 text-[#679300]",
+  },
+  {
+    value: "VIEW",
+    label: "Visualizador",
+    description:
+      "Consulta planificación, monitoreo y reportes sin permisos de edición.",
+    icon: FiEye,
+    accent:
+      "border-amber-200 bg-amber-50 text-amber-700",
+  },
+];
+
+const ROOT_ROLE_OPTION = {
+  value: "ROOT",
+  label: "Root",
+  description:
+    "Acceso global a todas las empresas y configuraciones de la plataforma.",
+  icon: FiShield,
+  accent:
+    "border-slate-300 bg-slate-900 text-white",
+};
+
+const normalizeRole = (
+  value,
+) =>
+  String(value || "")
+    .trim()
+    .toUpperCase();
 
 const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
+  const {
+    user: authenticatedUser,
+  } = useAuth();
+
+  const authenticatedRole =
+    normalizeRole(
+      authenticatedUser?.role,
+    );
+
+  const authenticatedUserId =
+    String(
+      authenticatedUser?.id ||
+      authenticatedUser?.user_id ||
+      "",
+    );
+
+  const targetUserId =
+    String(
+      user?.id ||
+      user?.user_id ||
+      "",
+    );
+
+  const targetRole =
+    normalizeRole(
+      user?.role,
+    );
+
+  const isRoot =
+    authenticatedRole ===
+    "ROOT";
+
+  const isAdminCliente =
+    [
+      "ADMIN_CLIENTE",
+      "ADMIN",
+    ].includes(
+      authenticatedRole,
+    );
+
+  const isEditingOwnProfile =
+    Boolean(
+      authenticatedUserId &&
+      targetUserId &&
+      authenticatedUserId ===
+        targetUserId,
+    );
+
+  const isEditingRootUser =
+    targetRole ===
+    "ROOT";
+
+  const canEditUserRole =
+    (
+      isRoot ||
+      isAdminCliente
+    ) &&
+    !isEditingOwnProfile &&
+    (
+      isRoot ||
+      !isEditingRootUser
+    );
+
+  const availableRoleOptions =
+    useMemo(
+      () =>
+        isRoot
+          ? [
+              ROOT_ROLE_OPTION,
+              ...ROLE_OPTIONS,
+            ]
+          : ROLE_OPTIONS,
+      [isRoot],
+    );
+
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", phone: "",
     role: "", rut: "", position: "", trabajando_para: "",
@@ -22,6 +169,36 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
   const [error, setError] = useState("");
   const [rutError, setRutError] = useState("");
 
+  const selectedRoleConfig =
+    useMemo(
+      () =>
+        [
+          ROOT_ROLE_OPTION,
+          ...ROLE_OPTIONS,
+        ].find(
+          (option) =>
+            option.value ===
+            normalizeRole(
+              form.role,
+            ),
+        ) || null,
+      [form.role],
+    );
+
+  const isMercaderista =
+    [
+      "USUARIO",
+      "MERCADERISTA",
+    ].includes(
+      normalizeRole(
+        form.role,
+      ),
+    );
+
+  const SelectedRoleIcon =
+    selectedRoleConfig?.icon ||
+    FiShield;
+
   useEffect(() => {
     if (isOpen && user) {
       setForm({
@@ -29,7 +206,10 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
         last_name: user?.last_name || "",
         email: user?.email || "",
         phone: user?.phone || "",
-        role: user?.role || "",
+        role:
+          normalizeRole(
+            user?.role,
+          ),
         rut: user?.rut || "",
         position: user?.position || "",
         trabajando_para: user?.trabajando_para || "",
@@ -82,6 +262,48 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
     setRutError(value.length >= 8 && !validarRutChileno(value) ? "RUT inválido" : "");
   };
 
+  const handleRoleChange = (
+    event,
+  ) => {
+    if (!canEditUserRole) {
+      return;
+    }
+
+    const nextRole =
+      normalizeRole(
+        event.target.value,
+      );
+
+    const isAllowed =
+      availableRoleOptions.some(
+        (option) =>
+          option.value ===
+          nextRole,
+      );
+
+    if (!isAllowed) {
+      return;
+    }
+
+    setForm(
+      (current) => ({
+        ...current,
+        role:
+          nextRole,
+        supervisor_nombre:
+          nextRole ===
+          "USUARIO"
+            ? current.supervisor_nombre
+            : "",
+        supervisor_telefono:
+          nextRole ===
+          "USUARIO"
+            ? current.supervisor_telefono
+            : "",
+      }),
+    );
+  };
+
   // 🚩 MANEJADOR PARA CAMBIAR EL ARCHIVO DE LA FOTO
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -97,6 +319,23 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
       setRutError("Ingresa un RUT válido");
       return;
     }
+
+    if (
+      canEditUserRole &&
+      !availableRoleOptions.some(
+        (option) =>
+          option.value ===
+          normalizeRole(
+            form.role,
+          ),
+      )
+    ) {
+      setError(
+        "Selecciona un perfil de usuario válido.",
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       const formData = new FormData();
@@ -209,7 +448,105 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
             {/* Columna Derecha */}
             <div className="lg:col-span-6 space-y-6">
               <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
-                <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2"><FiBriefcase size={14}/> 2. Datos laborales</h4>
+                <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2">
+                  <FiBriefcase size={14}/>
+                  2. Datos laborales
+                </h4>
+
+                {(isAdminCliente ||
+                  isRoot) && (
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                    <label className="block">
+                      <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.16em] text-gray-500">
+                        Perfil de acceso
+                      </span>
+
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
+                          <FiShield
+                            size={15}
+                          />
+                        </span>
+
+                        <select
+                          value={
+                            form.role
+                          }
+                          onChange={
+                            handleRoleChange
+                          }
+                          disabled={
+                            !canEditUserRole ||
+                            loading
+                          }
+                          className="w-full appearance-none rounded-2xl border border-gray-200 bg-white py-3.5 pl-14 pr-11 text-sm font-black text-gray-800 outline-none transition focus:border-[#87be00]/60 focus:ring-4 focus:ring-[#87be00]/10 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                        >
+                          <option value="">
+                            Seleccionar perfil
+                          </option>
+
+                          {availableRoleOptions.map(
+                            (option) => (
+                              <option
+                                key={
+                                  option.value
+                                }
+                                value={
+                                  option.value
+                                }
+                              >
+                                {
+                                  option.label
+                                }
+                              </option>
+                            ),
+                          )}
+                        </select>
+
+                        <FiChevronDown
+                          className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                          size={16}
+                        />
+                      </div>
+                    </label>
+
+                    {selectedRoleConfig && (
+                      <div
+                        className={`mt-3 flex items-start gap-3 rounded-xl border p-3 ${selectedRoleConfig.accent}`}
+                      >
+                        <SelectedRoleIcon
+                          size={16}
+                          className="mt-0.5 shrink-0"
+                        />
+
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-black uppercase tracking-wider">
+                            {
+                              selectedRoleConfig.label
+                            }
+                          </p>
+
+                          <p className="mt-1 text-[10px] font-semibold leading-relaxed opacity-80">
+                            {
+                              selectedRoleConfig.description
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {!canEditUserRole && (
+                      <p className="mt-3 text-[9px] font-semibold leading-relaxed text-amber-600">
+                        {isEditingOwnProfile
+                          ? "Por seguridad no puedes modificar tu propio perfil de acceso."
+                          : isEditingRootUser && !isRoot
+                            ? "Un administrador de empresa no puede modificar el perfil ROOT."
+                            : "No tienes permisos para modificar este perfil."}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <input type="text" value={form.position} placeholder="Cargo" className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, position: e.target.value})} />
                 <input type="text" value={form.trabajando_para} placeholder="Trabajando para..." className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, trabajando_para: e.target.value})} />
                 <select value={form.tipo_contrato} className="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm outline-none" onChange={e => setForm({...form, tipo_contrato: e.target.value})}>
@@ -223,7 +560,7 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
                 </div>
               </div>
 
-              {form.role === "USUARIO" && (
+              {isMercaderista && (
                 <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
                   <h4 className="text-[11px] font-black text-[#87be00] uppercase tracking-[0.2em] flex items-center gap-2">
                     <FiShield size={14} />
