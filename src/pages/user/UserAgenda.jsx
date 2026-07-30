@@ -87,6 +87,18 @@ const STATUS_CONFIG = {
   },
 };
 
+const OPENABLE_VISIT_STATUSES =
+  new Set([
+    "IN_PROGRESS",
+    "EN_PROCESO",
+  ]);
+
+const COMPLETED_VISIT_STATUSES =
+  new Set([
+    "COMPLETED",
+    "FINALIZADO",
+  ]);
+
 const parseLocalDate = (
   dateString,
 ) => {
@@ -575,9 +587,15 @@ const UserAgenda = () => {
         task.status || "",
       ).toUpperCase();
 
+    /*
+     * Solo las visitas que realmente están en curso pueden abrirse.
+     * Las visitas pendientes y completadas quedan bloqueadas para
+     * impedir que el usuario vuelva a ejecutar su flujo.
+     */
     if (
-      status === "PENDING" ||
-      status === "PENDIENTE"
+      !OPENABLE_VISIT_STATUSES.has(
+        status,
+      )
     ) {
       return;
     }
@@ -840,12 +858,28 @@ const UserAgenda = () => {
                       config.icon;
 
                     const canOpen =
-                      ![
-                        "PENDING",
-                        "PENDIENTE",
-                      ].includes(
+                      OPENABLE_VISIT_STATUSES.has(
                         status,
                       );
+
+                    const isCompleted =
+                      COMPLETED_VISIT_STATUSES.has(
+                        status,
+                      );
+
+                    const actionLabel =
+                      isCompleted
+                        ? "Visita completada"
+                        : canOpen
+                          ? "Continuar visita"
+                          : "Pendiente de inicio";
+
+                    const ActionIcon =
+                      isCompleted
+                        ? FiCheckCircle
+                        : canOpen
+                          ? FiNavigation
+                          : FiClock;
 
                     const mapsQuery =
                       task.lat &&
@@ -949,6 +983,16 @@ const UserAgenda = () => {
                             disabled={
                               !canOpen
                             }
+                            aria-disabled={
+                              !canOpen
+                            }
+                            title={
+                              isCompleted
+                                ? "Esta visita ya fue completada y no puede volver a abrirse."
+                                : !canOpen
+                                  ? "La visita todavía no ha sido iniciada."
+                                  : "Continuar la visita en curso."
+                            }
                             className={`
                               flex min-h-[46px] flex-1
                               items-center justify-center
@@ -963,23 +1007,29 @@ const UserAgenda = () => {
                                     bg-slate-900
                                     text-white
                                     hover:bg-[#87be00]
+                                    active:scale-[0.99]
                                   `
-                                  : `
-                                    cursor-not-allowed
-                                    border border-slate-200
-                                    bg-slate-100
-                                    text-slate-400
-                                  `
+                                  : isCompleted
+                                    ? `
+                                      cursor-not-allowed
+                                      border border-[#87be00]/20
+                                      bg-[#87be00]/10
+                                      text-[#679300]
+                                    `
+                                    : `
+                                      cursor-not-allowed
+                                      border border-slate-200
+                                      bg-slate-100
+                                      text-slate-400
+                                    `
                               }
                             `}
                           >
-                            <FiNavigation
+                            <ActionIcon
                               size={14}
                             />
 
-                            {canOpen
-                              ? "Abrir visita"
-                              : "Pendiente de inicio"}
+                            {actionLabel}
                           </button>
 
                           <a
