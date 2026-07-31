@@ -86,6 +86,84 @@ const getRouteId = (
   return match?.[1] || null;
 };
 
+const serializeBlobAsBuffer =
+  async (
+    value,
+  ) => ({
+    __type:
+      "FileBuffer",
+    buffer:
+      await value.arrayBuffer(),
+    name:
+      value?.name ||
+      `archivo-${Date.now()}`,
+    mimeType:
+      value?.type ||
+      "application/octet-stream",
+    lastModified:
+      value?.lastModified ||
+      Date.now(),
+    size:
+      value?.size ||
+      0,
+  });
+
+const prepareOfflinePayload =
+  async (payload) => {
+    if (
+      payload === undefined ||
+      payload === null
+    ) {
+      return null;
+    }
+
+    if (
+      payload?.__type ===
+      "FormData"
+    ) {
+      return payload;
+    }
+
+    if (
+      typeof FormData !==
+        "undefined" &&
+      payload instanceof
+        FormData
+    ) {
+      const entries = [];
+
+      for (
+        const [
+          key,
+          value,
+        ] of payload.entries()
+      ) {
+        entries.push({
+          key,
+          value:
+            typeof Blob !==
+              "undefined" &&
+            value instanceof
+              Blob
+              ? await serializeBlobAsBuffer(
+                  value,
+                )
+              : value,
+        });
+      }
+
+      return {
+        __type:
+          "FormData",
+        storageVersion:
+          "ARRAY_BUFFER_V1",
+        entries,
+      };
+    }
+
+    return payload;
+  };
+
 const dispatchEvent = (
   eventName,
   detail,
@@ -156,6 +234,16 @@ const OfflineManager = {
     const storedUser =
       getStoredUser();
 
+    /*
+     * En Safari/iPhone se persiste el contenido binario como
+     * ArrayBuffer. Es más estable que guardar directamente File/Blob
+     * dentro de una estructura FormData en IndexedDB.
+     */
+    const preparedPayload =
+      await prepareOfflinePayload(
+        body,
+      );
+
     const item = {
       type,
       routeId:
@@ -165,7 +253,7 @@ const OfflineManager = {
       method:
         normalizedMethod,
       payload:
-        body,
+        preparedPayload,
       metadata: {
         ...metadata,
         ownerUserId:

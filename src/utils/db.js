@@ -69,6 +69,200 @@ db.version(6).stores({
     "routeId, updatedAt, step, status",
 });
 
+/*
+ * Versión 7:
+ * - repara elementos creados por versiones móviles antiguas;
+ * - infiere PHOTO/SCAN/TASK/FINISH desde el endpoint;
+ * - recupera routeId desde /routes/:id/...;
+ * - reactiva fotos con "Unexpected end of form" o "Load failed";
+ * - conserva IndexedDB y todos los archivos pendientes.
+ */
+db.version(7)
+  .stores({
+    visits:
+      "id, cadena, direccion, status",
+    questions:
+      "id, question, is_required",
+    syncQueue:
+      "++id, status, routeId, type, operationKey, createdAt, nextRetryAt, [status+routeId]",
+    visitDrafts:
+      "routeId, updatedAt, step, status",
+  })
+  .upgrade(
+    async (transaction) => {
+      const queue =
+        transaction.table(
+          "syncQueue",
+        );
+
+      await queue
+        .toCollection()
+        .modify(
+          (item) => {
+            const endpoint =
+              String(
+                item.endpoint ||
+                "",
+              );
+
+            const normalizedEndpoint =
+              endpoint.toLowerCase();
+
+            const routeMatch =
+              endpoint.match(
+                /\/routes\/([^/?]+)/i,
+              );
+
+            const inferredRouteId =
+              item.routeId ||
+              routeMatch?.[1] ||
+              null;
+
+            let inferredType =
+              String(
+                item.type ||
+                "",
+              ).toUpperCase();
+
+            if (
+              !inferredType ||
+              inferredType ===
+                "OTHER"
+            ) {
+              if (
+                normalizedEndpoint.includes(
+                  "/check-in",
+                )
+              ) {
+                inferredType =
+                  "CHECK_IN";
+              } else if (
+                normalizedEndpoint.includes(
+                  "/finish",
+                )
+              ) {
+                inferredType =
+                  "FINISH";
+              } else if (
+                normalizedEndpoint.includes(
+                  "/scans",
+                )
+              ) {
+                inferredType =
+                  "SCAN";
+              } else if (
+                normalizedEndpoint.includes(
+                  "/task",
+                )
+              ) {
+                inferredType =
+                  "TASK";
+              } else if (
+                normalizedEndpoint.includes(
+                  "/photo",
+                )
+              ) {
+                inferredType =
+                  "PHOTO";
+              } else {
+                inferredType =
+                  "OTHER";
+              }
+            }
+
+            const oldError =
+              String(
+                item.lastError ||
+                "",
+              ).toLowerCase();
+
+            const shouldRecoverPhoto =
+              inferredType ===
+                "PHOTO" &&
+              (
+                oldError.includes(
+                  "unexpected end of form",
+                ) ||
+                oldError.includes(
+                  "load failed",
+                ) ||
+                oldError.includes(
+                  "failed to fetch",
+                )
+              );
+
+            item.type =
+              inferredType;
+
+            item.routeId =
+              inferredRouteId
+                ? String(
+                    inferredRouteId,
+                  )
+                : null;
+
+            item.endpoint =
+              endpoint ||
+              (
+                inferredRouteId &&
+                inferredType ===
+                  "PHOTO"
+                  ? `/routes/${inferredRouteId}/photo`
+                  : item.endpoint
+              );
+
+            if (
+              shouldRecoverPhoto
+            ) {
+              item.status =
+                "pending";
+
+              item.retryCount =
+                0;
+
+              item.lastError =
+                null;
+
+              item.nextRetryAt =
+                null;
+            }
+
+            item.metadata = {
+              ...(
+                item.metadata ||
+                {}
+              ),
+              migratedTo:
+                "2026.07.31-mobile-v5",
+            };
+
+            item.operationKey =
+              item.metadata
+                ?.operationKey ||
+              [
+                item.routeId ||
+                  "global",
+                inferredType,
+                item.metadata
+                  ?.stepKey ??
+                item.metadata
+                  ?.photoType ??
+                item.metadata
+                  ?.barcode ??
+                item.createdAt ??
+                item.id,
+              ].join(
+                ":",
+              );
+
+            item.updatedAt =
+              new Date()
+                .toISOString();
+          },
+        );
+    },
+  );
+
 const serializeFile = (
   value,
 ) => ({
@@ -220,6 +414,94 @@ export const buildSyncOperationKey = (
   ].join(":");
 };
 
+export const inferSyncItemType = (
+  item = {},
+) => {
+  const explicit =
+    String(
+      item.type ||
+      "",
+    ).toUpperCase();
+
+  if (
+    explicit &&
+    explicit !== "OTHER"
+  ) {
+    return explicit;
+  }
+
+  const endpoint =
+    String(
+      item.endpoint ||
+      "",
+    ).toLowerCase();
+
+  if (
+    endpoint.includes(
+      "/check-in",
+    )
+  ) {
+    return "CHECK_IN";
+  }
+
+  if (
+    endpoint.includes(
+      "/finish",
+    )
+  ) {
+    return "FINISH";
+  }
+
+  if (
+    endpoint.includes(
+      "/scans",
+    )
+  ) {
+    return "SCAN";
+  }
+
+  if (
+    endpoint.includes(
+      "/task",
+    )
+  ) {
+    return "TASK";
+  }
+
+  if (
+    endpoint.includes(
+      "/photo",
+    )
+  ) {
+    return "PHOTO";
+  }
+
+  return "OTHER";
+};
+
+export const inferRouteIdFromSyncItem = (
+  item = {},
+) => {
+  if (item.routeId) {
+    return String(
+      item.routeId,
+    );
+  }
+
+  const match =
+    String(
+      item.endpoint ||
+      "",
+    ).match(
+      /\/routes\/([^/?]+)/i,
+    );
+
+  return (
+    match?.[1] ||
+    null
+  );
+};
+
 const endpointForLegacyItem = (
   item,
 ) => {
@@ -301,25 +583,101 @@ export const normalizeLegacySyncQueue =
               ? item.status
               : "pending";
 
+          const inferredType =
+            inferSyncItemType(
+              {
+                ...item,
+                endpoint,
+              },
+            );
+
+          const inferredRouteId =
+            inferRouteIdFromSyncItem(
+              {
+                ...item,
+                endpoint,
+              },
+            );
+
+          const oldError =
+            String(
+              item.lastError ||
+              "",
+            ).toLowerCase();
+
+          const shouldRecoverPhoto =
+            inferredType ===
+              "PHOTO" &&
+            (
+              oldError.includes(
+                "unexpected end of form",
+              ) ||
+              oldError.includes(
+                "load failed",
+              ) ||
+              oldError.includes(
+                "failed to fetch",
+              )
+            );
+
+          const normalizedItem = {
+            ...item,
+            type:
+              inferredType,
+            routeId:
+              inferredRouteId,
+            endpoint,
+          };
+
           const changes = {
             endpoint,
             method,
-            status,
+            type:
+              inferredType,
+            routeId:
+              inferredRouteId,
+            status:
+              shouldRecoverPhoto
+                ? "pending"
+                : status,
             operationKey:
-              item.operationKey ||
-              buildSyncOperationKey(
-                item,
-              ),
+              (
+                item.type ===
+                  inferredType &&
+                item.routeId ===
+                  inferredRouteId
+              )
+                ? (
+                    item.operationKey ||
+                    buildSyncOperationKey(
+                      normalizedItem,
+                    )
+                  )
+                : buildSyncOperationKey(
+                    normalizedItem,
+                  ),
             retryCount:
-              Number(
-                item.retryCount,
-              ) || 0,
+              shouldRecoverPhoto
+                ? 0
+                : (
+                    Number(
+                      item.retryCount,
+                    ) || 0
+                  ),
             lastError:
-              item.lastError ||
-              null,
+              shouldRecoverPhoto
+                ? null
+                : (
+                    item.lastError ||
+                    null
+                  ),
             nextRetryAt:
-              item.nextRetryAt ||
-              null,
+              shouldRecoverPhoto
+                ? null
+                : (
+                    item.nextRetryAt ||
+                    null
+                  ),
             updatedAt:
               item.updatedAt ||
               new Date().toISOString(),

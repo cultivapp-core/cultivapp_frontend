@@ -11,6 +11,8 @@ import {
   getPendingSync,
   getSyncQueueStats,
   hasBlockingSyncItemsBefore,
+  inferRouteIdFromSyncItem,
+  inferSyncItemType,
   markSyncItemFailed,
   markSyncItemRetry,
   normalizeLegacySyncQueue,
@@ -23,6 +25,9 @@ import {
 
 const AUTO_RETRY_INTERVAL_MS =
   15_000;
+
+export const OFFLINE_SYNC_CLIENT_VERSION =
+  "2026.07.31-mobile-v5";
 
 const ONLINE_SYNC_DELAY_MS =
   800;
@@ -232,6 +237,36 @@ const appendFormValue = (
 ) => {
   if (
     value?.__type ===
+    "FileBuffer"
+  ) {
+    const file =
+      new File(
+        [
+          value.buffer,
+        ],
+        value.name ||
+          `archivo-${Date.now()}`,
+        {
+          type:
+            value.mimeType ||
+            "application/octet-stream",
+          lastModified:
+            value.lastModified ||
+            Date.now(),
+        },
+      );
+
+    formData.append(
+      key,
+      file,
+      file.name,
+    );
+
+    return;
+  }
+
+  if (
+    value?.__type ===
     "File"
   ) {
     const sourceBlob =
@@ -421,6 +456,229 @@ const endpointForLegacyItem = (
   }
 };
 
+const fileToDataUrl =
+  async (file) => {
+    if (
+      !(
+        file instanceof
+          Blob
+      ) ||
+      file.size <= 0
+    ) {
+      const error =
+        new Error(
+          "La fotografía offline está vacía o dañada. Debes volver a capturarla.",
+        );
+
+      error.permanent =
+        true;
+
+      throw error;
+    }
+
+    const maxPhotoBytes =
+      8 * 1024 * 1024;
+
+    if (
+      file.size >
+      maxPhotoBytes
+    ) {
+      const error =
+        new Error(
+          "La fotografía offline supera el máximo permitido de 8 MB.",
+        );
+
+      error.permanent =
+        true;
+
+      throw error;
+    }
+
+    /*
+     * FileReader.readAsDataURL es más estable en Safari/iPhone
+     * que convertir ArrayBuffer mediante btoa y spreads grandes.
+     */
+    return new Promise(
+      (
+        resolve,
+        reject,
+      ) => {
+        const reader =
+          new FileReader();
+
+        reader.onload = () => {
+          const result =
+            String(
+              reader.result ||
+              "",
+            );
+
+          if (
+            !result.startsWith(
+              "data:",
+            )
+          ) {
+            const error =
+              new Error(
+                "Safari no pudo convertir la fotografía offline.",
+              );
+
+            error.permanent =
+              true;
+
+            reject(
+              error,
+            );
+
+            return;
+          }
+
+          resolve(
+            result,
+          );
+        };
+
+        reader.onerror = () => {
+          reject(
+            new Error(
+              "Safari no pudo leer la fotografía guardada en el teléfono.",
+            ),
+          );
+        };
+
+        reader.onabort = () => {
+          reject(
+            new Error(
+              "La lectura de la fotografía fue cancelada.",
+            ),
+          );
+        };
+
+        reader.readAsDataURL(
+          file,
+        );
+      },
+    );
+  };
+
+const buildOfflinePhotoPayload =
+  async (
+    item,
+    body,
+  ) => {
+    if (
+      !(
+        body instanceof
+          FormData
+      )
+    ) {
+      const error =
+        new Error(
+          "La fotografía pendiente no contiene FormData válido.",
+        );
+
+      error.permanent =
+        true;
+
+      throw error;
+    }
+
+    const file =
+      body.get(
+        "foto",
+      );
+
+    const imageBase64 =
+      await fileToDataUrl(
+        file,
+      );
+
+    return {
+      photo_type:
+        String(
+          body.get(
+            "photo_type",
+          ) ||
+          item.metadata
+            ?.photoType ||
+          "Evidencia",
+        ),
+      replace_existing:
+        String(
+          body.get(
+            "replace_existing",
+          ) ||
+          "true",
+        ),
+      captured_at:
+        String(
+          body.get(
+            "captured_at",
+          ) ||
+          item.metadata
+            ?.capturedAt ||
+          item.metadata
+            ?.queuedAt ||
+          item.createdAt ||
+          new Date()
+            .toISOString(),
+        ),
+      filename:
+        file?.name ||
+        `offline_photo_${Date.now()}.webp`,
+      mime_type:
+        file?.type ||
+        "image/webp",
+      image_base64:
+        imageBase64,
+      source:
+        "OFFLINE_JSON_BASE64_V4",
+    };
+  };
+
+const getOfflinePhotoEndpoint = (
+  endpoint,
+  routeId,
+) => {
+  const normalized =
+    String(
+      endpoint || "",
+    ).trim();
+
+  if (
+    /\/photo-offline(?:\?|$)/i.test(
+      normalized,
+    )
+  ) {
+    return normalized;
+  }
+
+  if (
+    /\/photo(?:\?|$)/i.test(
+      normalized,
+    )
+  ) {
+    return normalized.replace(
+      /\/photo(?:\?|$)/i,
+      "/photo-offline",
+    );
+  }
+
+  const effectiveRouteId =
+    routeId ||
+    String(
+      normalized,
+    ).match(
+      /\/routes\/([^/?]+)/i,
+    )?.[1];
+
+  if (effectiveRouteId) {
+    return `/routes/${effectiveRouteId}/photo-offline`;
+  }
+
+  return normalized;
+};
+
 const executeRequest = async (
   item,
   body,
@@ -500,10 +758,14 @@ const executeRequest = async (
     body;
 
   const normalizedType =
-    String(
-      item.type ||
-      "",
-    ).toUpperCase();
+    inferSyncItemType(
+      item,
+    );
+
+  const normalizedRouteId =
+    inferRouteIdFromSyncItem(
+      item,
+    );
 
   if (
     normalizedType ===
@@ -564,11 +826,31 @@ const executeRequest = async (
   }
 
   if (
-    requestBody instanceof
-      FormData
+    normalizedType ===
+      "PHOTO"
   ) {
     validateMultipartBody(
       requestBody,
+    );
+
+    const photoPayload =
+      await buildOfflinePhotoPayload(
+        item,
+        requestBody,
+      );
+
+    return api.post(
+      getOfflinePhotoEndpoint(
+        endpoint,
+        normalizedRouteId,
+      ),
+      photoPayload,
+      {
+        offlineFallback:
+          false,
+        preserveSessionOnAuthError:
+          true,
+      },
     );
   }
 
@@ -581,7 +863,7 @@ const executeRequest = async (
       offlineFallback:
         false,
       preserveSessionOnAuthError:
-        true,
+          true,
     },
   );
 };
@@ -655,10 +937,9 @@ const isRouteBlockingItem = (
     "SCAN",
     "TASK",
   ].includes(
-    String(
-      item?.type ||
-      "",
-    ).toUpperCase(),
+    inferSyncItemType(
+      item,
+    ),
   );
 
 export const useOfflineSync =
@@ -981,6 +1262,28 @@ export const useOfflineSync =
           await retryAllSyncItems();
         }
 
+        console.log(
+          "✅ OFFLINE SYNC MOBILE V5 ACTIVO",
+          {
+            version:
+              OFFLINE_SYNC_CLIENT_VERSION,
+            userAgent:
+              typeof navigator !==
+                "undefined"
+                ? navigator.userAgent
+                : "",
+          },
+        );
+
+        try {
+          localStorage.setItem(
+            "cultivapp_offline_client_version",
+            OFFLINE_SYNC_CLIENT_VERSION,
+          );
+        } catch {
+          // El almacenamiento puede estar restringido.
+        }
+
         await normalizeLegacySyncQueue();
 
         const pending =
@@ -1135,18 +1438,14 @@ export const useOfflineSync =
                 continue;
               }
 
-              const isCheckIn =
-                String(
-                  item.type ||
-                  "",
-                ).toUpperCase() ===
-                  "CHECK_IN" ||
-                String(
-                  item.endpoint ||
-                  "",
-                ).includes(
-                  "/check-in",
+              const itemType =
+                inferSyncItemType(
+                  item,
                 );
+
+              const isCheckIn =
+                itemType ===
+                  "CHECK_IN";
 
               if (isCheckIn) {
                 const error =
