@@ -10,6 +10,7 @@ import api from "../api/apiClient";
 import {
   getPendingSync,
   getSyncQueueStats,
+  hasBlockingSyncItemsBefore,
   markSyncItemFailed,
   markSyncItemRetry,
   normalizeLegacySyncQueue,
@@ -29,49 +30,30 @@ const ONLINE_SYNC_DELAY_MS =
 const MAX_AUTOMATIC_RETRIES =
   5;
 
-const getApiBaseUrl = () => {
-  const configured =
-    import.meta.env
-      .VITE_API_URL ||
-    "http://localhost:5000/api";
-
-  return String(configured)
-    .replace(/\/$/, "");
-};
-
-const buildAbsoluteApiUrl = (
-  endpoint,
-) => {
-  const normalizedEndpoint =
-    String(endpoint || "");
-
-  if (/^https?:\/\//i.test(
-    normalizedEndpoint,
-  )) {
-    return normalizedEndpoint;
-  }
-
-  return `${getApiBaseUrl()}/${
-    normalizedEndpoint.replace(
-      /^\/+/, "",
-    )
-  }`;
-};
-
 const validateMultipartBody = (
   formData,
 ) => {
-  if (!(formData instanceof FormData)) {
+  if (
+    !(
+      formData instanceof
+      FormData
+    )
+  ) {
     return;
   }
 
   const photo =
-    formData.get("foto");
+    formData.get(
+      "foto",
+    );
 
   if (
     photo !== null &&
     (
-      !(photo instanceof Blob) ||
+      !(
+        photo instanceof
+          Blob
+      ) ||
       photo.size <= 0
     )
   ) {
@@ -80,87 +62,12 @@ const validateMultipartBody = (
         "La fotografía offline está vacía o dañada. Debes volver a capturarla.",
       );
 
-    error.permanent = true;
+    error.permanent =
+      true;
+
     throw error;
   }
 };
-
-const executeMultipartRequest =
-  async (
-    endpoint,
-    method,
-    formData,
-  ) => {
-    validateMultipartBody(
-      formData,
-    );
-
-    const token =
-      getToken();
-
-    const headers = {};
-
-    if (token) {
-      headers.Authorization =
-        `Bearer ${token}`;
-    }
-
-    /*
-     * No definir Content-Type manualmente.
-     * El navegador agrega multipart/form-data con su boundary.
-     * Esto evita el error Multer/Busboy:
-     * "Unexpected end of form".
-     */
-    const response =
-      await fetch(
-        buildAbsoluteApiUrl(
-          endpoint,
-        ),
-        {
-          method:
-            method.toUpperCase(),
-          headers,
-          body:
-            formData,
-          credentials:
-            "include",
-        },
-      );
-
-    const raw =
-      await response.text();
-
-    let data = null;
-
-    if (raw) {
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        data = raw;
-      }
-    }
-
-    if (!response.ok) {
-      const error =
-        new Error(
-          data?.message ||
-          String(data || "") ||
-          `Error HTTP ${response.status}`,
-        );
-
-      error.status =
-        response.status;
-      error.data =
-        data;
-      throw error;
-    }
-
-    return {
-      data,
-      status:
-        response.status,
-    };
-  };
 
 const AUTH_REQUIRED_STORAGE_KEY =
   "cultivapp_offline_auth_required";
@@ -563,9 +470,12 @@ const executeRequest = async (
   ) {
     return api.delete(
       endpoint,
+      body,
       {
-        data:
-          body,
+        offlineFallback:
+          false,
+        preserveSessionOnAuthError:
+          true,
       },
     );
   }
@@ -578,17 +488,87 @@ const executeRequest = async (
       {
         params:
           body || undefined,
+        offlineFallback:
+          false,
+        preserveSessionOnAuthError:
+          true,
       },
     );
   }
 
+  let requestBody =
+    body;
+
+  const normalizedType =
+    String(
+      item.type ||
+      "",
+    ).toUpperCase();
+
   if (
-    body instanceof FormData
+    normalizedType ===
+      "PHOTO" &&
+    requestBody instanceof
+      FormData &&
+    !requestBody.has(
+      "captured_at",
+    )
   ) {
-    return executeMultipartRequest(
-      endpoint,
-      method,
-      body,
+    requestBody.append(
+      "captured_at",
+      item.metadata
+        ?.capturedAt ||
+        item.metadata
+          ?.queuedAt ||
+        item.createdAt ||
+        new Date()
+          .toISOString(),
+    );
+  }
+
+  if (
+    normalizedType ===
+      "FINISH" &&
+    requestBody &&
+    typeof requestBody ===
+      "object" &&
+    !(
+      requestBody instanceof
+        FormData
+    )
+  ) {
+    const completedAt =
+      requestBody
+        .client_completed_at ||
+      requestBody
+        .completed_at ||
+      requestBody
+        .offline_completed_at ||
+      item.metadata
+        ?.completedAt ||
+      item.metadata
+        ?.queuedAt ||
+      item.createdAt ||
+      new Date()
+        .toISOString();
+
+    requestBody = {
+      ...requestBody,
+      client_completed_at:
+        completedAt,
+      completed_at:
+        completedAt,
+      offline_completed_at:
+        completedAt,
+    };
+  }
+
+  if (
+    requestBody instanceof
+      FormData
+  ) {
+    validateMultipartBody(
+      requestBody,
     );
   }
 
@@ -596,7 +576,13 @@ const executeRequest = async (
     method
   ](
     endpoint,
-    body,
+    requestBody,
+    {
+      offlineFallback:
+        false,
+      preserveSessionOnAuthError:
+        true,
+    },
   );
 };
 
@@ -660,6 +646,20 @@ const routeKeyForItem = (
         item.routeId,
       )
     : `global:${item.type || "OTHER"}`;
+
+const isRouteBlockingItem = (
+  item,
+) =>
+  [
+    "PHOTO",
+    "SCAN",
+    "TASK",
+  ].includes(
+    String(
+      item?.type ||
+      "",
+    ).toUpperCase(),
+  );
 
 export const useOfflineSync =
   () => {
@@ -1116,6 +1116,25 @@ export const useOfflineSync =
             }
 
             try {
+              const hasBlockingPredecessor =
+                await hasBlockingSyncItemsBefore(
+                  item.routeId,
+                  item.id,
+                );
+
+              if (
+                hasBlockingPredecessor
+              ) {
+                blockedRoutes.add(
+                  routeKey,
+                );
+
+                deferredCount +=
+                  1;
+
+                continue;
+              }
+
               const isCheckIn =
                 String(
                   item.type ||
@@ -1339,6 +1358,16 @@ export const useOfflineSync =
                 failedCount +=
                   1;
 
+                if (
+                  isRouteBlockingItem(
+                    item,
+                  )
+                ) {
+                  blockedRoutes.add(
+                    routeKey,
+                  );
+                }
+
                 dispatchSyncEvent(
                   OFFLINE_SYNC_EVENTS
                     .ITEM_ERROR,
@@ -1370,6 +1399,16 @@ export const useOfflineSync =
 
                 failedCount +=
                   1;
+
+                if (
+                  isRouteBlockingItem(
+                    item,
+                  )
+                ) {
+                  blockedRoutes.add(
+                    routeKey,
+                  );
+                }
 
                 dispatchSyncEvent(
                   OFFLINE_SYNC_EVENTS

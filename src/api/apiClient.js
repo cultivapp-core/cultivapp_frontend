@@ -1,180 +1,515 @@
 import OfflineManager from "../services/offlineManager";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const API_URL = BASE_URL.replace(/\/+$/, "") + (BASE_URL.includes("/api") ? "" : "/api");
+const BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_BACKEND_URL ||
+  "http://localhost:5000";
 
-/**
- * Obtiene y limpia el token de sesión
- */
+const API_URL =
+  BASE_URL.replace(/\/+$/, "") +
+  (
+    /\/api$/i.test(
+      BASE_URL.replace(/\/+$/, ""),
+    )
+      ? ""
+      : "/api"
+  );
+
+export const getApiBaseUrl =
+  () => API_URL;
+
 const getToken = () => {
-  let token = localStorage.getItem("token");
-  if (!token || token === "null" || token === "undefined" || token === "") return null;
-  token = token.replace(/^"|"$/g, '');
-  const cleanToken = token.startsWith("Bearer ") ? token.split(" ")[1] : token;
-  return cleanToken?.trim() || null;
+  let token =
+    localStorage.getItem(
+      "token",
+    );
+
+  if (
+    !token ||
+    token === "null" ||
+    token === "undefined" ||
+    token === ""
+  ) {
+    return null;
+  }
+
+  token =
+    token.replace(
+      /^"|"$/g,
+      "",
+    );
+
+  const cleanToken =
+    token.startsWith(
+      "Bearer ",
+    )
+      ? token.split(" ")[1]
+      : token;
+
+  return (
+    cleanToken?.trim() ||
+    null
+  );
 };
 
-const request = async (endpoint, options = {}) => {
-  const token = getToken();
-  const cleanEndpoint = endpoint.startsWith("/")
-    ? endpoint
-    : `/${endpoint}`;
+const clearSession = () => {
+  localStorage.removeItem(
+    "token",
+  );
 
-  const finalUrl = `${API_URL}${cleanEndpoint}`;
-  const isFD = options.body instanceof FormData;
+  localStorage.removeItem(
+    "user",
+  );
+};
 
-  const method = String(
-    options.method || "GET"
-  ).toUpperCase();
+const redirectToLogin = (
+  errorType,
+) => {
+  const currentPath =
+    window.location.pathname;
 
-  const isLoginRequest =
-    cleanEndpoint === "/auth/login" ||
-    cleanEndpoint.startsWith("/auth/login?");
+  const currentSearch =
+    window.location.search;
 
-  const config = {
-    method,
-    ...options,
-    headers: {
-      ...(!isFD && {
-        "Content-Type": "application/json"
-      }),
-      ...(token
-        ? {
-            Authorization: `Bearer ${token}`
-          }
-        : {}),
-      ...options.headers
+  const targetSearch =
+    `?error=${errorType}`;
+
+  if (
+    currentPath === "/" &&
+    currentSearch ===
+      targetSearch
+  ) {
+    return;
+  }
+
+  window.location.href =
+    `/${targetSearch}`;
+};
+
+const parseResponseData =
+  async (response) => {
+    const contentType =
+      response.headers.get(
+        "content-type",
+      ) || "";
+
+    if (
+      contentType.includes(
+        "application/json",
+      )
+    ) {
+      try {
+        return (
+          await response.json()
+        );
+      } catch {
+        return {};
+      }
+    }
+
+    try {
+      return (
+        await response.text()
+      );
+    } catch {
+      return "";
     }
   };
 
-  try {
-    const response = await fetch(finalUrl, config);
+const isHtmlDocument = (
+  value,
+) => {
+  if (
+    typeof value !==
+      "string"
+  ) {
+    return false;
+  }
 
-    /*
-     * Primero leemos la respuesta.
-     * Así podemos distinguir:
-     *
-     * - Cuenta deshabilitada
-     * - Credenciales incorrectas
-     * - Empresa inactiva
-     * - Token realmente expirado
-     */
-    const contentType =
-      response.headers.get("content-type");
+  return (
+    /^\s*<!doctype html/i.test(
+      value,
+    ) ||
+    /^\s*<html/i.test(
+      value,
+    )
+  );
+};
 
-    const data =
-      contentType &&
-      contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
-
-    const responseMessage = String(
-      data?.message || data || ""
+const getResponseMessage = (
+  data,
+  status,
+  endpoint,
+) => {
+  if (
+    data &&
+    typeof data ===
+      "object"
+  ) {
+    return (
+      data.message ||
+      data.error ||
+      data.detail ||
+      data.detalle ||
+      `Error HTTP ${status}`
     );
+  }
 
-    const normalizedMessage =
-      responseMessage.toLowerCase();
+  if (
+    isHtmlDocument(
+      data,
+    )
+  ) {
+    return (
+      `El servidor respondió HTML en lugar de JSON para ${endpoint}. ` +
+      "Revisa la ruta API y el prefijo /api."
+    );
+  }
 
-    const responseCode = String(
-      data?.code || ""
+  if (
+    typeof data ===
+      "string" &&
+    data.trim()
+  ) {
+    return data;
+  }
+
+  return `Error HTTP ${status}`;
+};
+
+const classifyAuthError = ({
+  status,
+  data,
+  message,
+}) => {
+  const code =
+    String(
+      data?.code ||
+      data?.error_code ||
+      data?.type ||
+      "",
     ).toLowerCase();
 
-    const isExpiredSession =
-      responseCode === "token_expired" ||
-      responseCode === "session_expired" ||
-      normalizedMessage.includes("jwt expired") ||
-      normalizedMessage.includes("token expirado") ||
-      normalizedMessage.includes("token expired") ||
-      normalizedMessage.includes("sesión expirada") ||
-      normalizedMessage.includes("session expired");
+  const normalizedMessage =
+    String(
+      message || "",
+    ).toLowerCase();
 
-    /*
-     * IMPORTANTE:
-     *
-     * No tratamos el 401 del login como sesión expirada.
-     * El LoginForm necesita recibir el mensaje real del backend.
-     */
-    if (
-      response.status === 401 &&
-      !isLoginRequest &&
-      token &&
-      isExpiredSession
-    ) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+  if (
+    code ===
+      "multiple_session" ||
+    code ===
+      "session_replaced" ||
+    normalizedMessage.includes(
+      "otro dispositivo",
+    ) ||
+    normalizedMessage.includes(
+      "sesión reemplazada",
+    ) ||
+    normalizedMessage.includes(
+      "session replaced",
+    ) ||
+    normalizedMessage.includes(
+      "multiple session",
+    )
+  ) {
+    return "multiple_session";
+  }
 
-      window.dispatchEvent(
-        new Event("session_expired")
+  if (
+    code ===
+      "account_disabled" ||
+    code ===
+      "user_disabled" ||
+    normalizedMessage.includes(
+      "cuenta deshabilitada",
+    ) ||
+    normalizedMessage.includes(
+      "usuario deshabilitado",
+    ) ||
+    normalizedMessage.includes(
+      "cuenta inactiva",
+    ) ||
+    normalizedMessage.includes(
+      "usuario inactivo",
+    )
+  ) {
+    return "account_disabled";
+  }
+
+  if (
+    code ===
+      "company_disabled" ||
+    code ===
+      "company_inactive" ||
+    (
+      normalizedMessage.includes(
+        "empresa",
+      ) &&
+      (
+        normalizedMessage.includes(
+          "deshabilitada",
+        ) ||
+        normalizedMessage.includes(
+          "deshabilitado",
+        ) ||
+        normalizedMessage.includes(
+          "inactiva",
+        ) ||
+        normalizedMessage.includes(
+          "inactivo",
+        ) ||
+        normalizedMessage.includes(
+          "suspendida",
+        ) ||
+        normalizedMessage.includes(
+          "suspendido",
+        )
+      )
+    )
+  ) {
+    return "company_disabled";
+  }
+
+  if (
+    code ===
+      "token_expired" ||
+    code ===
+      "session_expired" ||
+    normalizedMessage.includes(
+      "jwt expired",
+    ) ||
+    normalizedMessage.includes(
+      "token expirado",
+    ) ||
+    normalizedMessage.includes(
+      "token expired",
+    ) ||
+    normalizedMessage.includes(
+      "sesión expirada",
+    ) ||
+    normalizedMessage.includes(
+      "session expired",
+    )
+  ) {
+    return "session_expired";
+  }
+
+  if (
+    status === 403 ||
+    code === "forbidden" ||
+    normalizedMessage.includes(
+      "acceso denegado",
+    ) ||
+    normalizedMessage.includes(
+      "sin permisos",
+    ) ||
+    normalizedMessage.includes(
+      "no tienes permisos",
+    )
+  ) {
+    return "forbidden";
+  }
+
+  if (status === 401) {
+    return "unauthorized";
+  }
+
+  return null;
+};
+
+const request = async (
+  endpoint,
+  options = {},
+) => {
+  const {
+    offlineFallback = true,
+    preserveSessionOnAuthError =
+      false,
+    ...fetchOptions
+  } = options;
+
+  const token =
+    getToken();
+
+  const cleanEndpoint =
+    endpoint.startsWith("/")
+      ? endpoint
+      : `/${endpoint}`;
+
+  const finalUrl =
+    `${API_URL}${cleanEndpoint}`;
+
+  const method =
+    String(
+      fetchOptions.method ||
+      "GET",
+    ).toUpperCase();
+
+  const isFD =
+    fetchOptions.body instanceof
+      FormData;
+
+  const isLoginRequest =
+    cleanEndpoint ===
+      "/auth/login" ||
+    cleanEndpoint.startsWith(
+      "/auth/login?",
+    );
+
+  const config = {
+    ...fetchOptions,
+    method,
+    headers: {
+      ...(
+        !isFD
+          ? {
+              "Content-Type":
+                "application/json",
+            }
+          : {}
+      ),
+      ...(
+        token
+          ? {
+              Authorization:
+                `Bearer ${token}`,
+            }
+          : {}
+      ),
+      ...(
+        fetchOptions.headers ||
+        {}
+      ),
+    },
+  };
+
+  delete config.params;
+
+  try {
+    const response =
+      await fetch(
+        finalUrl,
+        config,
       );
 
-      if (window.location.pathname !== "/") {
-        window.location.href =
-          "/?error=session_expired";
+    const data =
+      await parseResponseData(
+        response,
+      );
+
+    const message =
+      getResponseMessage(
+        data,
+        response.status,
+        cleanEndpoint,
+      );
+
+    if (!response.ok) {
+      const authErrorType =
+        classifyAuthError({
+          status:
+            response.status,
+          data,
+          message,
+        });
+
+      if (
+        !isLoginRequest &&
+        token &&
+        authErrorType &&
+        !preserveSessionOnAuthError
+      ) {
+        clearSession();
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "session_expired",
+            {
+              detail: {
+                type:
+                  authErrorType,
+                status:
+                  response.status,
+                message,
+              },
+            },
+          ),
+        );
+
+        redirectToLogin(
+          authErrorType,
+        );
       }
 
       throw {
-        status: 401,
+        status:
+          response.status,
         code:
-          data?.code ||
-          "SESSION_EXPIRED",
-        message:
-          responseMessage ||
-          "Sesión expirada",
-        data
-      };
-    }
-
-    /*
-     * Cualquier otro error conserva el mensaje
-     * y el código entregados por el backend.
-     */
-    if (!response.ok) {
-      throw {
-        status: response.status,
-        code: data?.code,
-        message:
-          responseMessage ||
-          `Error HTTP ${response.status}`,
-        data
+          data &&
+          typeof data ===
+            "object"
+            ? data.code
+            : undefined,
+        message,
+        data,
+        endpoint:
+          cleanEndpoint,
+        url:
+          finalUrl,
       };
     }
 
     return data;
   } catch (error) {
     const isNetworkError =
-      error?.name === "TypeError" ||
-      error?.message?.includes(
-        "Failed to fetch"
+      error?.name ===
+        "TypeError" ||
+      String(
+        error?.message || "",
+      ).includes(
+        "Failed to fetch",
       );
 
     const isMutation = [
       "POST",
       "PUT",
       "PATCH",
-      "DELETE"
+      "DELETE",
     ].includes(method);
 
     const isTerrainRoute =
-      endpoint.includes("/reports/") ||
-      endpoint.includes("/scans") ||
-      endpoint.includes("/finish") ||
-      endpoint.includes("/photo") ||
-      endpoint.includes("/task");
+      cleanEndpoint.includes(
+        "/reports/",
+      ) ||
+      cleanEndpoint.includes(
+        "/scans",
+      ) ||
+      cleanEndpoint.includes(
+        "/finish",
+      ) ||
+      cleanEndpoint.includes(
+        "/photo",
+      ) ||
+      cleanEndpoint.includes(
+        "/task",
+      );
 
     if (
+      offlineFallback &&
       isNetworkError &&
       isMutation &&
       isTerrainRoute
     ) {
       console.warn(
-        "🌐 [apiClient] Guardando en OfflineManager por error de red en ruta de terreno:",
-        endpoint
+        "🌐 [apiClient] Guardando operación de terreno en la cola offline:",
+        cleanEndpoint,
       );
 
-      return await OfflineManager.save(
+      return OfflineManager.save(
         cleanEndpoint,
         method,
-        options.body
+        fetchOptions.body,
       );
     }
 
@@ -182,33 +517,188 @@ const request = async (endpoint, options = {}) => {
   }
 };
 
+const serializeBody = (
+  body,
+) =>
+  body instanceof FormData
+    ? body
+    : typeof body ===
+        "string"
+      ? body
+      : JSON.stringify(
+          body,
+        );
+
 const api = {
-  get: (endpoint, config = null) => {
-    let url = endpoint;
-    const params = config?.params || config;
-    if (params && typeof params === "object" && !(params instanceof FormData)) {
-      const query = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([_, v]) => v != null))).toString();
-      if (query) url += `${url.includes("?") ? "&" : "?"}${query}`;
+  get: (
+    endpoint,
+    config = null,
+  ) => {
+    let url =
+      endpoint;
+
+    const hasRequestOptions =
+      Boolean(
+        config &&
+        typeof config ===
+          "object" &&
+        (
+          "headers" in config ||
+          "credentials" in
+            config ||
+          "signal" in config ||
+          "cache" in config ||
+          "offlineFallback" in
+            config ||
+          "preserveSessionOnAuthError" in
+            config
+        ),
+      );
+
+    const params =
+      config?.params ||
+      (
+        hasRequestOptions
+          ? null
+          : config
+      );
+
+    if (
+      params &&
+      typeof params ===
+        "object" &&
+      !(
+        params instanceof
+          FormData
+      )
+    ) {
+      const cleanParams =
+        Object.fromEntries(
+          Object.entries(
+            params,
+          ).filter(
+            ([
+              key,
+              value,
+            ]) =>
+              key !==
+                "params" &&
+              value != null,
+          ),
+        );
+
+      const query =
+        new URLSearchParams(
+          cleanParams,
+        ).toString();
+
+      if (query) {
+        url +=
+          `${
+            url.includes("?")
+              ? "&"
+              : "?"
+          }${query}`;
+      }
     }
-    return request(url, { method: "GET", ...config });
+
+    const requestConfig =
+      hasRequestOptions
+        ? {
+            ...config,
+          }
+        : {};
+
+    delete requestConfig.params;
+
+    return request(
+      url,
+      {
+        ...requestConfig,
+        method:
+          "GET",
+      },
+    );
   },
 
-  post: (endpoint, body) => request(endpoint, {
-      method: "POST",
-      body: body instanceof FormData ? body : (typeof body === "string" ? body : JSON.stringify(body)),
-  }),
-  
-  put: (endpoint, body) => request(endpoint, {
-      method: "PUT",
-      body: body instanceof FormData ? body : (typeof body === "string" ? body : JSON.stringify(body)),
-  }),
+  post: (
+    endpoint,
+    body,
+    config = {},
+  ) =>
+    request(
+      endpoint,
+      {
+        ...config,
+        method:
+          "POST",
+        body:
+          serializeBody(
+            body,
+          ),
+      },
+    ),
 
-  patch: (endpoint, body) => request(endpoint, {
-      method: "PATCH",
-      body: body instanceof FormData ? body : (typeof body === "string" ? body : JSON.stringify(body)),
-  }),
-  
-  delete: (endpoint) => request(endpoint, { method: "DELETE" }),
+  put: (
+    endpoint,
+    body,
+    config = {},
+  ) =>
+    request(
+      endpoint,
+      {
+        ...config,
+        method:
+          "PUT",
+        body:
+          serializeBody(
+            body,
+          ),
+      },
+    ),
+
+  patch: (
+    endpoint,
+    body,
+    config = {},
+  ) =>
+    request(
+      endpoint,
+      {
+        ...config,
+        method:
+          "PATCH",
+        body:
+          serializeBody(
+            body,
+          ),
+      },
+    ),
+
+  delete: (
+    endpoint,
+    body = null,
+    config = {},
+  ) =>
+    request(
+      endpoint,
+      {
+        ...config,
+        method:
+          "DELETE",
+        ...(
+          body !== null &&
+          body !== undefined
+            ? {
+                body:
+                  serializeBody(
+                    body,
+                  ),
+              }
+            : {}
+        ),
+      },
+    ),
 };
 
 export default api;

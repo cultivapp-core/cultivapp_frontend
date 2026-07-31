@@ -551,15 +551,42 @@ export const countPendingSyncByRoute =
       return 0;
     }
 
-    return db.syncQueue
-      .where(
-        "[status+routeId]",
-      )
-      .equals([
-        "pending",
-        String(routeId),
-      ])
-      .count();
+    const normalizedRouteId =
+      String(routeId);
+
+    const [
+      pendingCount,
+      failedCount,
+    ] = await Promise.all([
+      db.syncQueue
+        .where(
+          "[status+routeId]",
+        )
+        .equals([
+          "pending",
+          normalizedRouteId,
+        ])
+        .count(),
+
+      db.syncQueue
+        .where(
+          "[status+routeId]",
+        )
+        .equals([
+          "failed",
+          normalizedRouteId,
+        ])
+        .count(),
+    ]);
+
+    /*
+     * Una operación fallida también bloquea nuevas operaciones
+     * de la visita hasta que se reintente o elimine.
+     */
+    return (
+      pendingCount +
+      failedCount
+    );
   };
 
 export const countPendingSync =
@@ -811,3 +838,43 @@ export const cleanupCorruptedSyncItems =
 
     return removed;
   };
+
+export const hasBlockingSyncItemsBefore =
+  async (
+    routeId,
+    currentItemId,
+  ) => {
+    if (
+      !routeId ||
+      currentItemId ===
+        undefined ||
+      currentItemId ===
+        null
+    ) {
+      return false;
+    }
+
+    const routeItems =
+      await db.syncQueue
+        .where("routeId")
+        .equals(
+          String(routeId),
+        )
+        .toArray();
+
+    return routeItems.some(
+      (item) =>
+        Number(item.id) <
+          Number(currentItemId) &&
+        [
+          "pending",
+          "failed",
+        ].includes(
+          String(
+            item.status ||
+              "pending",
+          ).toLowerCase(),
+        ),
+    );
+  };
+

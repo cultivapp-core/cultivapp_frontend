@@ -2091,6 +2091,10 @@ const VisitFlow = () => {
             stepKey,
           );
 
+        const capturedAt =
+          new Date()
+            .toISOString();
+
         const buildFormData =
           () => {
             const formData =
@@ -2108,6 +2112,11 @@ const VisitFlow = () => {
             formData.append(
               "replace_existing",
               "true",
+            );
+
+            formData.append(
+              "captured_at",
+              capturedAt,
             );
 
             formData.append(
@@ -2150,6 +2159,7 @@ const VisitFlow = () => {
                     metadata: {
                       stepKey,
                       photoType,
+                      capturedAt,
                       operationKey:
                         `${id}:PHOTO:${stepKey}`,
                     },
@@ -2249,6 +2259,12 @@ const VisitFlow = () => {
             await api.post(
               `/routes/${id}/photo`,
               buildFormData(),
+              {
+                offlineFallback:
+                  false,
+                preserveSessionOnAuthError:
+                  true,
+              },
             );
 
           const uploadedUrl =
@@ -2869,6 +2885,12 @@ const VisitFlow = () => {
               barcode:
                 cleanCode,
             },
+            {
+              offlineFallback:
+                false,
+              preserveSessionOnAuthError:
+                true,
+            },
           );
 
           setScannedCodes(
@@ -3323,6 +3345,12 @@ const VisitFlow = () => {
           await api.post(
             `/routes/${id}/task`,
             taskData,
+            {
+              offlineFallback:
+                false,
+              preserveSessionOnAuthError:
+                true,
+            },
           );
 
           toast.success(
@@ -3618,6 +3646,10 @@ const VisitFlow = () => {
       const finalJourneyObservation =
         endOfDayObservation.trim();
 
+      const completedAt =
+        new Date()
+          .toISOString();
+
       const finishData = {
         status:
           "completed",
@@ -3630,6 +3662,12 @@ const VisitFlow = () => {
         exit_photo:
           photoServerUrls[7] ||
           null,
+        client_completed_at:
+          completedAt,
+        completed_at:
+          completedAt,
+        offline_completed_at:
+          completedAt,
       };
 
       const queueFinish =
@@ -3641,6 +3679,7 @@ const VisitFlow = () => {
             {
               metadata: {
                 finalStep: true,
+                completedAt,
                 operationKey:
                   `${id}:FINISH:final`,
                 endOfDayObservation:
@@ -3681,6 +3720,12 @@ const VisitFlow = () => {
           await api.post(
             `/routes/${id}/finish`,
             finishData,
+            {
+              offlineFallback:
+                false,
+              preserveSessionOnAuthError:
+                true,
+            },
           );
 
           toast.success(
