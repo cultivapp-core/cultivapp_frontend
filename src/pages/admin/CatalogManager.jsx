@@ -18,9 +18,6 @@ import * as XLSX from "xlsx";
 const CULTIVA_COMPANY_ID =
   "0e342e01-d213-4353-b210-39a12ac335cf";
 
-const AUTHORIZED_ROOT_USER_ID =
-  "177b6c2d-2ec0-417e-a0a7-24354904e2e7";
-
 const EMPTY_PRODUCT = {
   name: "",
   barcode: "",
@@ -84,14 +81,6 @@ const CatalogManager = () => {
       "",
     ).toUpperCase();
 
-  const currentUserId =
-    String(
-      currentUser?.id ||
-      currentUser?.user_id ||
-      currentUser?.sub ||
-      "",
-    );
-
   const isCultivaAdmin =
     normalizedRole ===
       "ADMIN_CLIENTE" &&
@@ -101,15 +90,20 @@ const CatalogManager = () => {
     ) ===
       CULTIVA_COMPANY_ID;
 
-  const isAuthorizedRoot =
+  /*
+   * Acceso global al catálogo:
+   * - cualquier usuario cuyo perfil sea ROOT;
+   * - ADMIN_CLIENTE perteneciente a la empresa Cultiva.
+   *
+   * Ya no se restringe ROOT a un user_id específico.
+   */
+  const isRoot =
     normalizedRole ===
-      "ROOT" &&
-    currentUserId ===
-      AUTHORIZED_ROOT_USER_ID;
+      "ROOT";
 
   const canManageCompanies =
-    isCultivaAdmin ||
-    isAuthorizedRoot;
+    isRoot ||
+    isCultivaAdmin;
 
   const [companies, setCompanies] =
     useState([]);
@@ -1154,7 +1148,7 @@ const CatalogManager = () => {
                           "Seleccionada"
                         }`
                       : `${
-                          isAuthorizedRoot
+                          isRoot
                             ? "ROOT"
                             : "Cultiva"
                         } · Vista global · Selecciona una empresa para crear o importar`}
