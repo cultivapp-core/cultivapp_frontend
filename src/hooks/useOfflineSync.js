@@ -11,6 +11,8 @@ import {
   getPendingSync,
   getSyncQueueStats,
   hasBlockingSyncItemsBefore,
+  inferRouteIdFromSyncItem,
+  inferSyncItemType,
   markSyncItemFailed,
   markSyncItemRetry,
   normalizeLegacySyncQueue,
@@ -23,6 +25,9 @@ import {
 
 const AUTO_RETRY_INTERVAL_MS =
   15_000;
+
+export const OFFLINE_SYNC_CLIENT_VERSION =
+  "2026.07.31-mobile-v5";
 
 const ONLINE_SYNC_DELAY_MS =
   800;
@@ -451,44 +456,6 @@ const endpointForLegacyItem = (
   }
 };
 
-const arrayBufferToBase64 = (
-  buffer,
-) => {
-  const bytes =
-    new Uint8Array(
-      buffer,
-    );
-
-  const chunkSize =
-    0x8000;
-
-  let binary = "";
-
-  for (
-    let offset = 0;
-    offset < bytes.length;
-    offset += chunkSize
-  ) {
-    const chunk =
-      bytes.subarray(
-        offset,
-        Math.min(
-          offset + chunkSize,
-          bytes.length,
-        ),
-      );
-
-    binary +=
-      String.fromCharCode(
-        ...chunk,
-      );
-  }
-
-  return btoa(
-    binary,
-  );
-};
-
 const fileToDataUrl =
   async (file) => {
     if (
@@ -527,19 +494,70 @@ const fileToDataUrl =
       throw error;
     }
 
-    const buffer =
-      await file.arrayBuffer();
+    /*
+     * FileReader.readAsDataURL es más estable en Safari/iPhone
+     * que convertir ArrayBuffer mediante btoa y spreads grandes.
+     */
+    return new Promise(
+      (
+        resolve,
+        reject,
+      ) => {
+        const reader =
+          new FileReader();
 
-    const base64 =
-      arrayBufferToBase64(
-        buffer,
-      );
+        reader.onload = () => {
+          const result =
+            String(
+              reader.result ||
+              "",
+            );
 
-    return (
-      `data:${
-        file.type ||
-        "application/octet-stream"
-      };base64,${base64}`
+          if (
+            !result.startsWith(
+              "data:",
+            )
+          ) {
+            const error =
+              new Error(
+                "Safari no pudo convertir la fotografía offline.",
+              );
+
+            error.permanent =
+              true;
+
+            reject(
+              error,
+            );
+
+            return;
+          }
+
+          resolve(
+            result,
+          );
+        };
+
+        reader.onerror = () => {
+          reject(
+            new Error(
+              "Safari no pudo leer la fotografía guardada en el teléfono.",
+            ),
+          );
+        };
+
+        reader.onabort = () => {
+          reject(
+            new Error(
+              "La lectura de la fotografía fue cancelada.",
+            ),
+          );
+        };
+
+        reader.readAsDataURL(
+          file,
+        );
+      },
     );
   };
 
@@ -620,11 +638,12 @@ const buildOfflinePhotoPayload =
 
 const getOfflinePhotoEndpoint = (
   endpoint,
+  routeId,
 ) => {
   const normalized =
     String(
       endpoint || "",
-    );
+    ).trim();
 
   if (
     /\/photo-offline(?:\?|$)/i.test(
@@ -634,10 +653,30 @@ const getOfflinePhotoEndpoint = (
     return normalized;
   }
 
-  return normalized.replace(
-    /\/photo(?:\?|$)/i,
-    "/photo-offline",
-  );
+  if (
+    /\/photo(?:\?|$)/i.test(
+      normalized,
+    )
+  ) {
+    return normalized.replace(
+      /\/photo(?:\?|$)/i,
+      "/photo-offline",
+    );
+  }
+
+  const effectiveRouteId =
+    routeId ||
+    String(
+      normalized,
+    ).match(
+      /\/routes\/([^/?]+)/i,
+    )?.[1];
+
+  if (effectiveRouteId) {
+    return `/routes/${effectiveRouteId}/photo-offline`;
+  }
+
+  return normalized;
 };
 
 const executeRequest = async (
@@ -719,10 +758,14 @@ const executeRequest = async (
     body;
 
   const normalizedType =
-    String(
-      item.type ||
-      "",
-    ).toUpperCase();
+    inferSyncItemType(
+      item,
+    );
+
+  const normalizedRouteId =
+    inferRouteIdFromSyncItem(
+      item,
+    );
 
   if (
     normalizedType ===
@@ -799,6 +842,7 @@ const executeRequest = async (
     return api.post(
       getOfflinePhotoEndpoint(
         endpoint,
+        normalizedRouteId,
       ),
       photoPayload,
       {
@@ -893,10 +937,9 @@ const isRouteBlockingItem = (
     "SCAN",
     "TASK",
   ].includes(
-    String(
-      item?.type ||
-      "",
-    ).toUpperCase(),
+    inferSyncItemType(
+      item,
+    ),
   );
 
 export const useOfflineSync =
@@ -1219,6 +1262,28 @@ export const useOfflineSync =
           await retryAllSyncItems();
         }
 
+        console.log(
+          "✅ OFFLINE SYNC MOBILE V5 ACTIVO",
+          {
+            version:
+              OFFLINE_SYNC_CLIENT_VERSION,
+            userAgent:
+              typeof navigator !==
+                "undefined"
+                ? navigator.userAgent
+                : "",
+          },
+        );
+
+        try {
+          localStorage.setItem(
+            "cultivapp_offline_client_version",
+            OFFLINE_SYNC_CLIENT_VERSION,
+          );
+        } catch {
+          // El almacenamiento puede estar restringido.
+        }
+
         await normalizeLegacySyncQueue();
 
         const pending =
@@ -1373,18 +1438,14 @@ export const useOfflineSync =
                 continue;
               }
 
-              const isCheckIn =
-                String(
-                  item.type ||
-                  "",
-                ).toUpperCase() ===
-                  "CHECK_IN" ||
-                String(
-                  item.endpoint ||
-                  "",
-                ).includes(
-                  "/check-in",
+              const itemType =
+                inferSyncItemType(
+                  item,
                 );
+
+              const isCheckIn =
+                itemType ===
+                  "CHECK_IN";
 
               if (isCheckIn) {
                 const error =
