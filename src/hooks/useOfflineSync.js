@@ -232,6 +232,36 @@ const appendFormValue = (
 ) => {
   if (
     value?.__type ===
+    "FileBuffer"
+  ) {
+    const file =
+      new File(
+        [
+          value.buffer,
+        ],
+        value.name ||
+          `archivo-${Date.now()}`,
+        {
+          type:
+            value.mimeType ||
+            "application/octet-stream",
+          lastModified:
+            value.lastModified ||
+            Date.now(),
+        },
+      );
+
+    formData.append(
+      key,
+      file,
+      file.name,
+    );
+
+    return;
+  }
+
+  if (
+    value?.__type ===
     "File"
   ) {
     const sourceBlob =
@@ -421,6 +451,195 @@ const endpointForLegacyItem = (
   }
 };
 
+const arrayBufferToBase64 = (
+  buffer,
+) => {
+  const bytes =
+    new Uint8Array(
+      buffer,
+    );
+
+  const chunkSize =
+    0x8000;
+
+  let binary = "";
+
+  for (
+    let offset = 0;
+    offset < bytes.length;
+    offset += chunkSize
+  ) {
+    const chunk =
+      bytes.subarray(
+        offset,
+        Math.min(
+          offset + chunkSize,
+          bytes.length,
+        ),
+      );
+
+    binary +=
+      String.fromCharCode(
+        ...chunk,
+      );
+  }
+
+  return btoa(
+    binary,
+  );
+};
+
+const fileToDataUrl =
+  async (file) => {
+    if (
+      !(
+        file instanceof
+          Blob
+      ) ||
+      file.size <= 0
+    ) {
+      const error =
+        new Error(
+          "La fotografía offline está vacía o dañada. Debes volver a capturarla.",
+        );
+
+      error.permanent =
+        true;
+
+      throw error;
+    }
+
+    const maxPhotoBytes =
+      8 * 1024 * 1024;
+
+    if (
+      file.size >
+      maxPhotoBytes
+    ) {
+      const error =
+        new Error(
+          "La fotografía offline supera el máximo permitido de 8 MB.",
+        );
+
+      error.permanent =
+        true;
+
+      throw error;
+    }
+
+    const buffer =
+      await file.arrayBuffer();
+
+    const base64 =
+      arrayBufferToBase64(
+        buffer,
+      );
+
+    return (
+      `data:${
+        file.type ||
+        "application/octet-stream"
+      };base64,${base64}`
+    );
+  };
+
+const buildOfflinePhotoPayload =
+  async (
+    item,
+    body,
+  ) => {
+    if (
+      !(
+        body instanceof
+          FormData
+      )
+    ) {
+      const error =
+        new Error(
+          "La fotografía pendiente no contiene FormData válido.",
+        );
+
+      error.permanent =
+        true;
+
+      throw error;
+    }
+
+    const file =
+      body.get(
+        "foto",
+      );
+
+    const imageBase64 =
+      await fileToDataUrl(
+        file,
+      );
+
+    return {
+      photo_type:
+        String(
+          body.get(
+            "photo_type",
+          ) ||
+          item.metadata
+            ?.photoType ||
+          "Evidencia",
+        ),
+      replace_existing:
+        String(
+          body.get(
+            "replace_existing",
+          ) ||
+          "true",
+        ),
+      captured_at:
+        String(
+          body.get(
+            "captured_at",
+          ) ||
+          item.metadata
+            ?.capturedAt ||
+          item.metadata
+            ?.queuedAt ||
+          item.createdAt ||
+          new Date()
+            .toISOString(),
+        ),
+      filename:
+        file?.name ||
+        `offline_photo_${Date.now()}.webp`,
+      mime_type:
+        file?.type ||
+        "image/webp",
+      image_base64:
+        imageBase64,
+      source:
+        "OFFLINE_JSON_BASE64_V4",
+    };
+  };
+
+const getOfflinePhotoEndpoint = (
+  endpoint,
+) => {
+  const normalized =
+    String(
+      endpoint || "",
+    );
+
+  if (
+    /\/photo-offline(?:\?|$)/i.test(
+      normalized,
+    )
+  ) {
+    return normalized;
+  }
+
+  return normalized.replace(
+    /\/photo(?:\?|$)/i,
+    "/photo-offline",
+  );
+};
+
 const executeRequest = async (
   item,
   body,
@@ -564,11 +783,30 @@ const executeRequest = async (
   }
 
   if (
-    requestBody instanceof
-      FormData
+    normalizedType ===
+      "PHOTO"
   ) {
     validateMultipartBody(
       requestBody,
+    );
+
+    const photoPayload =
+      await buildOfflinePhotoPayload(
+        item,
+        requestBody,
+      );
+
+    return api.post(
+      getOfflinePhotoEndpoint(
+        endpoint,
+      ),
+      photoPayload,
+      {
+        offlineFallback:
+          false,
+        preserveSessionOnAuthError:
+          true,
+      },
     );
   }
 
@@ -581,7 +819,7 @@ const executeRequest = async (
       offlineFallback:
         false,
       preserveSessionOnAuthError:
-        true,
+          true,
     },
   );
 };
