@@ -52,6 +52,23 @@ db.version(5).stores({
     "routeId, updatedAt, step, status",
 });
 
+/*
+ * Versión 6:
+ * - agrega operationKey para evitar duplicados;
+ * - conserva todos los registros existentes;
+ * - permite reemplazar una foto pendiente de la misma etapa.
+ */
+db.version(6).stores({
+  visits:
+    "id, cadena, direccion, status",
+  questions:
+    "id, question, is_required",
+  syncQueue:
+    "++id, status, routeId, type, operationKey, createdAt, nextRetryAt, [status+routeId]",
+  visitDrafts:
+    "routeId, updatedAt, step, status",
+});
+
 const serializeFile = (
   value,
 ) => ({
@@ -123,6 +140,84 @@ const serializeIfNeeded = (
   }
 
   return payload;
+};
+
+const normalizeOperationPart = (
+  value,
+) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+export const buildSyncOperationKey = (
+  item = {},
+) => {
+  const type =
+    String(
+      item.type || "OTHER",
+    ).toUpperCase();
+
+  const routeId =
+    String(
+      item.routeId || "global",
+    );
+
+  const metadata =
+    item.metadata || {};
+
+  if (metadata.operationKey) {
+    return String(
+      metadata.operationKey,
+    );
+  }
+
+  if (type === "PHOTO") {
+    return [
+      routeId,
+      type,
+      metadata.stepKey ??
+        metadata.photoType ??
+        "photo",
+    ].join(":");
+  }
+
+  if (type === "SCAN") {
+    return [
+      routeId,
+      type,
+      normalizeOperationPart(
+        metadata.barcode ??
+        item.payload?.barcode,
+      ),
+    ].join(":");
+  }
+
+  if (type === "TASK") {
+    return [
+      routeId,
+      type,
+      metadata.taskSessionId ??
+        metadata.productId ??
+        item.payload?.product_id ??
+        item.createdAt ??
+        Date.now(),
+    ].join(":");
+  }
+
+  if (type === "FINISH") {
+    return [
+      routeId,
+      type,
+      "final",
+    ].join(":");
+  }
+
+  return [
+    routeId,
+    type,
+    item.endpoint || "endpoint",
+    item.createdAt || Date.now(),
+  ].join(":");
 };
 
 const endpointForLegacyItem = (
@@ -210,6 +305,11 @@ export const normalizeLegacySyncQueue =
             endpoint,
             method,
             status,
+            operationKey:
+              item.operationKey ||
+              buildSyncOperationKey(
+                item,
+              ),
             retryCount:
               Number(
                 item.retryCount,
@@ -243,51 +343,97 @@ export const addToSyncQueue =
     const now =
       new Date().toISOString();
 
-    const id =
-      await db.syncQueue.add({
-        ...item,
-        routeId:
-          item.routeId
-            ? String(
-                item.routeId,
-              )
-            : null,
-        endpoint:
-          item.endpoint ||
-          endpointForLegacyItem(
-            item,
-          ),
-        method:
-          String(
-            item.method ||
-            "POST",
-          ).toUpperCase(),
-        payload:
-          serializeIfNeeded(
-            item.payload,
-          ),
-        status:
-          "pending",
-        retryCount:
-          Number(
-            item.retryCount,
-          ) || 0,
-        lastError:
-          null,
-        nextRetryAt:
-          null,
-        createdAt:
-          item.createdAt ||
-          now,
-        updatedAt:
-          now,
-      });
+    const normalizedItem = {
+      ...item,
+      routeId:
+        item.routeId
+          ? String(
+              item.routeId,
+            )
+          : null,
+      endpoint:
+        item.endpoint ||
+        endpointForLegacyItem(
+          item,
+        ),
+      method:
+        String(
+          item.method ||
+          "POST",
+        ).toUpperCase(),
+      payload:
+        serializeIfNeeded(
+          item.payload,
+        ),
+      status:
+        "pending",
+      retryCount:
+        Number(
+          item.retryCount,
+        ) || 0,
+      lastError:
+        null,
+      nextRetryAt:
+        null,
+      createdAt:
+        item.createdAt ||
+        now,
+      updatedAt:
+        now,
+    };
 
-    console.log(
-      `📍 Operación offline guardada. ID: ${id}`,
+    normalizedItem.operationKey =
+      item.operationKey ||
+      buildSyncOperationKey(
+        normalizedItem,
+      );
+
+    return db.transaction(
+      "rw",
+      db.syncQueue,
+      async () => {
+        const existing =
+          await db.syncQueue
+            .where(
+              "operationKey",
+            )
+            .equals(
+              normalizedItem
+                .operationKey,
+            )
+            .first();
+
+        if (existing) {
+          await db.syncQueue.update(
+            existing.id,
+            {
+              ...normalizedItem,
+              createdAt:
+                existing.createdAt ||
+                normalizedItem
+                  .createdAt,
+            },
+          );
+
+          console.log(
+            `♻️ Operación offline reemplazada. ID: ${existing.id}`,
+          );
+
+          return existing.id;
+        }
+
+        const id =
+          await db.syncQueue.add(
+            normalizedItem,
+          );
+
+        console.log(
+          `📍 Operación offline guardada. ID: ${id}`,
+        );
+
+        return id;
+      },
     );
-
-    return id;
   };
 
 export const getPendingSync =
@@ -613,4 +759,55 @@ export const removeVisitDraft =
     await db.visitDrafts.delete(
       String(routeId),
     );
+  };
+
+
+export const removeSyncItemsByRoute =
+  async (routeId) => {
+    if (!routeId) {
+      return 0;
+    }
+
+    return db.syncQueue
+      .where("routeId")
+      .equals(String(routeId))
+      .delete();
+  };
+
+export const cleanupCorruptedSyncItems =
+  async () => {
+    const items =
+      await db.syncQueue
+        .toArray();
+
+    let removed = 0;
+
+    for (const item of items) {
+      const invalid =
+        !item.routeId ||
+        !(
+          item.endpoint ||
+          endpointForLegacyItem(
+            item,
+          )
+        ) ||
+        (
+          item.type === "PHOTO" &&
+          item.payload?.__type ===
+            "FormData" &&
+          !Array.isArray(
+            item.payload.entries,
+          )
+        );
+
+      if (invalid) {
+        await db.syncQueue.delete(
+          item.id,
+        );
+
+        removed += 1;
+      }
+    }
+
+    return removed;
   };

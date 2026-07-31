@@ -39,9 +39,7 @@ const getStoredUser = () => {
       );
 
     return storedUser
-      ? JSON.parse(
-          storedUser,
-        )
+      ? JSON.parse(storedUser)
       : null;
   } catch {
     return null;
@@ -52,47 +50,26 @@ const getOperationType = (
   endpoint,
 ) => {
   const normalized =
-    String(
-      endpoint || "",
-    ).toLowerCase();
+    String(endpoint || "")
+      .toLowerCase();
 
-  if (
-    normalized.includes(
-      "/check-in",
-    )
-  ) {
+  if (normalized.includes("/check-in")) {
     return "CHECK_IN";
   }
 
-  if (
-    normalized.includes(
-      "/finish",
-    )
-  ) {
+  if (normalized.includes("/finish")) {
     return "FINISH";
   }
 
-  if (
-    normalized.includes(
-      "/scans",
-    )
-  ) {
+  if (normalized.includes("/scans")) {
     return "SCAN";
   }
 
-  if (
-    normalized.includes(
-      "/task",
-    )
-  ) {
+  if (normalized.includes("/task")) {
     return "TASK";
   }
 
-  if (
-    normalized.includes(
-      "/photo",
-    )
-  ) {
+  if (normalized.includes("/photo")) {
     return "PHOTO";
   }
 
@@ -103,16 +80,10 @@ const getRouteId = (
   endpoint,
 ) => {
   const match =
-    String(
-      endpoint || "",
-    ).match(
-      /\/routes\/([^/?]+)/,
-    );
+    String(endpoint || "")
+      .match(/\/routes\/([^/?]+)/);
 
-  return (
-    match?.[1] ||
-    null
-  );
+  return match?.[1] || null;
 };
 
 const dispatchEvent = (
@@ -129,9 +100,7 @@ const dispatchEvent = (
   window.dispatchEvent(
     new CustomEvent(
       eventName,
-      {
-        detail,
-      },
+      { detail },
     ),
   );
 };
@@ -146,14 +115,12 @@ const OfflineManager = {
     } = {},
   ) => {
     const normalizedEndpoint =
-      String(
-        endpoint || "",
-      ).trim();
+      String(endpoint || "")
+        .trim();
 
     const normalizedMethod =
-      String(
-        method || "POST",
-      ).toUpperCase();
+      String(method || "POST")
+        .toUpperCase();
 
     if (!normalizedEndpoint) {
       throw new Error(
@@ -166,9 +133,7 @@ const OfflineManager = {
         normalizedEndpoint,
       );
 
-    if (
-      type === "CHECK_IN"
-    ) {
+    if (type === "CHECK_IN") {
       throw new Error(
         "El check-in GPS no puede guardarse offline.",
       );
@@ -179,6 +144,12 @@ const OfflineManager = {
         normalizedEndpoint,
       );
 
+    if (!routeId) {
+      throw new Error(
+        "No fue posible identificar la visita de la operación offline.",
+      );
+    }
+
     const createdAt =
       new Date().toISOString();
 
@@ -188,9 +159,7 @@ const OfflineManager = {
     const item = {
       type,
       routeId:
-        routeId
-          ? String(routeId)
-          : null,
+        String(routeId),
       endpoint:
         normalizedEndpoint,
       method:
@@ -238,14 +207,13 @@ const OfflineManager = {
         .QUEUE_UPDATED,
       {
         action:
-          "ADDED",
+          "UPSERTED",
         item:
           savedItem,
       },
     );
 
-    let authRequired =
-      false;
+    let authRequired = false;
 
     try {
       authRequired =
@@ -253,8 +221,7 @@ const OfflineManager = {
           AUTH_REQUIRED_STORAGE_KEY,
         ) === "true";
     } catch {
-      authRequired =
-        false;
+      authRequired = false;
     }
 
     if (
@@ -277,9 +244,7 @@ const OfflineManager = {
   },
 
   remove: async (id) => {
-    await removeFromSyncQueue(
-      id,
-    );
+    await removeFromSyncQueue(id);
 
     dispatchEvent(
       OFFLINE_SYNC_EVENTS
@@ -301,15 +266,12 @@ const OfflineManager = {
       ) > 0,
 
   requestSync: (
-    reason =
-      "MANUAL",
+    reason = "MANUAL",
   ) => {
     dispatchEvent(
       OFFLINE_SYNC_EVENTS
         .SYNC_REQUESTED,
-      {
-        reason,
-      },
+      { reason },
     );
   },
 
