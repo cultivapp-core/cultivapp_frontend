@@ -1673,15 +1673,63 @@ const VisitFlow = () => {
         }
       };
 
+    const handleSyncError =
+      (event) => {
+        const item =
+          event?.detail?.item;
+
+        if (
+          !item ||
+          String(item.routeId) !==
+            String(id)
+        ) {
+          return;
+        }
+
+        if (
+          item.type === "PHOTO"
+        ) {
+          const stepKey =
+            Number(
+              item.metadata
+                ?.stepKey,
+            );
+
+          if (
+            Number.isFinite(
+              stepKey,
+            )
+          ) {
+            setPhotoSync(
+              (current) => ({
+                ...current,
+                [stepKey]:
+                  PHOTO_STATUS.ERROR,
+              }),
+            );
+          }
+        }
+      };
+
     window.addEventListener(
       OFFLINE_SYNC_EVENTS.ITEM_SUCCESS,
       handleSyncSuccess,
+    );
+
+    window.addEventListener(
+      OFFLINE_SYNC_EVENTS.ITEM_ERROR,
+      handleSyncError,
     );
 
     return () => {
       window.removeEventListener(
         OFFLINE_SYNC_EVENTS.ITEM_SUCCESS,
         handleSyncSuccess,
+      );
+
+      window.removeEventListener(
+        OFFLINE_SYNC_EVENTS.ITEM_ERROR,
+        handleSyncError,
       );
     };
   }, [
@@ -2102,6 +2150,8 @@ const VisitFlow = () => {
                     metadata: {
                       stepKey,
                       photoType,
+                      operationKey:
+                        `${id}:PHOTO:${stepKey}`,
                     },
                   },
                 );
@@ -2728,6 +2778,24 @@ const VisitFlow = () => {
         return;
       }
 
+      if (
+        scannedCodes.some(
+          (code) =>
+            String(code) ===
+            cleanCode,
+        )
+      ) {
+        toast.error(
+          "Este código ya fue registrado.",
+          {
+            position:
+              "bottom-center",
+          },
+        );
+
+        return;
+      }
+
       isProcessingScan.current =
         true;
 
@@ -2745,6 +2813,8 @@ const VisitFlow = () => {
                 metadata: {
                   barcode:
                     cleanCode,
+                  operationKey:
+                    `${id}:SCAN:${cleanCode}`,
                 },
               },
             );
@@ -3207,6 +3277,14 @@ const VisitFlow = () => {
               metadata: {
                 productId:
                   selectedProduct,
+                taskSessionId:
+                  productStartTime ||
+                  `${selectedProduct}-${Date.now()}`,
+                operationKey:
+                  `${id}:TASK:${
+                    productStartTime ||
+                    selectedProduct
+                  }`,
                 initialObservation:
                   initialObservation,
                 finalObservation:
@@ -3563,6 +3641,8 @@ const VisitFlow = () => {
             {
               metadata: {
                 finalStep: true,
+                operationKey:
+                  `${id}:FINISH:final`,
                 endOfDayObservation:
                   finalJourneyObservation,
               },

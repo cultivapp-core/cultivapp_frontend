@@ -26,6 +26,142 @@ const AUTO_RETRY_INTERVAL_MS =
 const ONLINE_SYNC_DELAY_MS =
   800;
 
+const MAX_AUTOMATIC_RETRIES =
+  5;
+
+const getApiBaseUrl = () => {
+  const configured =
+    import.meta.env
+      .VITE_API_URL ||
+    "http://localhost:5000/api";
+
+  return String(configured)
+    .replace(/\/$/, "");
+};
+
+const buildAbsoluteApiUrl = (
+  endpoint,
+) => {
+  const normalizedEndpoint =
+    String(endpoint || "");
+
+  if (/^https?:\/\//i.test(
+    normalizedEndpoint,
+  )) {
+    return normalizedEndpoint;
+  }
+
+  return `${getApiBaseUrl()}/${
+    normalizedEndpoint.replace(
+      /^\/+/, "",
+    )
+  }`;
+};
+
+const validateMultipartBody = (
+  formData,
+) => {
+  if (!(formData instanceof FormData)) {
+    return;
+  }
+
+  const photo =
+    formData.get("foto");
+
+  if (
+    photo !== null &&
+    (
+      !(photo instanceof Blob) ||
+      photo.size <= 0
+    )
+  ) {
+    const error =
+      new Error(
+        "La fotografía offline está vacía o dañada. Debes volver a capturarla.",
+      );
+
+    error.permanent = true;
+    throw error;
+  }
+};
+
+const executeMultipartRequest =
+  async (
+    endpoint,
+    method,
+    formData,
+  ) => {
+    validateMultipartBody(
+      formData,
+    );
+
+    const token =
+      getToken();
+
+    const headers = {};
+
+    if (token) {
+      headers.Authorization =
+        `Bearer ${token}`;
+    }
+
+    /*
+     * No definir Content-Type manualmente.
+     * El navegador agrega multipart/form-data con su boundary.
+     * Esto evita el error Multer/Busboy:
+     * "Unexpected end of form".
+     */
+    const response =
+      await fetch(
+        buildAbsoluteApiUrl(
+          endpoint,
+        ),
+        {
+          method:
+            method.toUpperCase(),
+          headers,
+          body:
+            formData,
+          credentials:
+            "include",
+        },
+      );
+
+    const raw =
+      await response.text();
+
+    let data = null;
+
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = raw;
+      }
+    }
+
+    if (!response.ok) {
+      const error =
+        new Error(
+          data?.message ||
+          String(data || "") ||
+          `Error HTTP ${response.status}`,
+        );
+
+      error.status =
+        response.status;
+      error.data =
+        data;
+      throw error;
+    }
+
+    return {
+      data,
+      status:
+        response.status,
+    };
+  };
+
 const AUTH_REQUIRED_STORAGE_KEY =
   "cultivapp_offline_auth_required";
 
@@ -443,6 +579,16 @@ const executeRequest = async (
         params:
           body || undefined,
       },
+    );
+  }
+
+  if (
+    body instanceof FormData
+  ) {
+    return executeMultipartRequest(
+      endpoint,
+      method,
+      body,
     );
   }
 
@@ -1024,6 +1170,32 @@ export const useOfflineSync =
                 throw error;
               }
 
+              const ownerCompanyId =
+                item.metadata
+                  ?.ownerCompanyId ||
+                null;
+
+              if (
+                ownerCompanyId &&
+                storedUser?.company_id &&
+                String(
+                  ownerCompanyId,
+                ) !==
+                  String(
+                    storedUser.company_id,
+                  )
+              ) {
+                const error =
+                  new Error(
+                    "Los datos pendientes pertenecen a otra empresa.",
+                  );
+
+                error.permanent =
+                  true;
+
+                throw error;
+              }
+
               const body =
                 rebuildBody(
                   item.payload,
@@ -1094,6 +1266,21 @@ export const useOfflineSync =
 
                 synchronizedCount +=
                   1;
+
+                dispatchSyncEvent(
+                  OFFLINE_SYNC_EVENTS
+                    .ITEM_SUCCESS,
+                  {
+                    item,
+                    response:
+                      error?.data ||
+                      error?.response
+                        ?.data ||
+                      null,
+                    recovered:
+                      true,
+                  },
+                );
 
                 continue;
               }
@@ -1183,6 +1370,37 @@ export const useOfflineSync =
 
                 failedCount +=
                   1;
+
+                dispatchSyncEvent(
+                  OFFLINE_SYNC_EVENTS
+                    .ITEM_ERROR,
+                  {
+                    item,
+                    error:
+                      message,
+                    permanent:
+                      true,
+                  },
+                );
+
+                continue;
+              }
+
+              const nextRetryCount =
+                Number(
+                  item.retryCount,
+                ) + 1;
+
+              if (
+                nextRetryCount >=
+                MAX_AUTOMATIC_RETRIES
+              ) {
+                await markSyncItemFailed(
+                  item.id,
+                  `${message} (máximo de reintentos alcanzado)`,
+                );
+
+                failedCount += 1;
 
                 dispatchSyncEvent(
                   OFFLINE_SYNC_EVENTS
