@@ -42,6 +42,7 @@ import {
   FiXCircle,
 } from "react-icons/fi";
 import * as XLSX from "xlsx";
+import planningTemplateUrl from "../../assets/plantilla_planificacion_masiva_multimes_calendario.xlsx?url";
 import { motion } from "framer-motion";
 import { getWeeksOfMonthCalendar } from "../../utils/helper";
 import { Button, IconButton } from "../../components/ui";
@@ -664,6 +665,45 @@ const resolveWeekNumber = (
   return Number(matched?.id) || 1;
 };
 
+const normalizeCalendarDayId = (
+  value,
+) => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const parsed =
+    Number.parseInt(
+      String(value),
+      10,
+    );
+
+  if (
+    !Number.isInteger(
+      parsed,
+    )
+  ) {
+    return null;
+  }
+
+  if (parsed === 7) {
+    return 0;
+  }
+
+  if (
+    parsed >= 0 &&
+    parsed <= 6
+  ) {
+    return parsed;
+  }
+
+  return null;
+};
+
 const resolveDayNumber = (
   route,
   routeDate,
@@ -674,20 +714,23 @@ const resolveDayNumber = (
     route?.day ??
     route?.dia;
 
-  if (raw !== undefined && raw !== null) {
-    const parsed = Number.parseInt(raw, 10);
+  const normalizedDay =
+    normalizeCalendarDayId(
+      raw,
+    );
 
-    if (
-      Number.isInteger(parsed) &&
-      parsed >= 0 &&
-      parsed <= 6
-    ) {
-      return parsed;
-    }
+  if (normalizedDay !== null) {
+    return normalizedDay;
   }
 
-  const date = parseDateKey(routeDate);
-  return date ? date.getDay() : null;
+  const date =
+    parseDateKey(
+      routeDate,
+    );
+
+  return date
+    ? date.getDay()
+    : null;
 };
 
 const deriveLegacyDate = (
@@ -697,29 +740,83 @@ const deriveLegacyDate = (
 ) => {
   if (
     !monthDate ||
-    !Number.isInteger(Number(weekNumber)) ||
-    dayId === null ||
-    dayId === undefined
+    !Number.isInteger(
+      Number(weekNumber),
+    )
   ) {
     return "";
   }
 
-  const weeks = getWeeksOfMonthCalendar(monthDate);
+  const normalizedDay =
+    normalizeCalendarDayId(
+      dayId,
+    );
+
+  if (normalizedDay === null) {
+    return "";
+  }
+
+  const weeks =
+    getWeeksOfMonthCalendar(
+      monthDate,
+    );
+
   const week =
     weeks.find(
       (item) =>
         Number(item.id) ===
         Number(weekNumber),
     ) ||
-    weeks[Number(weekNumber) - 1];
+    weeks[
+      Number(weekNumber) - 1
+    ];
 
   if (!week) {
     return "";
   }
 
-  return toDateKey(
-    getDateForWeekDay(week, dayId),
+  let cursor =
+    new Date(
+      week.start,
+    );
+
+  const end =
+    new Date(
+      week.end,
+    );
+
+  cursor.setHours(
+    12,
+    0,
+    0,
+    0,
   );
+
+  end.setHours(
+    12,
+    0,
+    0,
+    0,
+  );
+
+  while (cursor <= end) {
+    if (
+      cursor.getDay() ===
+      normalizedDay
+    ) {
+      return toDateKey(
+        cursor,
+      );
+    }
+
+    cursor =
+      addDays(
+        cursor,
+        1,
+      );
+  }
+
+  return "";
 };
 
 const formatDate = (
@@ -924,6 +1021,42 @@ const PlanningMonthGrid = ({
       result[dateKey].push(item);
     });
 
+    Object.values(
+      result,
+    ).forEach(
+      (assignments) => {
+        assignments.sort(
+          (a, b) =>
+            normalizeTime(
+              a.time,
+            ).localeCompare(
+              normalizeTime(
+                b.time,
+              ),
+            ) ||
+            Number(
+              a.order_sequence ||
+                0,
+            ) -
+              Number(
+                b.order_sequence ||
+                  0,
+              ) ||
+            String(
+              a.visit_number ||
+                a.route_id ||
+                "",
+            ).localeCompare(
+              String(
+                b.visit_number ||
+                  b.route_id ||
+                  "",
+              ),
+            ),
+        );
+      },
+    );
+
     return result;
   }, [monthDate, scheduledItems]);
 
@@ -1009,7 +1142,11 @@ const PlanningMonthGrid = ({
                         {assignments.map(
                           (assignment, index) => (
                             <div
-                              key={`${assignment.user_id}-${index}`}
+                              key={
+                                assignment.route_id ||
+                                assignment.visit_number ||
+                                `${assignment.user_id}-${assignment.date}-${assignment.time}-${index}`
+                              }
                               className="rounded-xl bg-white/5 px-3 py-2"
                             >
                               <p className="truncate text-[9px] font-black uppercase text-white">
@@ -1021,6 +1158,12 @@ const PlanningMonthGrid = ({
                                 {assignment.turno ||
                                   "Planificado"}
                               </p>
+
+                              {assignment.visit_number && (
+                                <p className="mt-1 truncate text-[7px] font-bold text-slate-400">
+                                  {assignment.visit_number}
+                                </p>
+                              )}
 
                               <p className="mt-1 text-[8px] font-black text-[#87be00]">
                                 {normalizeTime(
@@ -1079,7 +1222,11 @@ const PlanningAssignmentList = ({
     <div className="space-y-2">
       {sorted.map((item, index) => (
         <div
-          key={`${item.date}-${item.user_id}-${index}`}
+          key={
+            item.route_id ||
+            item.visit_number ||
+            `${item.date}-${item.user_id}-${item.time}-${index}`
+          }
           className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5"
         >
           <div className="min-w-0">
@@ -2159,6 +2306,16 @@ const AdminRoutes = () => {
         ? {
             route_id:
               route.id,
+            visit_number:
+              route.visit_number ||
+              null,
+            order_sequence:
+              Number(
+                route.order_sequence,
+              ) || 0,
+            schedule_group_id:
+              route.schedule_group_id ||
+              null,
             date:
               effectiveRouteDate,
             month_key:
@@ -2172,7 +2329,12 @@ const AdminRoutes = () => {
             endTime,
             turno:
               route.origin === "INDIVIDUAL"
-                ? "Individual"
+                ? (
+                    turnName &&
+                    turnName !== "Turno"
+                      ? turnName
+                      : "Individual"
+                  )
                 : turnName,
             userName:
               fullName,
@@ -2274,25 +2436,76 @@ const AdminRoutes = () => {
       ] = route.id;
 
       if (item) {
+        const itemIdentity =
+          item.route_id
+            ? `route:${item.route_id}`
+            : [
+                "legacy",
+                item.visit_number ||
+                  "",
+                item.user_id ||
+                  "",
+                item.date ||
+                  "",
+                item.week ??
+                  "",
+                item.day ??
+                  "",
+                normalizeTime(
+                  item.time,
+                ),
+                normalizeTime(
+                  item.endTime,
+                ),
+                item.turno_id ||
+                  item.turno ||
+                  "",
+                item.order_sequence ??
+                  0,
+              ].join(":");
+
         const exists =
           group.scheduled_items.some(
-            (existing) =>
-              String(existing.user_id) ===
-                String(item.user_id) &&
-              (
-                existing.date &&
-                item.date
-                  ? existing.date ===
-                    item.date
-                  : Number(existing.day) ===
-                      Number(item.day) &&
-                    Number(existing.week) ===
-                      Number(item.week)
-              ),
+            (existing) => {
+              const existingIdentity =
+                existing.route_id
+                  ? `route:${existing.route_id}`
+                  : [
+                      "legacy",
+                      existing.visit_number ||
+                        "",
+                      existing.user_id ||
+                        "",
+                      existing.date ||
+                        "",
+                      existing.week ??
+                        "",
+                      existing.day ??
+                        "",
+                      normalizeTime(
+                        existing.time,
+                      ),
+                      normalizeTime(
+                        existing.endTime,
+                      ),
+                      existing.turno_id ||
+                        existing.turno ||
+                        "",
+                      existing.order_sequence ??
+                        0,
+                    ].join(":");
+
+              return (
+                existingIdentity ===
+                itemIdentity
+              );
+            },
           );
 
         if (!exists) {
-          group.scheduled_items.push(item);
+          group.scheduled_items.push(
+            item,
+          );
         }
       }
 
@@ -2379,13 +2592,39 @@ const AdminRoutes = () => {
           scheduled_items:
             [...group.scheduled_items].sort(
               (a, b) =>
-                String(a.date || "").localeCompare(
-                  String(b.date || ""),
+                String(
+                  a.date || "",
+                ).localeCompare(
+                  String(
+                    b.date || "",
+                  ),
                 ) ||
-                Number(a.week) -
-                  Number(b.week) ||
-                Number(a.day) -
-                  Number(b.day),
+                normalizeTime(
+                  a.time,
+                ).localeCompare(
+                  normalizeTime(
+                    b.time,
+                  ),
+                ) ||
+                Number(
+                  a.order_sequence ||
+                    0,
+                ) -
+                  Number(
+                    b.order_sequence ||
+                      0,
+                  ) ||
+                String(
+                  a.visit_number ||
+                    a.route_id ||
+                    "",
+                ).localeCompare(
+                  String(
+                    b.visit_number ||
+                      b.route_id ||
+                      "",
+                  ),
+                ),
             ),
           period_start_date:
             periodStart ||
@@ -2534,14 +2773,21 @@ const AdminRoutes = () => {
 
   const moveMonth = (amount) => {
     const next =
-      new Date(visibleMonthDate);
-
-    next.setMonth(
-      next.getMonth() + amount,
-    );
+      new Date(
+        visibleMonthDate.getFullYear(),
+        visibleMonthDate.getMonth() +
+          amount,
+        1,
+        12,
+        0,
+        0,
+        0,
+      );
 
     setCalendarMonth(
-      toMonthKey(next),
+      toMonthKey(
+        next,
+      ),
     );
 
     setFilterDate("");
@@ -2689,7 +2935,7 @@ const AdminRoutes = () => {
             <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
               <PlanningMonthGrid
                 scheduledItems={
-                  group.scheduled_items
+                  monthItems
                 }
                 monthDate={
                   groupMonthDate
@@ -3514,588 +3760,65 @@ const BulkPlanningHelpModal = ({ onClose }) => {
    * - Formato_Mensual
    * - Instrucciones
    */
-  const handleDownloadTemplate = () => {
-    const workbook =
-      XLSX.utils.book_new();
+  const handleDownloadTemplate = async () => {
+    try {
+      /*
+       * Se descarga el archivo XLSX real incluido como asset de Vite.
+       *
+       * Esto permite conservar funciones que SheetJS Community no
+       * genera de forma confiable, como el selector desplegable de
+       * Tipo_Periodo.
+       */
+      const response =
+        await fetch(
+          planningTemplateUrl,
+        );
 
-    const createLocalDate = (
-      year,
-      month,
-      day,
-    ) =>
-      new Date(
-        year,
-        month - 1,
-        day,
-        12,
-        0,
-        0,
-        0,
-      );
-
-    /*
-     * HOJA 1: FORMATO PRINCIPAL
-     *
-     * Se agregan filas vacías para que el usuario pueda comenzar
-     * a completar la plantilla sin modificar los encabezados.
-     */
-    const planningRows = [
-      [
-        "Rut_Mercaderista",
-        "Codigo",
-        "Fecha_Inicio",
-        "Fecha_Termino",
-        "Turno",
-        "Tipo_Periodo",
-        "Observacion",
-      ],
-      ...Array.from(
-        {
-          length: 100,
-        },
-        () => [
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-        ],
-      ),
-    ];
-
-    const planningSheet =
-      XLSX.utils.aoa_to_sheet(
-        planningRows,
-        {
-          cellDates: true,
-        },
-      );
-
-    planningSheet["!cols"] = [
-      {
-        wch: 22,
-      },
-      {
-        wch: 34,
-      },
-      {
-        wch: 18,
-      },
-      {
-        wch: 18,
-      },
-      {
-        wch: 30,
-      },
-      {
-        wch: 18,
-      },
-      {
-        wch: 44,
-      },
-    ];
-
-    planningSheet["!autofilter"] = {
-      ref: "A1:G101",
-    };
-
-    planningSheet["!rows"] = [
-      {
-        hpt: 24,
-      },
-    ];
-
-    for (
-      let row = 2;
-      row <= 101;
-      row += 1
-    ) {
-      const startCell =
-        planningSheet[
-          `C${row}`
-        ];
-
-      const endCell =
-        planningSheet[
-          `D${row}`
-        ];
-
-      if (startCell) {
-        startCell.z =
-          "yyyy-mm-dd";
+      if (!response.ok) {
+        throw new Error(
+          "No fue posible cargar la plantilla.",
+        );
       }
 
-      if (endCell) {
-        endCell.z =
-          "yyyy-mm-dd";
-      }
-    }
+      const blob =
+        await response.blob();
 
-    XLSX.utils.book_append_sheet(
-      workbook,
-      planningSheet,
-      "Planificacion",
-    );
+      const objectUrl =
+        URL.createObjectURL(
+          blob,
+        );
 
-    /*
-     * HOJA 2: EJEMPLOS
-     *
-     * Incluye:
-     * - un turno durante varios meses;
-     * - dos turnos para el mismo usuario y local;
-     * - turnos diferentes por mes.
-     */
-    const examplesRows = [
-      [
-        "Rut_Mercaderista",
-        "Codigo",
-        "Fecha_Inicio",
-        "Fecha_Termino",
-        "Turno",
-        "Tipo_Periodo",
-        "Observacion",
-        "Dias_Cubiertos",
-        "Meses_Cubiertos",
-      ],
-      [
-        "16.925.489-3",
-        "HIPERSANJOAQUIN",
-        createLocalDate(
-          2026,
-          8,
-          1,
-        ),
-        createLocalDate(
-          2026,
-          10,
-          30,
-        ),
-        "TURNO PRUEBA POR DIA",
-        "RANGO",
-        "Un mismo turno desde agosto hasta octubre.",
-        null,
-        null,
-      ],
-      [
-        "18.083.379-K",
-        "CASA",
-        createLocalDate(
-          2026,
-          8,
-          3,
-        ),
-        createLocalDate(
-          2026,
-          9,
-          30,
-        ),
-        "TURNO VENDEDOR",
-        "RANGO",
-        "Primer turno para el mismo usuario y local: lunes y viernes.",
-        null,
-        null,
-      ],
-      [
-        "18.083.379-K",
-        "CASA",
-        createLocalDate(
-          2026,
-          8,
-          3,
-        ),
-        createLocalDate(
-          2026,
-          9,
-          30,
-        ),
-        "TURNO VENDEDOR B",
-        "RANGO",
-        "Segundo turno para el mismo usuario y local: martes y miércoles.",
-        null,
-        null,
-      ],
-      [
-        "16.925.489-3",
-        "LIDERHIPERLIDERSANTAAMALIA",
-        createLocalDate(
-          2026,
-          8,
-          1,
-        ),
-        createLocalDate(
-          2026,
-          8,
-          31,
-        ),
-        "TURNO AGOSTO",
-        "MES",
-        "Ejemplo con un turno diferente para agosto.",
-        null,
-        null,
-      ],
-      [
-        "16.925.489-3",
-        "LIDERHIPERLIDERSANTAAMALIA",
-        createLocalDate(
-          2026,
-          9,
-          1,
-        ),
-        createLocalDate(
-          2026,
-          9,
-          30,
-        ),
-        "TURNO SEPTIEMBRE",
-        "MES",
-        "Ejemplo con un turno diferente para septiembre.",
-        null,
-        null,
-      ],
-      [
-        "16.925.489-3",
-        "LIDERHIPERLIDERSANTAAMALIA",
-        createLocalDate(
-          2026,
-          10,
-          1,
-        ),
-        createLocalDate(
-          2026,
-          10,
-          31,
-        ),
-        "TURNO OCTUBRE",
-        "MES",
-        "Ejemplo con un turno diferente para octubre.",
-        null,
-        null,
-      ],
-    ];
+      const link =
+        document.createElement(
+          "a",
+        );
 
-    const examplesSheet =
-      XLSX.utils.aoa_to_sheet(
-        examplesRows,
-        {
-          cellDates: true,
-        },
+      link.href =
+        objectUrl;
+
+      link.download =
+        "plantilla_planificacion_masiva_multimes.xlsx";
+
+      document.body.appendChild(
+        link,
       );
 
-    examplesSheet["!cols"] = [
-      {
-        wch: 22,
-      },
-      {
-        wch: 34,
-      },
-      {
-        wch: 18,
-      },
-      {
-        wch: 18,
-      },
-      {
-        wch: 30,
-      },
-      {
-        wch: 18,
-      },
-      {
-        wch: 58,
-      },
-      {
-        wch: 18,
-      },
-      {
-        wch: 18,
-      },
-    ];
+      link.click();
+      link.remove();
 
-    examplesSheet["!autofilter"] = {
-      ref: `A1:I${examplesRows.length}`,
-    };
-
-    for (
-      let row = 2;
-      row <= examplesRows.length;
-      row += 1
-    ) {
-      examplesSheet[
-        `C${row}`
-      ].z = "yyyy-mm-dd";
-
-      examplesSheet[
-        `D${row}`
-      ].z = "yyyy-mm-dd";
-
-      examplesSheet[
-        `H${row}`
-      ] = {
-        t: "n",
-        f:
-          `D${row}-C${row}+1`,
-      };
-
-      examplesSheet[
-        `I${row}`
-      ] = {
-        t: "n",
-        f:
-          `DATEDIF(C${row},D${row},"m")+1`,
-      };
-    }
-
-    XLSX.utils.book_append_sheet(
-      workbook,
-      examplesSheet,
-      "Ejemplos",
-    );
-
-    /*
-     * HOJA 3: FORMATO ANTERIOR
-     *
-     * Se conserva para compatibilidad con la planificación
-     * mensual por semanas.
-     */
-    const legacyRows = [
-      [
-        "Rut_Mercaderista",
-        "Codigo",
-        "Anio",
-        "Mes",
-        "Turno Semana 1",
-        "Turno Semana 2",
-        "Turno Semana 3",
-        "Turno Semana 4",
-        "Turno Semana 5",
-      ],
-      [
-        "16.925.489-3",
-        "HIPERSANJOAQUIN",
-        2026,
-        8,
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-      ],
-      [
-        "16.925.489-3",
-        "HIPERSANJOAQUIN",
-        2026,
-        9,
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "",
-      ],
-      [
-        "16.925.489-3",
-        "HIPERSANJOAQUIN",
-        2026,
-        10,
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-        "TURNO YANIXSA",
-      ],
-    ];
-
-    const legacySheet =
-      XLSX.utils.aoa_to_sheet(
-        legacyRows,
+      URL.revokeObjectURL(
+        objectUrl,
+      );
+    } catch (error) {
+      console.error(
+        "❌ Error descargando plantilla multimes:",
+        error,
       );
 
-    legacySheet["!cols"] = [
-      {
-        wch: 22,
-      },
-      {
-        wch: 34,
-      },
-      {
-        wch: 12,
-      },
-      {
-        wch: 12,
-      },
-      {
-        wch: 24,
-      },
-      {
-        wch: 24,
-      },
-      {
-        wch: 24,
-      },
-      {
-        wch: 24,
-      },
-      {
-        wch: 24,
-      },
-    ];
-
-    legacySheet["!autofilter"] = {
-      ref: `A1:I${legacyRows.length}`,
-    };
-
-    XLSX.utils.book_append_sheet(
-      workbook,
-      legacySheet,
-      "Formato_Mensual",
-    );
-
-    /*
-     * HOJA 4: INSTRUCCIONES
-     */
-    const instructionsRows = [
-      [
-        "CULTIVAPP · CARGA MASIVA DE PLANIFICACIONES MULTIMES",
-        "",
-      ],
-      [
-        "",
-        "",
-      ],
-      [
-        "Formato recomendado",
-        "Usa la hoja Planificacion. Cada fila representa un turno aplicado a un mercaderista y un local durante un periodo.",
-      ],
-      [
-        "Planificación de varios meses",
-        "Ejemplo: Fecha_Inicio 2026-08-01 y Fecha_Termino 2026-10-30. Usa Tipo_Periodo RANGO.",
-      ],
-      [
-        "Dos turnos para el mismo usuario y local",
-        "Usa dos filas con el mismo Rut_Mercaderista, Codigo, Fecha_Inicio y Fecha_Termino. En cada fila escribe un Turno diferente.",
-      ],
-      [
-        "Turnos diferentes por mes",
-        "Usa una fila por periodo. Por ejemplo, una fila para agosto, otra para septiembre y otra para octubre.",
-      ],
-      [
-        "Nombre del turno",
-        "Debe coincidir exactamente con un turno activo creado en CultivApp.",
-      ],
-      [
-        "Horario por día",
-        "La carga toma los días, entrada y salida configurados en turnos_config para el turno seleccionado.",
-      ],
-      [
-        "Formato de fechas",
-        "Usa YYYY-MM-DD. Fecha_Termino no puede ser anterior a Fecha_Inicio.",
-      ],
-      [
-        "Tipo_Periodo",
-        "RANGO: varias semanas o meses. MES: un solo mes. SEMANA: máximo siete días.",
-      ],
-      [
-        "Cruce de turnos",
-        "Dos turnos pueden compartir usuario y local cuando sus días no generan una visita duplicada para la misma fecha.",
-      ],
-      [
-        "Hoja correcta",
-        "Importa siempre la hoja Planificacion. Las hojas Ejemplos, Formato_Mensual e Instrucciones son solo de apoyo.",
-      ],
-      [
-        "Filas vacías",
-        "No dejes filas completamente vacías entre registros ya completados.",
-      ],
-      [
-        "Celdas combinadas",
-        "No combines celdas ni cambies los nombres de la fila de encabezados.",
-      ],
-      [
-        "Respuesta del backend",
-        "La API informa rutas creadas, filas procesadas, advertencias y errores.",
-      ],
-      [
-        "",
-        "",
-      ],
-      [
-        "PAYLOAD RECOMENDADO PARA EL BACKEND",
-        "",
-      ],
-      [
-        `{
-  "company_id": "UUID_EMPRESA",
-  "routes": [
-    {
-      "Rut_Mercaderista": "18.083.379-K",
-      "Codigo": "CASA",
-      "Fecha_Inicio": "2026-08-03",
-      "Fecha_Termino": "2026-09-30",
-      "Turno": "TURNO VENDEDOR",
-      "Tipo_Periodo": "RANGO"
-    },
-    {
-      "Rut_Mercaderista": "18.083.379-K",
-      "Codigo": "CASA",
-      "Fecha_Inicio": "2026-08-03",
-      "Fecha_Termino": "2026-09-30",
-      "Turno": "TURNO VENDEDOR B",
-      "Tipo_Periodo": "RANGO"
-    }
-  ]
-}`,
-        "",
-      ],
-    ];
-
-    const instructionsSheet =
-      XLSX.utils.aoa_to_sheet(
-        instructionsRows,
+      toast.error(
+        "No fue posible descargar la plantilla de planificación.",
       );
-
-    instructionsSheet["!cols"] = [
-      {
-        wch: 40,
-      },
-      {
-        wch: 108,
-      },
-    ];
-
-    instructionsSheet["!rows"] = [
-      {
-        hpt: 28,
-      },
-      {
-        hpt: 12,
-      },
-      ...Array.from(
-        {
-          length:
-            instructionsRows.length - 2,
-        },
-        () => ({
-          hpt: 32,
-        }),
-      ),
-    ];
-
-    XLSX.utils.book_append_sheet(
-      workbook,
-      instructionsSheet,
-      "Instrucciones",
-    );
-
-    XLSX.writeFile(
-      workbook,
-      "plantilla_planificacion_masiva_multimes.xlsx",
-      {
-        bookType: "xlsx",
-        compression: true,
-        cellDates: true,
-      },
-    );
+    }
   };
 
   const requiredColumns = [
@@ -4159,6 +3882,7 @@ const BulkPlanningHelpModal = ({ onClose }) => {
 
   const rules = [
     "Usa una fila por cada turno que quieras aplicar.",
+    "Selecciona RANGO, MES o SEMANA desde la lista desplegable.",
     "Para dos turnos en el mismo usuario y local, repite RUT, código y fechas en dos filas.",
     "Mantén una sola hoja principal llamada Planificacion.",
     "No cambies los nombres de los encabezados.",

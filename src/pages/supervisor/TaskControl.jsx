@@ -253,6 +253,355 @@ const getEndOfDayObservation = (
     ),
   );
 
+const SURVEY_METADATA_KEYS =
+  new Set([
+    "answers",
+    "survey_answers",
+    "form_answers",
+    "gondola_initial_observation",
+    "gondola_start_observation",
+    "initial_observation",
+    "reception_observation",
+    "observacion_gondola_inicio",
+    "observacion_recepcion_gondola",
+    "__gondola_initial_observation",
+    "gondola_final_observation",
+    "gondola_end_observation",
+    "final_observation",
+    "observacion_gondola_termino",
+    "observacion_termino_gondola",
+    "__gondola_final_observation",
+    "end_of_day_observation",
+    "finish_comment",
+    "visit_comment",
+    "route_comment",
+    "journey_end_observation",
+    "observacion_termino_jornada",
+    "observacion_fin_jornada",
+    "__end_of_day_observation",
+    "client_operation_id",
+    "operation_id",
+    "product_session_id",
+    "route_id",
+    "visit_id",
+    "product_id",
+    "photo_before",
+    "photo_after",
+    "created_at",
+    "updated_at",
+  ]);
+
+const hasDisplayValue = (
+  value,
+) => {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return false;
+  }
+
+  if (
+    typeof value === "string"
+  ) {
+    return (
+      value.trim() !== ""
+    );
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  return true;
+};
+
+const formatSurveyAnswer = (
+  value,
+) => {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "Sin respuesta";
+  }
+
+  if (typeof value === "boolean") {
+    return value
+      ? "Sí"
+      : "No";
+  }
+
+  if (Array.isArray(value)) {
+    const values =
+      value
+        .map(
+          formatSurveyAnswer,
+        )
+        .filter(Boolean);
+
+    return values.length > 0
+      ? values.join(", ")
+      : "Sin respuesta";
+  }
+
+  if (
+    typeof value === "object"
+  ) {
+    const preferred =
+      value.label ??
+      value.name ??
+      value.text ??
+      value.answer ??
+      value.value ??
+      null;
+
+    if (
+      preferred !== null &&
+      preferred !== undefined
+    ) {
+      return formatSurveyAnswer(
+        preferred,
+      );
+    }
+
+    try {
+      return JSON.stringify(
+        value,
+      );
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value).trim();
+};
+
+const prettifySurveyKey = (
+  key,
+) =>
+  String(key || "")
+    .replace(
+      /[_-]+/g,
+      " ",
+    )
+    .replace(
+      /\s+/g,
+      " ",
+    )
+    .trim()
+    .replace(
+      /^\w/,
+      (letter) =>
+        letter.toUpperCase(),
+    );
+
+const isTechnicalSurveyKey = (
+  key,
+) => {
+  const normalized =
+    String(key || "")
+      .trim()
+      .toLowerCase();
+
+  return (
+    !normalized ||
+    SURVEY_METADATA_KEYS.has(
+      normalized,
+    ) ||
+    normalized.startsWith(
+      "__",
+    ) ||
+    normalized.startsWith(
+      "offline_",
+    ) ||
+    normalized.startsWith(
+      "sync_",
+    ) ||
+    normalized.startsWith(
+      "photo_",
+    )
+  );
+};
+
+const getSurveyResponseObject = (
+  responses,
+) => {
+  const parsed =
+    parseResponses(
+      responses,
+    );
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed)
+  ) {
+    return {};
+  }
+
+  const nestedSources = [
+    parsed.answers,
+    parsed.survey_answers,
+    parsed.form_answers,
+  ].filter(
+    (value) =>
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value),
+  );
+
+  return Object.assign(
+    {},
+    ...nestedSources,
+    parsed,
+  );
+};
+
+const buildQuestionCatalog = (
+  questions,
+) => {
+  const catalog =
+    new Map();
+
+  (
+    Array.isArray(questions)
+      ? questions
+      : []
+  ).forEach(
+    (question) => {
+      const id =
+        question?.id ??
+        question?.question_id ??
+        null;
+
+      if (
+        id === null ||
+        id === undefined
+      ) {
+        return;
+      }
+
+      catalog.set(
+        String(id),
+        question,
+      );
+    },
+  );
+
+  return catalog;
+};
+
+const getQuestionText = (
+  question,
+  key,
+  index,
+) => {
+  const configuredText =
+    getFirstObservation(
+      question?.question,
+      question?.question_text,
+      question?.text,
+      question?.label,
+      question?.name,
+      question?.title,
+    );
+
+  if (configuredText) {
+    return configuredText;
+  }
+
+  const normalizedKey =
+    String(key || "");
+
+  const looksLikeUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(normalizedKey);
+
+  const looksNumeric =
+    /^\d+$/.test(
+      normalizedKey,
+    );
+
+  if (
+    looksLikeUuid ||
+    looksNumeric
+  ) {
+    return `Pregunta ${
+      index + 1
+    }`;
+  }
+
+  return (
+    prettifySurveyKey(
+      normalizedKey,
+    ) ||
+    `Pregunta ${index + 1}`
+  );
+};
+
+const getProductSurveyAnswers = (
+  product,
+  questionCatalog,
+) => {
+  const responseObject =
+    getSurveyResponseObject(
+      product?.responses,
+    );
+
+  return Object.entries(
+    responseObject,
+  )
+    .filter(
+      ([key, value]) =>
+        !isTechnicalSurveyKey(
+          key,
+        ) &&
+        hasDisplayValue(
+          value,
+        ),
+    )
+    .map(
+      (
+        [key, value],
+        index,
+      ) => {
+        const question =
+          questionCatalog?.get(
+            String(key),
+          ) ||
+          null;
+
+        return {
+          id:
+            String(key),
+          question:
+            getQuestionText(
+              question,
+              key,
+              index,
+            ),
+          answer:
+            formatSurveyAnswer(
+              value,
+            ),
+          order:
+            Number(
+              question?.order_sequence ??
+              question?.sort_order ??
+              question?.position ??
+              index,
+            ),
+        };
+      },
+    )
+    .sort(
+      (first, second) =>
+        first.order -
+        second.order,
+    );
+};
+
 const TaskControl = () => {
   const { user } = useAuth();
 
@@ -271,6 +620,11 @@ const TaskControl = () => {
     useState([]);
   const [companies, setCompanies] =
     useState([]);
+
+  const [
+    surveyQuestions,
+    setSurveyQuestions,
+  ] = useState([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -351,6 +705,153 @@ const TaskControl = () => {
       }
     }, [isRoot]);
 
+  const fetchSurveyQuestions =
+    useCallback(
+      async (
+        taskList = [],
+      ) => {
+        try {
+          const taskCompanyIds = [
+            ...new Set(
+              (
+                Array.isArray(
+                  taskList,
+                )
+                  ? taskList
+                  : []
+              )
+                .map(
+                  (task) =>
+                    task?.company_id,
+                )
+                .filter(Boolean)
+                .map(String),
+            ),
+          ];
+
+          let companyIds = [];
+
+          if (
+            isRoot &&
+            selectedCompany
+          ) {
+            companyIds = [
+              String(
+                selectedCompany,
+              ),
+            ];
+          } else if (
+            isRoot &&
+            taskCompanyIds.length >
+              0
+          ) {
+            companyIds =
+              taskCompanyIds;
+          } else if (
+            user?.company_id
+          ) {
+            companyIds = [
+              String(
+                user.company_id,
+              ),
+            ];
+          }
+
+          const urls =
+            companyIds.length > 0
+              ? companyIds.map(
+                  (companyId) =>
+                    `/questions?flow=reponedor&company_id=${encodeURIComponent(
+                      companyId,
+                    )}`,
+                )
+              : [
+                  "/questions?flow=reponedor",
+                ];
+
+          const responses =
+            await Promise.allSettled(
+              urls.map(
+                (url) =>
+                  api.get(url),
+              ),
+            );
+
+          const questionMap =
+            new Map();
+
+          responses.forEach(
+            (result) => {
+              if (
+                result.status !==
+                  "fulfilled"
+              ) {
+                return;
+              }
+
+              const rows =
+                getResponseData(
+                  result.value,
+                  [],
+                );
+
+              if (!Array.isArray(rows)) {
+                return;
+              }
+
+              rows.forEach(
+                (question) => {
+                  const id =
+                    question?.id ??
+                    question
+                      ?.question_id;
+
+                  if (
+                    id === null ||
+                    id === undefined
+                  ) {
+                    return;
+                  }
+
+                  questionMap.set(
+                    String(id),
+                    question,
+                  );
+                },
+              );
+            },
+          );
+
+          setSurveyQuestions(
+            [
+              ...questionMap.values(),
+            ],
+          );
+        } catch (
+          requestError
+        ) {
+          /*
+           * Las respuestas igualmente se mostrarán usando
+           * "Pregunta 1", "Pregunta 2", etc. cuando el catálogo
+           * no pueda cargarse.
+           */
+          console.error(
+            "Error cargando preguntas de encuesta:",
+            requestError,
+          );
+
+          setSurveyQuestions(
+            [],
+          );
+        }
+      },
+      [
+        isRoot,
+        selectedCompany,
+        user?.company_id,
+      ],
+    );
+
   const fetchTasks =
     useCallback(async () => {
       try {
@@ -400,6 +901,14 @@ const TaskControl = () => {
         }
 
         setRawTasks(list);
+
+        /*
+         * Se carga el texto configurado de cada pregunta.
+         * Las respuestas ya vienen en visit_tasks.responses.
+         */
+        fetchSurveyQuestions(
+          list,
+        );
 
         const groups = {};
 
@@ -613,6 +1122,7 @@ const TaskControl = () => {
       filterBrand,
       filterWorker,
       selectedCompany,
+      fetchSurveyQuestions,
     ]);
 
   useEffect(() => {
@@ -628,6 +1138,15 @@ const TaskControl = () => {
     return () =>
       clearTimeout(timer);
   }, [fetchTasks]);
+
+  const questionCatalog =
+    useMemo(
+      () =>
+        buildQuestionCatalog(
+          surveyQuestions,
+        ),
+      [surveyQuestions],
+    );
 
   const metrics = useMemo(() => {
     const durations =
@@ -1206,6 +1725,9 @@ const TaskControl = () => {
                                     endOfDayObservation={
                                       visit.end_of_day_observation
                                     }
+                                    questionCatalog={
+                                      questionCatalog
+                                    }
                                   />
                                 </td>
                               </motion.tr>
@@ -1228,6 +1750,9 @@ const TaskControl = () => {
                       index
                     }
                     visit={visit}
+                    questionCatalog={
+                      questionCatalog
+                    }
                   />
                 ),
               )}
@@ -1396,15 +1921,156 @@ const ObservationItem = ({
   );
 };
 
+const SurveyAnswersSection = ({
+  products,
+  questionCatalog,
+}) => {
+  const surveyProducts =
+    (
+      Array.isArray(products)
+        ? products
+        : []
+    )
+      .map(
+        (
+          product,
+          productIndex,
+        ) => ({
+          product,
+          productIndex,
+          answers:
+            getProductSurveyAnswers(
+              product,
+              questionCatalog,
+            ),
+        }),
+      )
+      .filter(
+        (item) =>
+          item.answers.length >
+          0,
+      );
+
+  return (
+    <section className="rounded-[1.5rem] border border-purple-100 bg-purple-50/50 p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+          <FiClipboard
+            size={14}
+          />
+        </span>
+
+        <div className="min-w-0">
+          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-purple-700">
+            Respuestas de la encuesta
+          </p>
+
+          <p className="mt-1 text-[10px] leading-relaxed text-purple-500">
+            Respuestas registradas durante el flujo del mercaderista.
+          </p>
+        </div>
+      </div>
+
+      {surveyProducts.length ===
+      0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-purple-200 bg-white/70 px-4 py-5 text-center">
+          <p className="text-[10px] font-semibold italic text-gray-400">
+            Sin respuestas de encuesta registradas en esta visita.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {surveyProducts.map(
+            ({
+              product,
+              productIndex,
+              answers,
+            }) => (
+              <article
+                key={
+                  product?.id ||
+                  product?.product_id ||
+                  productIndex
+                }
+                className="overflow-hidden rounded-2xl border border-purple-100 bg-white"
+              >
+                <header className="border-b border-purple-50 bg-purple-50/60 px-4 py-3">
+                  <p className="text-[8px] font-black uppercase tracking-wider text-purple-500">
+                    {product?.brand_name ||
+                      "Sin marca"}
+                  </p>
+
+                  <p className="mt-1 text-[11px] font-black text-gray-900">
+                    {product?.product_name ||
+                      `Producto ${
+                        productIndex +
+                        1
+                      }`}
+                  </p>
+                </header>
+
+                <div className="divide-y divide-gray-100">
+                  {answers.map(
+                    (
+                      response,
+                      responseIndex,
+                    ) => (
+                      <div
+                        key={`${response.id}-${responseIndex}`}
+                        className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.8fr)] sm:gap-5"
+                      >
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-[8px] font-black text-gray-500">
+                            {
+                              responseIndex +
+                              1
+                            }
+                          </span>
+
+                          <p className="break-words text-[10px] font-black leading-relaxed text-gray-700">
+                            {
+                              response.question
+                            }
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-[#87be00]/15 bg-[#87be00]/5 px-3 py-2.5">
+                          <p className="whitespace-pre-wrap break-words text-[10px] font-semibold leading-relaxed text-gray-700">
+                            {
+                              response.answer
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </article>
+            ),
+          )}
+        </div>
+      )}
+    </section>
+  );
+};
+
 const ProductGrid = ({
   products,
   endOfDayObservation,
+  questionCatalog,
 }) => (
   <div className="space-y-4">
     <ObservationItem
       label="Observación de término de jornada"
       value={endOfDayObservation}
       variant="journey"
+    />
+
+    <SurveyAnswersSection
+      products={products}
+      questionCatalog={
+        questionCatalog
+      }
     />
 
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -1508,6 +2174,7 @@ const ProductCard = ({
 
 const VisitMobileCard = ({
   visit,
+  questionCatalog,
 }) => {
   const [open, setOpen] =
     useState(false);
@@ -1608,6 +2275,9 @@ const VisitMobileCard = ({
                 }
                 endOfDayObservation={
                   visit.end_of_day_observation
+                }
+                questionCatalog={
+                  questionCatalog
                 }
               />
             </div>

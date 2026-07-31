@@ -24,6 +24,9 @@ export const OFFLINE_SYNC_EVENTS = {
 const AUTH_REQUIRED_STORAGE_KEY =
   "cultivapp_offline_auth_required";
 
+export const OFFLINE_CLIENT_VERSION =
+  "2026.07.31-mobile-v5";
+
 const getStoredUser = () => {
   if (
     typeof window ===
@@ -266,6 +269,8 @@ const OfflineManager = {
           null,
         queuedAt:
           createdAt,
+        clientVersion:
+          OFFLINE_CLIENT_VERSION,
       },
       status:
         "pending",
