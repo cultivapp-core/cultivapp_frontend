@@ -473,6 +473,108 @@ const getGpsErrorMessage = (
 const AUTH_REQUIRED_STORAGE_KEY =
   "cultivapp_offline_auth_required";
 
+const createProductSessionId =
+  () => {
+    if (
+      typeof crypto !==
+        "undefined" &&
+      typeof crypto.randomUUID ===
+        "function"
+    ) {
+      return crypto.randomUUID();
+    }
+
+    return [
+      Date.now(),
+      Math.random()
+        .toString(36)
+        .slice(2, 10),
+    ].join("-");
+  };
+
+const normalizeProductSessionPart =
+  (value) =>
+    String(value || "producto")
+      .trim()
+      .replace(
+        /[^a-z0-9_-]/gi,
+        "_",
+      )
+      .slice(0, 80);
+
+const upsertRegisteredProduct =
+  (
+    products,
+    product,
+  ) => {
+    const current =
+      Array.isArray(products)
+        ? products
+        : [];
+
+    const productSessionId =
+      String(
+        product
+          ?.productSessionId ||
+        product?.id ||
+        "",
+      );
+
+    if (!productSessionId) {
+      return current;
+    }
+
+    const index =
+      current.findIndex(
+        (item) =>
+          String(
+            item
+              ?.productSessionId ||
+            item?.id ||
+            "",
+          ) ===
+          productSessionId,
+      );
+
+    if (index < 0) {
+      return [
+        ...current,
+        product,
+      ];
+    }
+
+    const next = [
+      ...current,
+    ];
+
+    next[index] = {
+      ...next[index],
+      ...product,
+    };
+
+    return next;
+  };
+
+const withoutActiveProductEvidence =
+  (source) => {
+    const next = {
+      ...(
+        source &&
+        typeof source ===
+          "object"
+          ? source
+          : {}
+      ),
+    };
+
+    delete next[2];
+    delete next["2"];
+    delete next[5];
+    delete next["5"];
+
+    return next;
+  };
+
 const getHttpStatus = (
   error,
 ) => {
@@ -811,6 +913,16 @@ const VisitFlow = () => {
   ] = useState(null);
 
   const [
+    productSessionId,
+    setProductSessionId,
+  ] = useState(null);
+
+  const [
+    registeredProducts,
+    setRegisteredProducts,
+  ] = useState([]);
+
+  const [
     scannedCodes,
     setScannedCodes,
   ] = useState([]);
@@ -1052,6 +1164,8 @@ const VisitFlow = () => {
         selectedBrand,
         selectedProduct,
         productStartTime,
+        productSessionId,
+        registeredProducts,
         scannedCodes,
         answers,
         comment:
@@ -1082,6 +1196,8 @@ const VisitFlow = () => {
         selectedBrand,
         selectedProduct,
         productStartTime,
+        productSessionId,
+        registeredProducts,
         scannedCodes,
         answers,
         gondolaInitialObservation,
@@ -1228,6 +1344,19 @@ const VisitFlow = () => {
           setProductStartTime(
             draft.productStartTime ||
               null,
+          );
+
+          setProductSessionId(
+            draft.productSessionId ||
+              null,
+          );
+
+          setRegisteredProducts(
+            Array.isArray(
+              draft.registeredProducts,
+            )
+              ? draft.registeredProducts
+              : [],
           );
 
           setScannedCodes(
@@ -1638,6 +1767,56 @@ const VisitFlow = () => {
         }
 
         if (
+          item.type === "TASK"
+        ) {
+          const itemSessionId =
+            item.metadata
+              ?.productSessionId ||
+            item.metadata
+              ?.taskSessionId ||
+            item.payload
+              ?.product_session_id ||
+            item.payload
+              ?.client_operation_id;
+
+          if (itemSessionId) {
+            setRegisteredProducts(
+              (current) =>
+                current.map(
+                  (product) =>
+                    String(
+                      product
+                        .productSessionId,
+                    ) ===
+                    String(
+                      itemSessionId,
+                    )
+                      ? {
+                          ...product,
+                          pendingSync:
+                            false,
+                          syncStatus:
+                            "synced",
+                          queueId:
+                            null,
+                          taskId:
+                            event?.detail
+                              ?.response
+                              ?.id ||
+                            event?.detail
+                              ?.response
+                              ?.data
+                              ?.id ||
+                            product.taskId ||
+                            null,
+                        }
+                      : product,
+                ),
+            );
+          }
+        }
+
+        if (
           item.type === "SCAN"
         ) {
           setScanQueueItems(
@@ -1684,6 +1863,44 @@ const VisitFlow = () => {
             String(id)
         ) {
           return;
+        }
+
+        if (
+          item.type === "TASK"
+        ) {
+          const itemSessionId =
+            item.metadata
+              ?.productSessionId ||
+            item.metadata
+              ?.taskSessionId ||
+            item.payload
+              ?.product_session_id ||
+            item.payload
+              ?.client_operation_id;
+
+          if (itemSessionId) {
+            setRegisteredProducts(
+              (current) =>
+                current.map(
+                  (product) =>
+                    String(
+                      product
+                        .productSessionId,
+                    ) ===
+                    String(
+                      itemSessionId,
+                    )
+                      ? {
+                          ...product,
+                          pendingSync:
+                            true,
+                          syncStatus:
+                            "error",
+                        }
+                      : product,
+                ),
+            );
+          }
         }
 
         if (
@@ -1735,6 +1952,7 @@ const VisitFlow = () => {
   }, [
     id,
     visitSessionKey,
+    productSessionId,
   ]);
 
   useEffect(
@@ -1926,17 +2144,25 @@ const VisitFlow = () => {
   ]);
 
   useEffect(() => {
-    if (
-      step === 2 &&
-      !productStartTime
-    ) {
+    if (step !== 2) {
+      return;
+    }
+
+    if (!productStartTime) {
       setProductStartTime(
         new Date().toISOString(),
+      );
+    }
+
+    if (!productSessionId) {
+      setProductSessionId(
+        createProductSessionId(),
       );
     }
   }, [
     step,
     productStartTime,
+    productSessionId,
   ]);
 
   const loadQuestions =
@@ -2052,15 +2278,21 @@ const VisitFlow = () => {
       return "Salida_Jornada";
     }
 
+    const sessionPart =
+      normalizeProductSessionPart(
+        productSessionId ||
+        productStartTime,
+      );
+
     if (stepKey === 2) {
-      return `gondola_inicio_producto_${
+      return `gondola_inicio_gestion_${sessionPart}_producto_${
         selectedProduct ||
         "sin_prod"
       }`;
     }
 
     if (stepKey === 5) {
-      return `gondola_fin_producto_${
+      return `gondola_fin_gestion_${sessionPart}_producto_${
         selectedProduct ||
         "sin_prod"
       }`;
@@ -2160,8 +2392,16 @@ const VisitFlow = () => {
                       stepKey,
                       photoType,
                       capturedAt,
+                      productSessionId:
+                        productSessionId ||
+                        productStartTime,
                       operationKey:
-                        `${id}:PHOTO:${stepKey}`,
+                        `${id}:PHOTO:${
+                          productSessionId ||
+                          productStartTime ||
+                          selectedProduct ||
+                          "producto"
+                        }:${stepKey}`,
                     },
                   },
                 );
@@ -2423,6 +2663,8 @@ const VisitFlow = () => {
       [
         id,
         selectedProduct,
+        productSessionId,
+        productStartTime,
       ],
     );
 
@@ -2829,8 +3071,16 @@ const VisitFlow = () => {
                 metadata: {
                   barcode:
                     cleanCode,
+                  productSessionId:
+                    productSessionId ||
+                    productStartTime,
                   operationKey:
-                    `${id}:SCAN:${cleanCode}`,
+                    `${id}:SCAN:${
+                      productSessionId ||
+                      productStartTime ||
+                      selectedProduct ||
+                      "producto"
+                    }:${cleanCode}`,
                 },
               },
             );
@@ -3126,6 +3376,10 @@ const VisitFlow = () => {
         null,
       );
 
+      setProductSessionId(
+        null,
+      );
+
       setSelectedBrand(
         "",
       );
@@ -3232,18 +3486,36 @@ const VisitFlow = () => {
       const finalObservation =
         gondolaFinalObservation.trim();
 
+      const effectiveProductSessionId =
+        productSessionId ||
+        productStartTime ||
+        createProductSessionId();
+
+      const taskEndTime =
+        new Date().toISOString();
+
       const taskData = {
         product_id:
           selectedProduct,
         product_codes:
           scannedCodes,
         start_time:
-          productStartTime,
+          productStartTime ||
+          taskEndTime,
         end_time:
-          new Date().toISOString(),
+          taskEndTime,
+
+        client_operation_id:
+          effectiveProductSessionId,
+        product_session_id:
+          effectiveProductSessionId,
 
         responses: {
           ...answers,
+          client_operation_id:
+            effectiveProductSessionId,
+          product_session_id:
+            effectiveProductSessionId,
           gondola_initial_observation:
             initialObservation,
           gondola_final_observation:
@@ -3271,49 +3543,149 @@ const VisitFlow = () => {
       };
 
       const completeLocalFlow =
-        (
+        async (
           pendingSync,
+          {
+            taskResponse = null,
+            queueId = null,
+          } = {},
         ) => {
+          const productSnapshot = {
+            id:
+              effectiveProductSessionId,
+            productSessionId:
+              effectiveProductSessionId,
+            productId:
+              selectedProduct,
+            productName:
+              selectedProductInfo
+                ?.name ||
+              "Producto seleccionado",
+            brandId:
+              selectedBrand ||
+              null,
+            codes: [
+              ...scannedCodes,
+            ],
+            codesCount:
+              scannedCodes.length,
+            startTime:
+              productStartTime ||
+              taskEndTime,
+            endTime:
+              taskEndTime,
+            initialObservation,
+            finalObservation,
+            pendingSync:
+              pendingSync ===
+              true,
+            syncStatus:
+              pendingSync
+                ? "pending"
+                : "synced",
+            queueId:
+              queueId ||
+              null,
+            taskId:
+              taskResponse?.id ||
+              taskResponse?.data
+                ?.id ||
+              null,
+            createdAt:
+              taskEndTime,
+          };
+
+          const nextRegisteredProducts =
+            upsertRegisteredProduct(
+              registeredProducts,
+              productSnapshot,
+            );
+
+          setRegisteredProducts(
+            nextRegisteredProducts,
+          );
+
+          const nextStep =
+            nextAction ===
+              "NUEVO"
+              ? 2
+              : 7;
+
           resetProductFlow({
             preserveQueuedOperations:
               pendingSync,
           });
 
-          if (
-            nextAction ===
-            "NUEVO"
-          ) {
-            setStep(2);
-          } else {
-            setStep(7);
-          }
+          setStep(
+            nextStep,
+          );
+
+          await persistVisitDraft({
+            step:
+              nextStep,
+            selectedBrand:
+              "",
+            selectedProduct:
+              "",
+            productStartTime:
+              null,
+            productSessionId:
+              null,
+            registeredProducts:
+              nextRegisteredProducts,
+            scannedCodes:
+              [],
+            answers:
+              {},
+            gondolaInitialObservation:
+              "",
+            gondolaFinalObservation:
+              "",
+            photoFiles:
+              withoutActiveProductEvidence(
+                photoFiles,
+              ),
+            photoSync:
+              withoutActiveProductEvidence(
+                photoSync,
+              ),
+            photoServerUrls:
+              withoutActiveProductEvidence(
+                photoServerUrls,
+              ),
+            photoQueueIds:
+              withoutActiveProductEvidence(
+                photoQueueIdsRef.current,
+              ),
+            scanQueueItems:
+              [],
+          });
         };
 
       const queueTask =
         async () => {
-          await OfflineManager.save(
-            `/routes/${id}/task`,
-            "POST",
-            taskData,
-            {
-              metadata: {
-                productId:
-                  selectedProduct,
-                taskSessionId:
-                  productStartTime ||
-                  `${selectedProduct}-${Date.now()}`,
-                operationKey:
-                  `${id}:TASK:${
-                    productStartTime ||
-                    selectedProduct
-                  }`,
-                initialObservation:
-                  initialObservation,
-                finalObservation:
-                  finalObservation,
+          const queuedTask =
+            await OfflineManager.save(
+              `/routes/${id}/task`,
+              "POST",
+              taskData,
+              {
+                metadata: {
+                  productId:
+                    selectedProduct,
+                  productSessionId:
+                    effectiveProductSessionId,
+                  taskSessionId:
+                    effectiveProductSessionId,
+                  operationKey:
+                    `${id}:TASK:${effectiveProductSessionId}`,
+                  initialObservation:
+                    initialObservation,
+                  finalObservation:
+                    finalObservation,
+                },
               },
-            },
-          );
+            );
 
           toast.success(
             "Gestión guardada para sincronización.",
@@ -3322,8 +3694,12 @@ const VisitFlow = () => {
             },
           );
 
-          completeLocalFlow(
+          await completeLocalFlow(
             true,
+            {
+              queueId:
+                queuedTask.id,
+            },
           );
         };
 
@@ -3342,16 +3718,17 @@ const VisitFlow = () => {
         }
 
         try {
-          await api.post(
-            `/routes/${id}/task`,
-            taskData,
-            {
-              offlineFallback:
-                false,
-              preserveSessionOnAuthError:
-                true,
-            },
-          );
+          const taskResponse =
+            await api.post(
+              `/routes/${id}/task`,
+              taskData,
+              {
+                offlineFallback:
+                  false,
+                preserveSessionOnAuthError:
+                  true,
+              },
+            );
 
           toast.success(
             "Producto registrado",
@@ -3360,8 +3737,11 @@ const VisitFlow = () => {
             },
           );
 
-          completeLocalFlow(
+          await completeLocalFlow(
             false,
+            {
+              taskResponse,
+            },
           );
         } catch (error) {
           if (
@@ -3668,6 +4048,13 @@ const VisitFlow = () => {
           completedAt,
         offline_completed_at:
           completedAt,
+        registered_products_count:
+          registeredProducts.length,
+        registered_product_sessions:
+          registeredProducts.map(
+            (product) =>
+              product.productSessionId,
+          ),
       };
 
       const queueFinish =
@@ -5479,6 +5866,73 @@ const VisitFlow = () => {
             {/* PASO 6: DECISIÓN */}
             {step === 6 && (
               <div className="space-y-5">
+                {registeredProducts.length > 0 && (
+                  <div className="rounded-[1.5rem] border border-[#87be00]/20 bg-[#87be00]/5 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[8px] font-black uppercase tracking-wider text-[#6f9d00]">
+                          Productos ya registrados
+                        </p>
+
+                        <p className="mt-1 text-xs font-semibold text-slate-600">
+                          Se conservarán al agregar el siguiente producto.
+                        </p>
+                      </div>
+
+                      <span className="flex h-9 min-w-9 items-center justify-center rounded-xl bg-[#87be00] px-2 text-sm font-black text-white">
+                        {registeredProducts.length}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      {registeredProducts.map(
+                        (
+                          product,
+                          index,
+                        ) => (
+                          <div
+                            key={
+                              product.productSessionId ||
+                              `${product.productId}-${index}`
+                            }
+                            className="flex items-center justify-between gap-3 rounded-xl border border-white bg-white p-3 shadow-sm"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-[10px] font-black text-slate-800">
+                                {index + 1}.{" "}
+                                {product.productName ||
+                                  "Producto"}
+                              </p>
+
+                              <p className="mt-0.5 text-[8px] font-semibold text-slate-400">
+                                {product.codesCount || 0} código(s)
+                              </p>
+                            </div>
+
+                            <span
+                              className={`shrink-0 rounded-lg px-2 py-1 text-[7px] font-black uppercase tracking-wider ${
+                                product.syncStatus ===
+                                "error"
+                                  ? "bg-red-50 text-red-600"
+                                  : product.pendingSync
+                                    ? "bg-amber-50 text-amber-700"
+                                    : "bg-[#87be00]/10 text-[#6f9d00]"
+                              }`}
+                            >
+                              {product.syncStatus ===
+                              "error"
+                                ? "Error"
+                                : product.pendingSync
+                                  ? "Pendiente"
+                                  : "Sincronizado"}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="rounded-[1.5rem] bg-slate-900 p-5 text-white">
                   <p className="text-[8px] font-black uppercase tracking-wider text-[#a8d52c]">
                     Resumen del producto
@@ -5624,6 +6078,48 @@ const VisitFlow = () => {
             {/* PASO 7: SALIDA */}
             {step === 7 && (
               <div className="space-y-4">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">
+                        Productos registrados
+                      </p>
+
+                      <p className="mt-1 text-sm font-black text-slate-900">
+                        {registeredProducts.length} producto(s) en esta visita
+                      </p>
+                    </div>
+
+                    <FiPackage
+                      size={22}
+                      className="text-[#87be00]"
+                    />
+                  </div>
+
+                  {registeredProducts.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {registeredProducts.map(
+                        (
+                          product,
+                          index,
+                        ) => (
+                          <span
+                            key={
+                              product.productSessionId ||
+                              `${product.productId}-${index}`
+                            }
+                            className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[8px] font-black text-slate-600"
+                          >
+                            {index + 1}.{" "}
+                            {product.productName ||
+                              "Producto"}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {renderPhotoContainer(
                   exitPhoto,
                   7,
