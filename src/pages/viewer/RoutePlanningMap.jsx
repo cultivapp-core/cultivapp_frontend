@@ -22,13 +22,24 @@ import {
 } from "react-icons/fi";
 
 import api from "../../api/apiClient";
+import { useAuth } from "../../context/AuthContext";
+import { io } from "socket.io-client";
 
 const MAPBOX_TOKEN =
   import.meta.env.VITE_MAPBOX_TOKEN;
 
 const POLL_INTERVAL = 15000;
+/*
+ * Este mapa pertenece al perfil SUPERVISOR/VIEWER.
+ *
+ * Debe consumir getSupervisorPlanning de:
+ * src/modules/planning_ruta/planning.controller.js
+ *
+ * El endpoint genérico /planning/data pertenece a otro controlador
+ * y no aplica correctamente las asignaciones del supervisor.
+ */
 const PLANNING_ENDPOINT =
-  "/planning/data";
+  "/routes/planning/supervisor";
 const CHILE_TIME_ZONE =
   "America/Santiago";
 
@@ -127,6 +138,86 @@ const getStatusConfig = (
       "border-slate-200 bg-slate-50 text-slate-500",
     dot: "bg-slate-400",
   };
+
+const normalizeRouteStatus = (route) => {
+  const rawStatus = String(
+    route?.status ?? route?.estado ?? "",
+  ).trim().toUpperCase();
+
+  if (
+    route?.check_out ||
+    route?.hora_termino ||
+    ["COMPLETED", "FINALIZADO", "FINALIZADA", "FINISHED", "CLOSED"].includes(rawStatus)
+  ) {
+    return "COMPLETED";
+  }
+
+  if (
+    route?.check_in ||
+    route?.hora_inicio ||
+    ["IN_PROGRESS", "EN_CURSO", "EN PROCESO", "STARTED", "ACTIVE"].includes(rawStatus)
+  ) {
+    return "IN_PROGRESS";
+  }
+
+  return "PENDING";
+};
+
+const normalizePlanningRoute = (route, requestedDate, index) => {
+  const routeId =
+    route?.route_id ??
+    route?.id ??
+    route?.visit_number ??
+    `route-${index}`;
+
+  return {
+    ...route,
+    id: route?.id ?? routeId,
+    route_id: routeId,
+    visit_date: route?.visit_date ?? route?.fecha ?? requestedDate,
+    lat: route?.lat ?? route?.latitude ?? route?.local_lat ?? route?.local?.lat ?? null,
+    lng: route?.lng ?? route?.longitude ?? route?.local_lng ?? route?.local?.lng ?? null,
+    local_id: route?.local_id ?? route?.locale_id ?? route?.local?.id ?? null,
+    local_nombre:
+      route?.local_nombre ??
+      route?.nombre_local ??
+      route?.local?.nombre_local ??
+      route?.cadena ??
+      "Local sin nombre",
+    codigo_local: route?.codigo_local ?? route?.local?.codigo_local ?? "S/N",
+    usuario_nombre:
+      route?.usuario_nombre ??
+      route?.mercaderista ??
+      route?.user_name ??
+      route?.usuario ??
+      "Sin asignar",
+    supervisor_nombre:
+      route?.supervisor_nombre ??
+      route?.supervisor ??
+      route?.supervisor_name ??
+      "Sin supervisor",
+    origen: route?.origen ?? route?.origin ?? "USUARIO",
+    status: normalizeRouteStatus(route),
+  };
+};
+
+const extractPlanningRows = (apiResponse) => {
+  const payload = apiResponse?.data ?? apiResponse;
+
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  const candidates = [
+    payload?.data,
+    payload?.routes,
+    payload?.planning,
+    payload?.rows,
+    payload?.result,
+  ];
+
+  return candidates.find(Array.isArray) ?? [];
+};
 
 const getRouteDateKey = (
   route,
@@ -349,6 +440,8 @@ const createPopupContent = (
 };
 
 const RoutePlanningMap = () => {
+  const { user } = useAuth();
+
   const mapContainer =
     useRef(null);
   const map = useRef(null);
@@ -400,9 +493,9 @@ const RoutePlanningMap = () => {
 
   const fetchRoutes =
     useCallback(
-      async ({
-        silent = false,
-      } = {}) => {
+      async ({ silent = false } = {}) => {
+        const requestedDate = getTodayDateKey();
+
         try {
           if (silent) {
             setRefreshing(true);
@@ -411,84 +504,70 @@ const RoutePlanningMap = () => {
           }
 
           setError(null);
+          setPlanningDate(requestedDate);
 
           /*
-           * Se mantiene exactamente el flujo funcional confirmado:
-           * el frontend consulta /planning/data sin filtros de calendario.
-           * El backend entrega la planificación correspondiente al día actual.
+           * getSupervisorPlanning recibe dateFrom y dateTo.
+           *
+           * Para el mapa diario ambos valores corresponden al día
+           * actual de Chile. Empresa, usuario y rol se obtienen
+           * desde el JWT en req.user.
            */
+          const queryString =
+            new URLSearchParams({
+              dateFrom:
+                requestedDate,
+              dateTo:
+                requestedDate,
+              _ts:
+                String(
+                  Date.now(),
+                ),
+            }).toString();
+
+          const requestUrl =
+            `${PLANNING_ENDPOINT}?${queryString}`;
+
           const apiResponse =
             await api.get(
-              PLANNING_ENDPOINT,
+              requestUrl,
             );
 
-          /*
-           * Compatible con:
-           * - apiClient que retorna directamente el JSON.
-           * - Axios, que retorna la información dentro de response.data.
-           * - Respuestas con estructura { data: [...] }.
-           */
-          const rawData =
-            apiResponse?.data ??
-            apiResponse;
-
-          const nextRoutes =
-            Array.isArray(rawData)
-              ? rawData
-              : Array.isArray(
-                    rawData?.data,
-                  )
-                ? rawData.data
-                : Array.isArray(
-                      rawData?.routes,
-                    )
-                  ? rawData.routes
-                  : [];
-
-          const currentDate =
-            getTodayDateKey();
-
-          setPlanningDate(
-            currentDate,
+          const rawRoutes = extractPlanningRows(apiResponse);
+          const nextRoutes = rawRoutes.map((route, index) =>
+            normalizePlanningRoute(route, requestedDate, index),
           );
+
           setRoutes(nextRoutes);
-          setLastUpdated(
-            new Date(),
-          );
+          setLastUpdated(new Date());
 
-          console.log(
-            "📅 Planificación actual recibida:",
-            {
-              endpoint:
-                PLANNING_ENDPOINT,
-              fechaVisual:
-                currentDate,
-              total:
-                nextRoutes.length,
-              primeraRuta:
-                nextRoutes[0] ??
-                null,
-            },
-          );
+          console.log("📅 Planificación recibida para el mapa:", {
+            endpoint:
+              requestUrl,
+            dateFrom:
+              requestedDate,
+            dateTo:
+              requestedDate,
+            company_id:
+              user?.company_id ??
+              null,
+            supervisor_id: user?.id ?? null,
+            total: nextRoutes.length,
+            conCoordenadas: nextRoutes.filter((route) => Boolean(getCoordinates(route))).length,
+            primeraRuta: nextRoutes[0] ?? null,
+            respuestaOriginal: apiResponse,
+          });
 
           if (!silent) {
-            const supervisors =
-              [
-                ...new Set(
-                  nextRoutes.map(
-                    (route) =>
-                      route.supervisor_nombre ??
-                      "Sin supervisor",
-                  ),
-                ),
-              ];
+            const supervisors = [
+              ...new Set(
+                nextRoutes.map((route) => route.supervisor_nombre ?? "Sin supervisor"),
+              ),
+            ];
 
             setExpandedSupervisors(
               supervisors.reduce(
-                (
-                  accumulator,
-                  supervisor,
-                ) => ({
+                (accumulator, supervisor) => ({
                   ...accumulator,
                   [supervisor]: true,
                 }),
@@ -500,65 +579,107 @@ const RoutePlanningMap = () => {
           console.error(
             "❌ Error cargando planificación:",
             requestError?.data ??
-              requestError?.response
-                ?.data ??
+              requestError?.response?.data ??
               requestError?.message ??
               requestError,
           );
 
           const message =
-            requestError?.data
-              ?.message ??
-            requestError?.response
-              ?.data?.message ??
+            requestError?.data?.message ??
+            requestError?.response?.data?.message ??
             requestError?.message ??
-            "No fue posible cargar la planificación del día actual.";
+            `No fue posible cargar ${PLANNING_ENDPOINT}. Revisa la ruta, el token y el despliegue del backend.`;
 
           setError(message);
 
           const now = Date.now();
-
-          if (
-            !silent ||
-            now -
-              lastErrorToastAt.current >
-              60000
-          ) {
-            lastErrorToastAt.current =
-              now;
+          if (!silent || now - lastErrorToastAt.current > 60000) {
+            lastErrorToastAt.current = now;
           }
         } finally {
           setLoading(false);
           setRefreshing(false);
         }
       },
-      [],
+      [user?.company_id, user?.id],
     );
 
   useEffect(() => {
+    if (!user?.id || !user?.company_id) {
+      return undefined;
+    }
+
     fetchRoutes();
 
-    const interval =
-      window.setInterval(
-        () =>
-          fetchRoutes({
-            silent: true,
-          }),
-        POLL_INTERVAL,
-      );
+    const interval = window.setInterval(
+      () => fetchRoutes({ silent: true }),
+      POLL_INTERVAL,
+    );
 
     return () => {
-      window.clearInterval(
-        interval,
-      );
+      window.clearInterval(interval);
     };
-  }, [fetchRoutes]);
+  }, [fetchRoutes, user?.company_id, user?.id]);
+
+
+  useEffect(() => {
+    if (!user?.id || !user?.company_id) {
+      return undefined;
+    }
+
+    const rawUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    const socketUrl = rawUrl.replace(/\/api\/?$/, "");
+
+    const socket = io(socketUrl, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    const refreshPlanning = (payload = {}) => {
+      const eventCompanyId = String(payload?.company_id || "");
+      const currentCompanyId = String(user.company_id);
+
+      if (eventCompanyId && eventCompanyId !== currentCompanyId) {
+        return;
+      }
+
+      fetchRoutes({ silent: true });
+    };
+
+    socket.on("cobertura-modificada", refreshPlanning);
+    socket.on("visita-actualizada", refreshPlanning);
+    socket.on("route-status-changed", refreshPlanning);
+
+    socket.on("connect_error", (socketError) => {
+      console.error("❌ Socket.IO mapa:", socketError?.message || socketError);
+    });
+
+    return () => {
+      socket.off("cobertura-modificada", refreshPlanning);
+      socket.off("visita-actualizada", refreshPlanning);
+      socket.off("route-status-changed", refreshPlanning);
+      socket.disconnect();
+    };
+  }, [fetchRoutes, user?.company_id, user?.id]);
 
   const filteredRoutes =
     useMemo(
       () => routes,
       [routes],
     );
+
+  const routesWithCoordinates =
+    useMemo(
+      () =>
+        filteredRoutes.filter((route) =>
+          Boolean(getCoordinates(route)),
+        ),
+      [filteredRoutes],
+    );
+
+  const routesWithoutCoordinates =
+    filteredRoutes.length -
+    routesWithCoordinates.length;
 
   const stats = useMemo(
     () => ({
@@ -1517,6 +1638,32 @@ const RoutePlanningMap = () => {
           </div>
         </section>
 
+        {filteredRoutes.length > 0 && routesWithCoordinates.length === 0 && (
+          <section className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+              <FiAlertTriangle size={18} />
+            </span>
+
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-amber-700">
+                Las planificaciones fueron encontradas
+              </p>
+
+              <p className="mt-1 text-sm font-semibold text-amber-700">
+                Hay {filteredRoutes.length} ruta(s), pero ninguna tiene latitud y longitud válidas. Revisa los campos lat y lng del local.
+              </p>
+            </div>
+          </section>
+        )}
+
+        {routesWithoutCoordinates > 0 && routesWithCoordinates.length > 0 && (
+          <section className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3">
+            <p className="text-[9px] font-black uppercase tracking-[0.12em] text-amber-700">
+              {routesWithoutCoordinates} ruta(s) no aparecen como marcador porque el local no tiene coordenadas válidas.
+            </p>
+          </section>
+        )}
+
         <section className="flex min-h-0 flex-col gap-6 lg:h-[720px] lg:flex-row">
           <div className="relative isolate h-[55vh] min-h-[420px] w-full overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm lg:h-full lg:min-h-0 lg:flex-[2] xl:flex-[3]">
             <div
@@ -1570,7 +1717,7 @@ const RoutePlanningMap = () => {
                     </p>
 
                     <p className="mt-1 text-sm font-bold text-slate-700">
-                      No hay rutas planificadas para el día actual.
+                      No hay rutas visibles para este supervisor en el día actual.
                     </p>
                   </div>
                 </div>
