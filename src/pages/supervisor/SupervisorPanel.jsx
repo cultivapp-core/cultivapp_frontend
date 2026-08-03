@@ -24,7 +24,7 @@ const DonutChart = ({ stats }) => {
 
   if (total === 0) {
     return (
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50 flex items-center justify-center h-48 md:h-56 text-[10px] font-black text-gray-400 uppercase tracking-widest italic">
+      <div className="cultivapp-card flex h-48 items-center justify-center p-6 text-[10px] font-black uppercase tracking-[0.16em] text-gray-400 md:h-56">
         Sin visitas planificadas
       </div>
     );
@@ -43,7 +43,7 @@ const DonutChart = ({ stats }) => {
   const sOff = fOff - fDash;
 
   return (
-    <div className="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-gray-50 flex items-center justify-center h-48 md:h-56 relative w-full">
+    <div className="cultivapp-card relative flex h-48 w-full items-center justify-center p-6 md:h-56 md:p-8">
       <svg className="w-40 h-40 transform -rotate-90" viewBox="0 0 40 40">
         <circle cx="20" cy="20" r="15.6" fill="transparent" stroke="#ef4444" strokeWidth="5" strokeDasharray={`${pDash} ${circumference - pDash}`} strokeDashoffset={pOff} className="transition-all duration-500 cursor-pointer hover:opacity-80">
           <title>Sala Pendiente: {p} salas ({pPct}%)</title>
@@ -234,8 +234,8 @@ const SupervisorPanel = () => {
   });
 
   const cards = [
-    { id: 'sin_ruta', label: "Locales fuera Ruta", value: stats?.sin_asignacion || 0, color: "bg-gray-900", text: "text-gray-900", icon: <FiXCircle size={24} /> },
-    { id: 'locales', label: "Locales Asignados", value: stats?.total_locales || 0, color: "bg-blue-600", text: "text-blue-600", icon: <FiMapPin size={24} /> },
+    { id: 'sin_ruta', label: "Salas fuera Ruta", value: stats?.sin_asignacion || 0, color: "bg-gray-900", text: "text-gray-900", icon: <FiXCircle size={24} /> },
+    { id: 'locales', label: "Salas Asignados", value: stats?.total_locales || 0, color: "bg-blue-600", text: "text-blue-600", icon: <FiMapPin size={24} /> },
     // 🚩 AQUÍ ESTÁ LA MAGIA: Quitamos el "|| stats?.total_usuarios". 
     // Obligamos a que muestre estrictamente el conteo (aunque sea 0).
     { id: 'usuarios', label: "Usuarios Asignados", value: stats?.total_usuarios || 0, color: "bg-indigo-600", text: "text-indigo-600", icon: <FiUsers size={24} /> },
@@ -243,9 +243,6 @@ const SupervisorPanel = () => {
     { id: 'en_curso', label: "Visitas en Curso", value: stats?.atendiendo || 0, color: "bg-yellow-400", text: "text-yellow-500", icon: <FiClock size={24} /> },
     { id: 'finalizadas', label: "Visitas Finalizadas", value: stats?.atendido || 0, color: "bg-[#87be00]", text: "text-[#87be00]", icon: <FiCheckCircle size={24} /> },
   ];
-
-  const topCardsList = cards.slice(0, 3);
-  const bottomCardsList = cards.slice(3, 6);
 
   const p = stats?.no_atendido || 0;
   const e = stats?.atendiendo || 0;
@@ -432,16 +429,21 @@ const SupervisorPanel = () => {
   }
 
   return (
-    <div className="min-h-full space-y-8 bg-slate-50/70 px-4 pb-24 pt-6 font-[Outfit] sm:px-6 md:pb-20 lg:px-8">
+    <div className="cultivapp-shell min-h-full pb-24 pt-5 font-[Outfit] md:pb-20 md:pt-6">
+      <div className="mx-auto max-w-[1600px] space-y-7 px-3 sm:px-5 md:space-y-8 md:px-8">
       
       {/* ENCABEZADO UNIFICADO CON ADMIN Y ROOT */}
-      <header className="flex flex-col gap-5 border-b border-slate-200/80 pb-6 sm:flex-row sm:items-center sm:justify-between">
+      <header className="cultivapp-header flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
             <FiShield size={22} />
           </div>
 
           <div className="min-w-0">
+            <p className="mb-2 text-[9px] font-black uppercase tracking-[0.24em] text-[#87be00]">
+              Cultivapp · Supervisión
+            </p>
+
             <h1 className="truncate text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
               Resumen de supervisión
             </h1>
@@ -458,7 +460,7 @@ const SupervisorPanel = () => {
           </div>
         </div>
 
-        <div className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:w-auto">
+        <div className="cultivapp-user-chip flex w-full items-center gap-3 px-4 py-3 sm:w-auto">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-[#87be00]">
             <FiShield size={16} />
           </div>
@@ -480,7 +482,7 @@ const SupervisorPanel = () => {
         <div className="lg:col-span-5 flex flex-col gap-6">
           <DonutChart stats={stats} />
 
-          <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50 space-y-3">
+          <div className="cultivapp-card space-y-3 p-5 sm:p-6">
             <p className="mb-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Resumen de Salas / Visitas</p>
             
             <div className="flex items-center justify-between">
@@ -529,65 +531,101 @@ const SupervisorPanel = () => {
           </div>
         </div>
 
-        {/* COLUMNA DERECHA: Tarjetas de Estado apiladas en 2 filas */}
-        <div className="lg:col-span-7 flex flex-col gap-6 justify-center">
-          
-          {/* Fila 1 */}
-          <div className="grid grid-cols-3 gap-3 md:gap-6">
-            {topCardsList.map((card, idx) => (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                key={card.id}
+        {/* COLUMNA DERECHA: indicadores operacionales */}
+        <div className="flex flex-col justify-center gap-4 lg:col-span-7">
+          <div className="mb-1 flex items-center justify-between gap-3 px-1">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">
+                Indicadores operacionales
+              </p>
+
+              <p className="mt-1 text-xs font-semibold text-gray-400">
+                Selecciona una tarjeta para filtrar el detalle.
+              </p>
+            </div>
+
+            {activeFilter && (
+              <button
+                type="button"
                 onClick={() =>
-                  
-                  setActiveFilter(activeFilter === card.id ? null : card.id)}
-                className={`bg-white p-4 md:p-6 rounded-2xl md:rounded-[2.5rem] shadow-sm border cursor-pointer relative overflow-hidden group transition-all duration-300 ${activeFilter === card.id ? 'border-gray-300 shadow-md ring-4 ring-gray-50 scale-[1.02]' : 'border-gray-50 hover:shadow-lg'}`}
+                  setActiveFilter(null)
+                }
+                className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-[8px] font-black uppercase tracking-[0.12em] text-gray-500 shadow-sm transition-all hover:border-[#87be00]/30 hover:text-[#679300]"
               >
-                <div className={`absolute top-0 left-0 h-full w-1.5 md:w-2 ${card.color}`}></div>
-                <div className="flex justify-between items-start mb-2 md:mb-4">
-                  <div className={`p-2 md:p-3 rounded-xl md:rounded-2xl ${card.color} text-white shadow-lg transition-transform ${activeFilter === card.id ? 'scale-110' : 'group-hover:scale-110'}`}>
-                    <div className="scale-75 md:scale-100 origin-top-left">{card.icon}</div>
-                  </div>
-                </div>
-                <h3 className="text-3xl md:text-5xl font-black text-gray-900 mb-1 tracking-tighter">{card.value}</h3>
-                <p className="text-[9px] font-black uppercase leading-tight text-slate-700 md:text-[11px]">{card.label}</p>
-                
-                {activeFilter === card.id && (
-                  <div className="absolute top-4 right-4 w-3 h-3 bg-gray-900 rounded-full animate-pulse"></div>
-                )}
-              </motion.div>
-            ))}
+                Quitar filtro
+              </button>
+            )}
           </div>
 
-          {/* Fila 2 */}
-          <div className="grid grid-cols-3 gap-3 md:gap-6">
-            {bottomCardsList.map((card, idx) => (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: (idx + 3) * 0.1 }}
-                key={card.id}
-                onClick={() => setActiveFilter(activeFilter === card.id ? null : card.id)}
-                className={`bg-white p-4 md:p-6 rounded-2xl md:rounded-[2.5rem] shadow-sm border cursor-pointer relative overflow-hidden group transition-all duration-300 ${activeFilter === card.id ? 'border-gray-300 shadow-md ring-4 ring-gray-50 scale-[1.02]' : 'border-gray-50 hover:shadow-lg'}`}
-              >
-                <div className={`absolute top-0 left-0 h-full w-1.5 md:w-2 ${card.color}`}></div>
-                <div className="flex justify-between items-start mb-2 md:mb-4">
-                  <div className={`p-2 md:p-3 rounded-xl md:rounded-2xl ${card.color} text-white shadow-lg transition-transform ${activeFilter === card.id ? 'scale-110' : 'group-hover:scale-110'}`}>
-                    <div className="scale-75 md:scale-100 origin-top-left">{card.icon}</div>
-                  </div>
-                </div>
-                <h3 className="text-3xl md:text-5xl font-black text-gray-900 mb-1 tracking-tighter">{card.value}</h3>
-                <p className="text-[9px] font-black uppercase leading-tight text-slate-700 md:text-[11px]">{card.label}</p>
-                
-                {activeFilter === card.id && (
-                  <div className="absolute top-4 right-4 w-3 h-3 bg-gray-900 rounded-full animate-pulse"></div>
-                )}
-              </motion.div>
-            ))}
-          </div>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
+            {cards.map(
+              (card, index) => {
+                const isActive =
+                  activeFilter ===
+                  card.id;
 
+                return (
+                  <motion.button
+                    type="button"
+                    initial={{
+                      opacity: 0,
+                      y: 16,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    transition={{
+                      delay:
+                        index *
+                        0.06,
+                    }}
+                    key={card.id}
+                    onClick={() =>
+                      setActiveFilter(
+                        isActive
+                          ? null
+                          : card.id,
+                      )
+                    }
+                    className={`cultivapp-stat-card group relative min-h-[145px] overflow-hidden p-4 text-left sm:min-h-[165px] sm:p-5 ${
+                      isActive
+                        ? "is-active"
+                        : ""
+                    }`}
+                  >
+                    <span
+                      className={`absolute inset-x-0 top-0 h-1.5 ${card.color}`}
+                    />
+
+                    <div className="flex items-start justify-between gap-3">
+                      <span
+                        className={`flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm transition-transform duration-300 group-hover:scale-105 ${card.color}`}
+                      >
+                        {card.icon}
+                      </span>
+
+                      <span
+                        className={`mt-1 h-2.5 w-2.5 rounded-full transition-all ${
+                          isActive
+                            ? "scale-110 bg-[#87be00] shadow-[0_0_0_5px_rgba(135,190,0,0.12)]"
+                            : "bg-gray-200"
+                        }`}
+                      />
+                    </div>
+
+                    <p className="mt-5 text-3xl font-black leading-none tracking-tight text-gray-900 sm:text-4xl">
+                      {card.value}
+                    </p>
+
+                    <p className="mt-2 text-[9px] font-black uppercase leading-tight tracking-[0.12em] text-gray-500 sm:text-[10px]">
+                      {card.label}
+                    </p>
+                  </motion.button>
+                );
+              },
+            )}
+          </div>
         </div>
       </div>
 
@@ -595,7 +633,7 @@ const SupervisorPanel = () => {
       <div className="space-y-4 md:space-y-6 pt-4">
         
         {/* Cabecera, Filtro de Días y Buscador */}
-        <div className="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
+        <div className="cultivapp-toolbar flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
             <div>
                 <h3 className="text-xl font-black tracking-tight text-slate-900 md:text-2xl">
                   {activeFilter === 'sin_ruta' ? 'Locales sin planificación' : 
@@ -656,7 +694,7 @@ const SupervisorPanel = () => {
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ delay: idx * 0.05 }}
                     key={`${u.id}-${idx}`}
-                    className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-3 relative overflow-hidden"
+                    className="cultivapp-mobile-card relative flex flex-col gap-3 overflow-hidden p-4"
                   >
                     <div className="absolute top-0 left-0 h-full w-1.5 bg-indigo-600"></div>
                     <div className="flex items-center gap-3 pl-2">
@@ -696,7 +734,7 @@ const SupervisorPanel = () => {
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ delay: idx * 0.05 }}
                     key={`${item.id}-${idx}`}
-                    className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-2 relative overflow-hidden"
+                    className="cultivapp-mobile-card relative flex flex-col gap-2 overflow-hidden p-4"
                   >
                     <div className="absolute top-0 left-0 h-full w-1.5 bg-blue-600"></div>
                     <span className="bg-gray-100 px-2 py-1 rounded-md text-[9px] font-black text-gray-600 uppercase w-max tracking-wider">
@@ -726,7 +764,7 @@ const SupervisorPanel = () => {
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ delay: idx * 0.05 }}
                     key={`${item.id}-${idx}`}
-                    className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4 relative overflow-hidden"
+                    className="cultivapp-mobile-card relative flex flex-col gap-4 overflow-hidden p-4"
                   >
                     {item.estado !== 'sin_planificacion' && (
                       <div className="absolute top-4 right-4">
@@ -843,11 +881,11 @@ const SupervisorPanel = () => {
         </div>
 
         {/* VISTA DESKTOP: Tabla Dinámica */}
-        <div className="hidden overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm md:block">
+        <div className="cultivapp-table-card hidden overflow-hidden md:block">
           <div className="overflow-x-auto">
             {activeFilter === 'usuarios' ? (
               /* TABLA DE USUARIOS ASIGNADOS */
-              <table className="w-full text-left border-collapse">
+              <table className="cultivapp-table w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-gray-50/50">
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/3">Mercaderista / Usuario</th>
@@ -906,7 +944,7 @@ const SupervisorPanel = () => {
               </table>
             ) : activeFilter === 'locales' ? (
               /* TABLA DE LOCALES ASIGNADOS SIMPLIFICADA */
-              <table className="w-full text-left border-collapse">
+              <table className="cultivapp-table w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-gray-50/50">
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/4">Código de Local</th>
@@ -966,7 +1004,7 @@ const SupervisorPanel = () => {
             ) : activeFilter === 'sin_ruta' ? (
               /* 🚩 NUEVA TABLA: LOCALES SIN PLANIFICACIÓN
                  Columnas: Cadena - Local - Dirección - Estado / Sala - Acción (Crear Plan) */
-              <table className="w-full text-left border-collapse">
+              <table className="cultivapp-table w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-gray-50/50">
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/5">Cadena</th>
@@ -1039,7 +1077,7 @@ const SupervisorPanel = () => {
               </table>
             ) : (
               /* TABLA ESTÁNDAR PARA RUTAS */
-              <table className="w-full text-left border-collapse">
+              <table className="cultivapp-table w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-gray-50/50">
                     <th className="px-8 py-7 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 w-1/4">Mercaderista</th>
@@ -1203,8 +1241,22 @@ const SupervisorPanel = () => {
       {/* Modal de Justificación */}
       {isPlanModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-[2rem] p-6 w-full max-w-sm shadow-2xl animate-in zoom-in duration-300">
-            <h3 className="text-sm font-black uppercase tracking-widest mb-4">Motivo de Planificación</h3>
+          <div className="cultivapp-modal w-full max-w-sm p-6 shadow-2xl animate-in zoom-in duration-300">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+                <FiCalendar size={18} />
+              </span>
+
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#87be00]">
+                  Cultivapp · Planificación
+                </p>
+
+                <h3 className="mt-1 text-sm font-black uppercase tracking-wider text-gray-900">
+                  Motivo de planificación
+                </h3>
+              </div>
+            </div>
             
             <div className="space-y-2 mb-6">
               {REASONS.map((r) => (
@@ -1249,6 +1301,159 @@ const SupervisorPanel = () => {
         </div>
       )}
 
+      <style>{`
+        .cultivapp-shell {
+          background:
+            radial-gradient(
+              circle at top right,
+              rgb(135 190 0 / 0.08),
+              transparent 28rem
+            ),
+            linear-gradient(
+              180deg,
+              rgb(249 250 251) 0%,
+              rgb(248 250 252) 100%
+            );
+          color: rgb(17 24 39);
+        }
+
+        .cultivapp-header,
+        .cultivapp-card,
+        .cultivapp-stat-card,
+        .cultivapp-toolbar,
+        .cultivapp-mobile-card,
+        .cultivapp-table-card,
+        .cultivapp-modal,
+        .cultivapp-user-chip {
+          border: 1px solid rgb(243 244 246);
+          background: rgb(255 255 255);
+          box-shadow:
+            0 1px 2px rgb(15 23 42 / 0.03),
+            0 12px 32px rgb(15 23 42 / 0.045);
+        }
+
+        .cultivapp-header {
+          position: relative;
+          overflow: hidden;
+          border-radius: 2rem;
+          padding: 1.25rem;
+        }
+
+        .cultivapp-header::before {
+          position: absolute;
+          inset: 0 0 auto;
+          height: 4px;
+          content: "";
+          background: linear-gradient(
+            90deg,
+            #87be00,
+            #a8d72b
+          );
+        }
+
+        .cultivapp-card {
+          border-radius: 2rem;
+        }
+
+        .cultivapp-user-chip {
+          border-radius: 1.15rem;
+          box-shadow:
+            0 1px 2px rgb(15 23 42 / 0.025),
+            0 8px 20px rgb(15 23 42 / 0.035);
+        }
+
+        .cultivapp-stat-card {
+          border-radius: 1.6rem;
+          transition:
+            transform 180ms ease,
+            border-color 180ms ease,
+            box-shadow 180ms ease;
+        }
+
+        .cultivapp-stat-card:hover {
+          transform: translateY(-2px);
+          border-color: rgb(135 190 0 / 0.3);
+          box-shadow:
+            0 2px 4px rgb(15 23 42 / 0.04),
+            0 18px 34px rgb(15 23 42 / 0.07);
+        }
+
+        .cultivapp-stat-card.is-active {
+          border-color: rgb(135 190 0 / 0.48);
+          background:
+            linear-gradient(
+              145deg,
+              rgb(255 255 255),
+              rgb(135 190 0 / 0.055)
+            );
+          box-shadow:
+            0 0 0 4px rgb(135 190 0 / 0.09),
+            0 18px 36px rgb(15 23 42 / 0.08);
+        }
+
+        .cultivapp-toolbar {
+          border-radius: 1.75rem;
+          padding: 1rem;
+        }
+
+        .cultivapp-mobile-card {
+          border-radius: 1.65rem;
+        }
+
+        .cultivapp-table-card {
+          border-radius: 2rem;
+        }
+
+        .cultivapp-table thead tr {
+          background: rgb(17 24 39) !important;
+        }
+
+        .cultivapp-table thead th {
+          color: rgb(255 255 255 / 0.72) !important;
+          border-bottom: 1px solid rgb(255 255 255 / 0.08);
+        }
+
+        .cultivapp-table tbody tr {
+          transition:
+            background-color 160ms ease,
+            transform 160ms ease;
+        }
+
+        .cultivapp-table tbody tr:hover {
+          background: rgb(135 190 0 / 0.045) !important;
+        }
+
+        .cultivapp-modal {
+          overflow: hidden;
+          border-radius: 2rem;
+        }
+
+        @media (min-width: 640px) {
+          .cultivapp-header {
+            padding: 1.5rem 1.75rem;
+          }
+
+          .cultivapp-toolbar {
+            padding: 1.25rem;
+          }
+        }
+
+        @media (max-width: 639px) {
+          .cultivapp-header,
+          .cultivapp-card,
+          .cultivapp-table-card,
+          .cultivapp-modal {
+            border-radius: 1.5rem;
+          }
+
+          .cultivapp-toolbar,
+          .cultivapp-mobile-card,
+          .cultivapp-stat-card {
+            border-radius: 1.35rem;
+          }
+        }
+      `}</style>
+      </div>
     </div>
   );
 };
