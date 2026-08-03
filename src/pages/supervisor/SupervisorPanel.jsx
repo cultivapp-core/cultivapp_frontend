@@ -108,23 +108,87 @@ const SupervisorPanel = () => {
       console.log("🟢 Supervisor conectado a Socket.IO:", socket.id);
     });
 
-    socket.on("cobertura-modificada", (data) => {
-      const sameCompany =
-        String(data?.company_id || "") === String(user?.company_id || "");
+    const refreshDashboard =
+      () => {
+        queryClient.invalidateQueries({
+          queryKey:
+            ["dashboard-stats"],
+          exact:
+            false,
+        });
 
-      if (!sameCompany) return;
+        queryClient.refetchQueries({
+          queryKey:
+            ["dashboard-stats"],
+          exact:
+            false,
+          type:
+            "active",
+        });
+      };
 
-      queryClient.invalidateQueries({
-        queryKey: ["dashboard-stats"],
-      });
-    });
+    socket.on(
+      "cobertura-modificada",
+      (data) => {
+        const eventCompanyId =
+          String(
+            data?.company_id ||
+            "",
+          );
+
+        const currentCompanyId =
+          String(
+            user?.company_id ||
+            "",
+          );
+
+        /*
+         * Algunos eventos históricos no incluyen company_id.
+         * En ese caso se refresca igualmente el dashboard activo.
+         */
+        if (
+          eventCompanyId &&
+          eventCompanyId !==
+            currentCompanyId
+        ) {
+          return;
+        }
+
+        refreshDashboard();
+      },
+    );
+
+    /*
+     * Compatibilidad con otros nombres de evento que pueden
+     * utilizarse en endpoints futuros del flujo.
+     */
+    socket.on(
+      "visita-actualizada",
+      refreshDashboard,
+    );
+
+    socket.on(
+      "route-status-changed",
+      refreshDashboard,
+    );
 
     socket.on("connect_error", (socketError) => {
       console.error("🔴 Error Socket.IO Supervisor:", socketError.message);
     });
 
     return () => {
-      socket.off("cobertura-modificada");
+      socket.off(
+        "cobertura-modificada",
+      );
+
+      socket.off(
+        "visita-actualizada",
+      );
+
+      socket.off(
+        "route-status-changed",
+      );
+
       socket.disconnect();
     };
   }, [user?.company_id, queryClient]);
@@ -140,8 +204,31 @@ const SupervisorPanel = () => {
       });
       return response.data || response;
     },
-    enabled: !!user?.id,
-    refetchInterval: 10000,
+    enabled:
+      Boolean(
+        user?.id &&
+        user?.company_id,
+      ),
+
+    /*
+     * WebSocket entrega la actualización inmediata.
+     * El polling es un respaldo por si el navegador pierde
+     * temporalmente la conexión de Socket.IO.
+     */
+    staleTime:
+      0,
+
+    refetchInterval:
+      5000,
+
+    refetchIntervalInBackground:
+      true,
+
+    refetchOnWindowFocus:
+      true,
+
+    refetchOnReconnect:
+      true,
   });
 
 
@@ -235,7 +322,7 @@ const SupervisorPanel = () => {
 
   const cards = [
     { id: 'sin_ruta', label: "Salas fuera Ruta", value: stats?.sin_asignacion || 0, color: "bg-gray-900", text: "text-gray-900", icon: <FiXCircle size={24} /> },
-    { id: 'locales', label: "Salas Asignados", value: stats?.total_locales || 0, color: "bg-blue-600", text: "text-blue-600", icon: <FiMapPin size={24} /> },
+    { id: 'locales', label: "Salas Asignadas", value: stats?.total_locales || 0, color: "bg-blue-600", text: "text-blue-600", icon: <FiMapPin size={24} /> },
     // 🚩 AQUÍ ESTÁ LA MAGIA: Quitamos el "|| stats?.total_usuarios". 
     // Obligamos a que muestre estrictamente el conteo (aunque sea 0).
     { id: 'usuarios', label: "Usuarios Asignados", value: stats?.total_usuarios || 0, color: "bg-indigo-600", text: "text-indigo-600", icon: <FiUsers size={24} /> },
