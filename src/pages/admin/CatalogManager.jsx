@@ -18,6 +18,15 @@ import * as XLSX from "xlsx";
 const CULTIVA_COMPANY_ID =
   "0e342e01-d213-4353-b210-39a12ac335cf";
 
+const DEFAULT_CATALOG_NAME =
+  "Otro";
+
+const DEFAULT_PRODUCT_NAME =
+  "Otro";
+
+const DEFAULT_ALTERNATIVE_EAN =
+  "ALTERNATIVO";
+
 const EMPTY_PRODUCT = {
   name: "",
   barcode: "",
@@ -49,6 +58,523 @@ const buildCompanyQuery = (
         companyId,
       )}`
     : "";
+
+const normalizeCatalogName = (
+  value,
+) =>
+  String(value || "")
+    .trim()
+    .toLocaleLowerCase(
+      "es",
+    );
+
+const findOtherCatalogItem = (
+  items,
+) =>
+  (
+    Array.isArray(items)
+      ? items
+      : []
+  ).find(
+    (item) =>
+      normalizeCatalogName(
+        item?.name,
+      ) ===
+      normalizeCatalogName(
+        DEFAULT_CATALOG_NAME,
+      ),
+  ) ||
+  null;
+
+const findDefaultProduct = (
+  products,
+) =>
+  (
+    Array.isArray(products)
+      ? products
+      : []
+  ).find(
+    (product) =>
+      normalizeCatalogName(
+        product?.name,
+      ) ===
+      normalizeCatalogName(
+        DEFAULT_PRODUCT_NAME,
+      ),
+  ) ||
+  null;
+
+const getCreatedEntity = (
+  response,
+) => {
+  const candidates = [
+    response?.data,
+    response?.item,
+    response?.brand,
+    response?.category,
+    response?.product,
+    response,
+  ];
+
+  return (
+    candidates.find(
+      (candidate) =>
+        candidate &&
+        typeof candidate ===
+          "object" &&
+        !Array.isArray(
+          candidate,
+        ) &&
+        (
+          candidate.id ||
+          candidate.name
+        ),
+    ) ||
+    null
+  );
+};
+
+const isDuplicateCatalogError = (
+  error,
+) => {
+  const status =
+    error?.response?.status ??
+    error?.status ??
+    null;
+
+  const message =
+    String(
+      error?.response?.data?.message ||
+      error?.data?.message ||
+      error?.message ||
+      "",
+    ).toLocaleLowerCase(
+      "es",
+    );
+
+  return (
+    status === 409 ||
+    message.includes(
+      "ya existe",
+    ) ||
+    message.includes(
+      "duplic",
+    ) ||
+    message.includes(
+      "unique",
+    )
+  );
+};
+
+const buildAlternativeBarcode = (
+  companyId,
+  products = [],
+) => {
+  const companyKey =
+    String(
+      companyId ||
+      "EMPRESA",
+    )
+      .replace(
+        /[^a-zA-Z0-9]/g,
+        "",
+      )
+      .slice(
+        0,
+        8,
+      )
+      .toUpperCase() ||
+    "EMPRESA";
+
+  const baseBarcode =
+    `${DEFAULT_ALTERNATIVE_EAN}-${companyKey}`;
+
+  const usedBarcodes =
+    new Set(
+      (
+        Array.isArray(products)
+          ? products
+          : []
+      )
+        .map(
+          (product) =>
+            String(
+              product?.barcode ||
+              "",
+            )
+              .trim()
+              .toUpperCase(),
+        )
+        .filter(Boolean),
+    );
+
+  if (
+    !usedBarcodes.has(
+      baseBarcode,
+    )
+  ) {
+    return baseBarcode;
+  }
+
+  let counter = 2;
+
+  while (
+    usedBarcodes.has(
+      `${baseBarcode}-${counter}`,
+    )
+  ) {
+    counter += 1;
+  }
+
+  return `${baseBarcode}-${counter}`;
+};
+
+const defaultCatalogPromises =
+  new Map();
+
+const fetchCompanyCatalog =
+  async (
+    companyId,
+  ) => {
+    const query =
+      buildCompanyQuery(
+        companyId,
+      );
+
+    const [
+      brandsResponse,
+      categoriesResponse,
+      productsResponse,
+    ] = await Promise.all([
+      api.get(
+        `/routes/brands${query}`,
+      ),
+      api.get(
+        `/routes/categories${query}`,
+      ),
+      api.get(
+        `/routes/products${query}`,
+      ),
+    ]);
+
+    return {
+      brands:
+        getResponseData(
+          brandsResponse,
+          [],
+        ),
+
+      categories:
+        getResponseData(
+          categoriesResponse,
+          [],
+        ),
+
+      products:
+        getResponseData(
+          productsResponse,
+          [],
+        ),
+    };
+  };
+
+const ensureDefaultCatalogForCompany =
+  async (
+    companyId,
+    initialCatalog = null,
+  ) => {
+    const normalizedCompanyId =
+      String(
+        companyId ||
+        "",
+      ).trim();
+
+    if (!normalizedCompanyId) {
+      return false;
+    }
+
+    if (
+      defaultCatalogPromises.has(
+        normalizedCompanyId,
+      )
+    ) {
+      return defaultCatalogPromises.get(
+        normalizedCompanyId,
+      );
+    }
+
+    const promise =
+      (async () => {
+        const query =
+          buildCompanyQuery(
+            normalizedCompanyId,
+          );
+
+        let catalog =
+          initialCatalog ||
+          await fetchCompanyCatalog(
+            normalizedCompanyId,
+          );
+
+        let brands =
+          Array.isArray(
+            catalog?.brands,
+          )
+            ? catalog.brands
+            : [];
+
+        let categories =
+          Array.isArray(
+            catalog?.categories,
+          )
+            ? catalog.categories
+            : [];
+
+        let products =
+          Array.isArray(
+            catalog?.products,
+          )
+            ? catalog.products
+            : [];
+
+        let defaultBrand =
+          findOtherCatalogItem(
+            brands,
+          );
+
+        let defaultCategory =
+          findOtherCatalogItem(
+            categories,
+          );
+
+        let changed = false;
+
+        if (!defaultBrand) {
+          try {
+            const response =
+              await api.post(
+                `/routes/brands${query}`,
+                {
+                  name:
+                    DEFAULT_CATALOG_NAME,
+                  company_id:
+                    normalizedCompanyId,
+                },
+              );
+
+            defaultBrand =
+              getCreatedEntity(
+                response,
+              );
+
+            changed = true;
+          } catch (error) {
+            if (
+              !isDuplicateCatalogError(
+                error,
+              )
+            ) {
+              throw error;
+            }
+          }
+        }
+
+        if (!defaultCategory) {
+          try {
+            const response =
+              await api.post(
+                `/routes/categories${query}`,
+                {
+                  name:
+                    DEFAULT_CATALOG_NAME,
+                  company_id:
+                    normalizedCompanyId,
+                },
+              );
+
+            defaultCategory =
+              getCreatedEntity(
+                response,
+              );
+
+            changed = true;
+          } catch (error) {
+            if (
+              !isDuplicateCatalogError(
+                error,
+              )
+            ) {
+              throw error;
+            }
+          }
+        }
+
+        if (
+          !defaultBrand?.id ||
+          !defaultCategory?.id
+        ) {
+          const refreshed =
+            await fetchCompanyCatalog(
+              normalizedCompanyId,
+            );
+
+          brands =
+            refreshed.brands;
+
+          categories =
+            refreshed.categories;
+
+          products =
+            refreshed.products;
+
+          defaultBrand =
+            findOtherCatalogItem(
+              brands,
+            );
+
+          defaultCategory =
+            findOtherCatalogItem(
+              categories,
+            );
+        }
+
+        const refreshedCatalog =
+          await fetchCompanyCatalog(
+            normalizedCompanyId,
+          );
+
+        brands =
+          refreshedCatalog.brands;
+
+        categories =
+          refreshedCatalog.categories;
+
+        products =
+          refreshedCatalog.products;
+
+        defaultBrand =
+          findOtherCatalogItem(
+            brands,
+          );
+
+        defaultCategory =
+          findOtherCatalogItem(
+            categories,
+          );
+
+        let defaultProduct =
+          findDefaultProduct(
+            products,
+          );
+
+        if (
+          !defaultProduct &&
+          defaultBrand?.id &&
+          defaultCategory?.id
+        ) {
+          const createDefaultProduct =
+            async (
+              barcode,
+            ) =>
+              api.post(
+                `/routes/products${query}`,
+                {
+                  name:
+                    DEFAULT_PRODUCT_NAME,
+
+                  barcode,
+
+                  brand_id:
+                    defaultBrand.id,
+
+                  category_id:
+                    defaultCategory.id,
+
+                  company_id:
+                    normalizedCompanyId,
+                },
+              );
+
+          const alternativeBarcode =
+            buildAlternativeBarcode(
+              normalizedCompanyId,
+              products,
+            );
+
+          try {
+            const response =
+              await createDefaultProduct(
+                alternativeBarcode,
+              );
+
+            defaultProduct =
+              getCreatedEntity(
+                response,
+              );
+
+            changed = true;
+
+            console.log(
+              "✅ Producto predeterminado creado:",
+              {
+                company_id:
+                  normalizedCompanyId,
+                product:
+                  DEFAULT_PRODUCT_NAME,
+                barcode:
+                  alternativeBarcode,
+              },
+            );
+          } catch (error) {
+            if (
+              !isDuplicateCatalogError(
+                error,
+              )
+            ) {
+              throw error;
+            }
+
+            const afterDuplicate =
+              await fetchCompanyCatalog(
+                normalizedCompanyId,
+              );
+
+            defaultProduct =
+              findDefaultProduct(
+                afterDuplicate.products,
+              );
+
+            if (!defaultProduct) {
+              const retryBarcode =
+                `${alternativeBarcode}-${Date.now()
+                  .toString(36)
+                  .toUpperCase()}`;
+
+              await createDefaultProduct(
+                retryBarcode,
+              );
+
+              changed = true;
+            }
+          }
+        }
+
+        return changed;
+      })();
+
+    defaultCatalogPromises.set(
+      normalizedCompanyId,
+      promise,
+    );
+
+    try {
+      return await promise;
+    } finally {
+      defaultCatalogPromises.delete(
+        normalizedCompanyId,
+      );
+    }
+  };
 
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message ||
@@ -318,65 +844,182 @@ const CatalogManager = () => {
   const loadData =
     useCallback(async () => {
       try {
-        setLoading(true);
+        setLoading(
+          true,
+        );
 
         const query =
           buildCompanyQuery(
             effectiveCompanyId,
           );
 
-        const [
-          resBrands,
-          resProducts,
-          resCategories,
-        ] = await Promise.all([
-          api.get(
-            `/routes/brands${query}`,
-          ),
-          api.get(
-            `/routes/products${query}`,
-          ),
-          api.get(
-            `/routes/categories${query}`,
-          ),
-        ]);
-
-        const brandData =
-          scopeItemsToCompany(
-            getResponseData(
+        const readCatalog =
+          async () => {
+            const [
               resBrands,
-              [],
-            ),
-          );
-
-        const productData =
-          scopeItemsToCompany(
-            getResponseData(
               resProducts,
-              [],
-            ),
-          );
-
-        const categoryData =
-          scopeItemsToCompany(
-            getResponseData(
               resCategories,
-              [],
-            ),
+            ] = await Promise.all([
+              api.get(
+                `/routes/brands${query}`,
+              ),
+              api.get(
+                `/routes/products${query}`,
+              ),
+              api.get(
+                `/routes/categories${query}`,
+              ),
+            ]);
+
+            return {
+              brands:
+                scopeItemsToCompany(
+                  getResponseData(
+                    resBrands,
+                    [],
+                  ),
+                ),
+
+              products:
+                scopeItemsToCompany(
+                  getResponseData(
+                    resProducts,
+                    [],
+                  ),
+                ),
+
+              categories:
+                scopeItemsToCompany(
+                  getResponseData(
+                    resCategories,
+                    [],
+                  ),
+                ),
+            };
+          };
+
+        let catalog =
+          await readCatalog();
+
+        let changed = false;
+
+        const targetCompanyIds =
+          effectiveCompanyId
+            ? [
+                String(
+                  effectiveCompanyId,
+                ),
+              ]
+            : (
+                canManageCompanies
+                  ? companies
+                      .map(
+                        (company) =>
+                          company?.id,
+                      )
+                      .filter(Boolean)
+                      .map(String)
+                  : []
+              );
+
+        for (
+          const companyId of
+          targetCompanyIds
+        ) {
+          const isSingleCompany =
+            Boolean(
+              effectiveCompanyId,
+            );
+
+          const hasCompanyFields =
+            [
+              ...catalog.brands,
+              ...catalog.categories,
+              ...catalog.products,
+            ].some(
+              (item) =>
+                item?.company_id,
+            );
+
+          const initialCatalog =
+            isSingleCompany
+              ? catalog
+              : (
+                  hasCompanyFields
+                    ? {
+                        brands:
+                          catalog.brands.filter(
+                            (item) =>
+                              String(
+                                item.company_id,
+                              ) ===
+                              String(
+                                companyId,
+                              ),
+                          ),
+
+                        categories:
+                          catalog.categories.filter(
+                            (item) =>
+                              String(
+                                item.company_id,
+                              ) ===
+                              String(
+                                companyId,
+                              ),
+                          ),
+
+                        products:
+                          catalog.products.filter(
+                            (item) =>
+                              String(
+                                item.company_id,
+                              ) ===
+                              String(
+                                companyId,
+                              ),
+                          ),
+                      }
+                    : null
+                );
+
+          const companyChanged =
+            await ensureDefaultCatalogForCompany(
+              companyId,
+              initialCatalog,
+            );
+
+          changed =
+            changed ||
+            companyChanged;
+        }
+
+        if (changed) {
+          catalog =
+            await readCatalog();
+
+          toast.success(
+            "Se garantizó Marca Otro, Categoría Otro y Producto Otro con EAN alternativo.",
           );
+        }
 
         setBrands(
-          brandData,
+          catalog.brands,
         );
 
         setProducts(
-          productData,
+          catalog.products,
         );
 
         setCategories(
-          categoryData,
+          catalog.categories,
         );
       } catch (error) {
+        console.error(
+          "Error sincronizando catálogo:",
+          error,
+        );
+
         toast.error(
           getErrorMessage(
             error,
@@ -384,9 +1027,13 @@ const CatalogManager = () => {
           ),
         );
       } finally {
-        setLoading(false);
+        setLoading(
+          false,
+        );
       }
     }, [
+      canManageCompanies,
+      companies,
       effectiveCompanyId,
     ]);
 
@@ -462,12 +1109,21 @@ const CatalogManager = () => {
             [],
           );
 
-          return;
+          return {
+            brands:
+              [],
+            categories:
+              [],
+          };
         }
 
         try {
           setProductOptionsLoading(
             true,
+          );
+
+          await ensureDefaultCatalogForCompany(
+            companyId,
           );
 
           const query =
@@ -538,6 +1194,13 @@ const CatalogManager = () => {
           setProductModalCategories(
             filteredCategories,
           );
+
+          return {
+            brands:
+              filteredBrands,
+            categories:
+              filteredCategories,
+          };
         } catch (error) {
           console.error(
             "Error cargando opciones del producto:",
@@ -558,6 +1221,13 @@ const CatalogManager = () => {
               "No se pudieron cargar las marcas y categorías de la empresa",
             ),
           );
+
+          return {
+            brands:
+              [],
+            categories:
+              [],
+          };
         } finally {
           setProductOptionsLoading(
             false,
@@ -568,10 +1238,20 @@ const CatalogManager = () => {
     );
 
   const brandNameById = (id) =>
-    brands.find((item) => String(item.id) === String(id))?.name || "Sin marca";
+    brands.find(
+      (item) =>
+        String(item.id) ===
+        String(id),
+    )?.name ||
+    DEFAULT_CATALOG_NAME;
 
   const categoryNameById = (id) =>
-    categories.find((item) => String(item.id) === String(id))?.name || "Sin categoría";
+    categories.find(
+      (item) =>
+        String(item.id) ===
+        String(id),
+    )?.name ||
+    DEFAULT_CATALOG_NAME;
 
   const filteredProducts = useMemo(() => {
     const search = searchTerm.trim().toLowerCase();
@@ -649,16 +1329,52 @@ const CatalogManager = () => {
 
       setProductData({
         ...EMPTY_PRODUCT,
+
         company_id:
           defaultCompanyId,
+
+        barcode:
+          buildAlternativeBarcode(
+            defaultCompanyId,
+            products,
+          ),
       });
 
       setProductModal(
         true,
       );
 
-      await loadProductOptions(
-        defaultCompanyId,
+      const options =
+        await loadProductOptions(
+          defaultCompanyId,
+        );
+
+      const defaultBrand =
+        findOtherCatalogItem(
+          options.brands,
+        ) ||
+        options.brands[0] ||
+        null;
+
+      const defaultCategory =
+        findOtherCatalogItem(
+          options.categories,
+        ) ||
+        options.categories[0] ||
+        null;
+
+      setProductData(
+        (current) => ({
+          ...current,
+
+          brand_id:
+            defaultBrand?.id ||
+            "",
+
+          category_id:
+            defaultCategory?.id ||
+            "",
+        }),
       );
     };
 
@@ -691,8 +1407,33 @@ const CatalogManager = () => {
         true,
       );
 
-      await loadProductOptions(
-        companyId,
+      const options =
+        await loadProductOptions(
+          companyId,
+        );
+
+      setProductData(
+        (current) => ({
+          ...current,
+
+          brand_id:
+            current.brand_id ||
+            findOtherCatalogItem(
+              options.brands,
+            )?.id ||
+            options.brands[0]
+              ?.id ||
+            "",
+
+          category_id:
+            current.category_id ||
+            findOtherCatalogItem(
+              options.categories,
+            )?.id ||
+            options.categories[0]
+              ?.id ||
+            "",
+        }),
       );
     };
 
@@ -846,16 +1587,35 @@ const CatalogManager = () => {
     }
 
     const payload = {
-      name: productData.name.trim(),
-      barcode: productData.barcode.trim(),
-      brand_id: productData.brand_id,
-      category_id: productData.category_id,
+      name:
+        productData.name.trim(),
+
+      barcode:
+        productData.barcode.trim() ||
+        buildAlternativeBarcode(
+          companyId,
+          products,
+        ),
+
+      brand_id:
+        productData.brand_id,
+
+      category_id:
+        productData.category_id,
+
       company_id:
         companyId,
     };
 
-    if (!payload.name || !payload.barcode || !payload.brand_id || !payload.category_id) {
-      toast.error("Completa todos los campos del producto");
+    if (
+      !payload.name ||
+      !payload.brand_id ||
+      !payload.category_id
+    ) {
+      toast.error(
+        "Completa el nombre, la marca y la categoría del producto",
+      );
+
       return;
     }
 
@@ -1443,17 +2203,49 @@ const CatalogManager = () => {
                   setProductData(
                     (current) => ({
                       ...current,
+
                       company_id:
                         companyId,
+
+                      barcode:
+                        buildAlternativeBarcode(
+                          companyId,
+                          products,
+                        ),
+
                       brand_id:
                         "",
+
                       category_id:
                         "",
                     }),
                   );
 
-                  await loadProductOptions(
-                    companyId,
+                  const options =
+                    await loadProductOptions(
+                      companyId,
+                    );
+
+                  setProductData(
+                    (current) => ({
+                      ...current,
+
+                      brand_id:
+                        findOtherCatalogItem(
+                          options.brands,
+                        )?.id ||
+                        options.brands[0]
+                          ?.id ||
+                        "",
+
+                      category_id:
+                        findOtherCatalogItem(
+                          options.categories,
+                        )?.id ||
+                        options.categories[0]
+                          ?.id ||
+                        "",
+                    }),
                   );
                 }}
               />
@@ -1468,7 +2260,27 @@ const CatalogManager = () => {
             )}
 
             <InputField label="Nombre" value={productData.name} onChange={(value) => setProductData({ ...productData, name: value })} />
-            <InputField label="EAN" value={productData.barcode} onChange={(value) => setProductData({ ...productData, barcode: value })} />
+            <InputField
+              label="EAN"
+              value={
+                productData.barcode
+              }
+              placeholder={
+                productData.company_id
+                  ? buildAlternativeBarcode(
+                      productData.company_id,
+                      products,
+                    )
+                  : DEFAULT_ALTERNATIVE_EAN
+              }
+              onChange={(value) =>
+                setProductData({
+                  ...productData,
+                  barcode:
+                    value,
+                })
+              }
+            />
 
             <div className="grid md:grid-cols-2 gap-4">
               <SelectField
@@ -1914,7 +2726,7 @@ const BulkProductsHelpModal = ({ onClose }) => {
                 </h3>
 
                 <p className="mt-2 text-[11px] font-semibold leading-relaxed text-gray-600">
-                  Las marcas y categorías escritas en el Excel deben existir en el catálogo y coincidir exactamente con sus nombres.
+                  Cada empresa tendrá automáticamente la marca “Otro”, la categoría “Otro” y el producto “Otro” con un EAN alternativo único por empresa.
                 </p>
               </div>
             </div>
@@ -2173,10 +2985,29 @@ const Modal = ({ title, onClose, children }) => (
   </div>
 );
 
-const InputField = ({ label, value, onChange }) => (
+const InputField = ({
+  label,
+  value,
+  onChange,
+  placeholder = "",
+}) => (
   <label className="block">
-    <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.14em] text-gray-500">{label}</span>
-    <input value={value} onChange={(event) => onChange(event.target.value)} className="catalog-input w-full" />
+    <span className="mb-2 block text-[9px] font-black uppercase tracking-[0.14em] text-gray-500">
+      {label}
+    </span>
+
+    <input
+      value={value}
+      placeholder={
+        placeholder
+      }
+      onChange={(event) =>
+        onChange(
+          event.target.value,
+        )
+      }
+      className="catalog-input w-full"
+    />
   </label>
 );
 
