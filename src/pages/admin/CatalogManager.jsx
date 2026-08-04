@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -17,6 +16,9 @@ import * as XLSX from "xlsx";
 
 const CULTIVA_COMPANY_ID =
   "0e342e01-d213-4353-b210-39a12ac335cf";
+
+const CULTIVA_BULK_ADMIN_USER_ID =
+  "97c6f210-eccc-48fe-b6b9-65dcf5968857";
 
 const DEFAULT_CATALOG_NAME =
   "Otro";
@@ -627,9 +629,35 @@ const CatalogManager = () => {
     normalizedRole ===
       "ROOT";
 
+  const normalizedCurrentUserId =
+    String(
+      currentUser?.id ||
+      currentUser?.user_id ||
+      "",
+    ).trim();
+
+  /*
+   * Selector de empresa exclusivo para la carga masiva:
+   * - todos los ROOT;
+   * - ADMIN_CLIENTE Cultiva con el ID autorizado.
+   */
+  const isCultivaBulkAdmin =
+    normalizedRole ===
+      "ADMIN_CLIENTE" &&
+    normalizedCurrentUserId ===
+      CULTIVA_BULK_ADMIN_USER_ID;
+
+  const canSelectBulkCompany =
+    isRoot ||
+    isCultivaBulkAdmin;
+
   const canManageCompanies =
     isRoot ||
     isCultivaAdmin;
+
+  const canAccessCompanyList =
+    canManageCompanies ||
+    canSelectBulkCompany;
 
   const [companies, setCompanies] =
     useState([]);
@@ -659,6 +687,7 @@ const CatalogManager = () => {
   const [selectedCategory, setSelectedCategory] = useState("");
 
   const [productModal, setProductModal] = useState(false);
+  const [bulkUploadModal, setBulkUploadModal] = useState(false);
   const [bulkHelpModal, setBulkHelpModal] = useState(false);
   const [brandModal, setBrandModal] = useState(false);
   const [categoryModal, setCategoryModal] = useState(false);
@@ -698,8 +727,6 @@ const CatalogManager = () => {
   ] = useState("");
 
   const [deleteTarget, setDeleteTarget] = useState(null);
-
-  const fileInputRef = useRef(null);
 
   const selectedCompany =
     useMemo(
@@ -782,7 +809,7 @@ const CatalogManager = () => {
 
   const loadCompanies =
     useCallback(async () => {
-      if (!canManageCompanies) {
+      if (!canAccessCompanyList) {
         setCompanies([]);
         return;
       }
@@ -838,7 +865,7 @@ const CatalogManager = () => {
         );
       }
     }, [
-      canManageCompanies,
+      canAccessCompanyList,
     ]);
 
   const loadData =
@@ -1510,60 +1537,124 @@ const CatalogManager = () => {
   };
 
   const openBulkUpload = () => {
-    const companyId =
-      requireTargetCompany(
-        "realizar una carga masiva",
-      );
-
-    if (!companyId) {
-      return;
-    }
-
-    fileInputRef.current?.click();
+    setBulkUploadModal(
+      true,
+    );
   };
 
-  const handleBulkUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const companyId =
-      requireTargetCompany(
-        "realizar una carga masiva",
-      );
-
-    if (!companyId) {
-      if (
-        fileInputRef.current
-      ) {
-        fileInputRef.current.value =
-          "";
-      }
-
+  const closeBulkUpload = () => {
+    if (bulkLoading) {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("excel", file);
+    setBulkUploadModal(
+      false,
+    );
+  };
+
+  const handleBulkUpload = async ({
+    file,
+    companyId,
+  }) => {
+    const targetCompanyId =
+      String(
+        companyId ||
+        (
+          !canSelectBulkCompany
+            ? currentUser?.company_id
+            : ""
+        ) ||
+        "",
+      ).trim();
+
+    if (!targetCompanyId) {
+      throw new Error(
+        "Selecciona la empresa donde se realizará la carga masiva.",
+      );
+    }
+
+    if (!file) {
+      throw new Error(
+        "Selecciona un archivo para realizar la carga masiva.",
+      );
+    }
+
+    const formData =
+      new FormData();
+
+    /*
+     * Se mantiene el nombre esperado por el backend:
+     * upload.single("excel")
+     */
+    formData.append(
+      "excel",
+      file,
+    );
+
     formData.append(
       "company_id",
-      companyId,
+      targetCompanyId,
     );
 
     try {
-      setBulkLoading(true);
-      const response = await api.post(
-        `/routes/products/bulk${buildCompanyQuery(
-          companyId,
-        )}`,
-        formData,
+      setBulkLoading(
+        true,
       );
-      toast.success(response?.message || "Carga masiva completada");
+
+      /*
+       * No agregar Content-Type manualmente.
+       * Axios y el navegador generan el boundary.
+       */
+      const response =
+        await api.post(
+          `/routes/products/bulk${buildCompanyQuery(
+            targetCompanyId,
+          )}`,
+          formData,
+        );
+
+      const successMessage =
+        "Productos cargados correctamente.";
+
+      toast.success(
+        successMessage,
+      );
+
       await loadData();
+
+      /*
+       * Cerrar el modal únicamente cuando la carga
+       * masiva finaliza correctamente.
+       */
+      setBulkUploadModal(
+        false,
+      );
+
+      return {
+        ...(response &&
+        typeof response ===
+          "object"
+          ? response
+          : {}),
+        message:
+          successMessage,
+      };
     } catch (error) {
-      toast.error(getErrorMessage(error, "Error al procesar la carga masiva"));
+      const message =
+        getErrorMessage(
+          error,
+          "Error al procesar la carga masiva",
+        );
+
+      toast.error(
+        message,
+      );
+
+      throw error;
     } finally {
-      setBulkLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setBulkLoading(
+        false,
+      );
     }
   };
 
@@ -1918,14 +2009,6 @@ const CatalogManager = () => {
             </div>
 
             <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 xl:flex xl:w-auto">
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleBulkUpload}
-              />
-
               <div className="group relative shrink-0">
                 <button
                   type="button"
@@ -2173,6 +2256,40 @@ const CatalogManager = () => {
           </div>
         </section>
       </div>
+
+      {bulkUploadModal && (
+        <BulkProductsUploadModal
+          companies={
+            companies
+          }
+          canSelectCompany={
+            canSelectBulkCompany
+          }
+          defaultCompanyId={
+            canSelectBulkCompany
+              ? (
+                  selectedCompanyId ||
+                  (
+                    isCultivaBulkAdmin
+                      ? currentUser?.company_id ||
+                        ""
+                      : ""
+                  )
+                )
+              : currentUser?.company_id ||
+                ""
+          }
+          loading={
+            bulkLoading
+          }
+          onClose={
+            closeBulkUpload
+          }
+          onUpload={
+            handleBulkUpload
+          }
+        />
+      )}
 
       {bulkHelpModal && (
         <BulkProductsHelpModal
@@ -2539,6 +2656,433 @@ const CatalogManager = () => {
           opacity: 0.55;
         }
       `}</style>
+    </div>
+  );
+};
+
+const BulkProductsUploadModal = ({
+  companies = [],
+  canSelectCompany = false,
+  defaultCompanyId = "",
+  loading = false,
+  onClose,
+  onUpload,
+}) => {
+  const [
+    companyId,
+    setCompanyId,
+  ] = useState(
+    defaultCompanyId ||
+    "",
+  );
+
+  const [file, setFile] =
+    useState(null);
+
+  const [error, setError] =
+    useState("");
+
+  const [result, setResult] =
+    useState(null);
+
+  useEffect(() => {
+    setCompanyId(
+      defaultCompanyId ||
+      "",
+    );
+  }, [
+    defaultCompanyId,
+  ]);
+
+  const selectedCompany =
+    useMemo(
+      () =>
+        companies.find(
+          (company) =>
+            String(
+              company?.id ||
+              "",
+            ) ===
+            String(
+              companyId ||
+              "",
+            ),
+        ) ||
+        null,
+      [
+        companies,
+        companyId,
+      ],
+    );
+
+  const handleFileChange = (
+    event,
+  ) => {
+    const selectedFile =
+      event.target.files?.[0];
+
+    if (!selectedFile) {
+      return;
+    }
+
+    const extension =
+      selectedFile.name
+        .slice(
+          selectedFile.name
+            .lastIndexOf(
+              ".",
+            ),
+        )
+        .toLowerCase();
+
+    const allowedExtensions = [
+      ".xlsx",
+      ".xls",
+      ".csv",
+    ];
+
+    if (
+      !allowedExtensions.includes(
+        extension,
+      )
+    ) {
+      setFile(
+        null,
+      );
+
+      setError(
+        "El archivo debe ser .xlsx, .xls o .csv.",
+      );
+
+      event.target.value =
+        "";
+
+      return;
+    }
+
+    setFile(
+      selectedFile,
+    );
+
+    setError(
+      "",
+    );
+
+    setResult(
+      null,
+    );
+  };
+
+  const handleSubmit = async (
+    event,
+  ) => {
+    event.preventDefault();
+
+    setError(
+      "",
+    );
+
+    setResult(
+      null,
+    );
+
+    if (!companyId) {
+      setError(
+        "Selecciona la empresa donde se cargarán los productos.",
+      );
+
+      return;
+    }
+
+    if (!file) {
+      setError(
+        "Selecciona el archivo de carga masiva.",
+      );
+
+      return;
+    }
+
+    try {
+      const response =
+        await onUpload({
+          file,
+          companyId,
+        });
+
+      setResult(
+        response ||
+        {
+          message:
+            "Productos cargados correctamente.",
+        },
+      );
+    } catch (uploadError) {
+      setError(
+        getErrorMessage(
+          uploadError,
+          "Error al procesar la carga masiva",
+        ),
+      );
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#111111]/70 p-3 font-[Outfit] backdrop-blur-sm sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bulk-products-upload-title"
+      onClick={
+        loading
+          ? undefined
+          : onClose
+      }
+    >
+      <div
+        className="relative w-full max-w-lg overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl"
+        onClick={(event) =>
+          event.stopPropagation()
+        }
+      >
+        <div className="absolute inset-x-0 top-0 h-1 bg-[#87be00]" />
+
+        <header className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-5 sm:px-7 sm:py-6">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#87be00]/10 text-[#87be00]">
+              <FiUploadCloud
+                size={20}
+              />
+            </span>
+
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#87be00]">
+                Productos SKU
+              </p>
+
+              <h2
+                id="bulk-products-upload-title"
+                className="mt-1 text-xl font-black leading-none tracking-tight text-gray-900 sm:text-2xl"
+              >
+                Carga masiva
+              </h2>
+
+              <p className="mt-2 text-[10px] font-semibold leading-relaxed text-gray-400">
+                Selecciona la empresa y el archivo que contiene los productos.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+            disabled={
+              loading
+            }
+            aria-label="Cerrar carga masiva"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FiX
+              size={18}
+            />
+          </button>
+        </header>
+
+        <form
+          onSubmit={
+            handleSubmit
+          }
+          className="space-y-5 px-5 py-5 sm:px-7 sm:py-6"
+        >
+          {error && (
+            <div className="flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-red-600">
+              <FiAlertCircle
+                className="mt-0.5 shrink-0"
+                size={15}
+              />
+
+              <p className="text-[10px] font-black uppercase leading-relaxed tracking-[0.08em]">
+                {error}
+              </p>
+            </div>
+          )}
+
+          {result && (
+            <div className="flex items-start gap-3 rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-green-700">
+              <FiCheckCircle
+                className="mt-0.5 shrink-0"
+                size={16}
+              />
+
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em]">
+                  Productos cargados
+                </p>
+
+                <p className="mt-1 text-[10px] font-semibold leading-relaxed text-green-600">
+                  {result?.message ||
+                    "Productos cargados correctamente."}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {canSelectCompany ? (
+            <CompanySelectField
+              value={
+                companyId
+              }
+              companies={
+                companies
+              }
+              disabled={
+                loading
+              }
+              description="Todos los productos del archivo quedarán asociados a la empresa seleccionada."
+              onChange={(
+                value,
+              ) => {
+                setCompanyId(
+                  value,
+                );
+
+                setError(
+                  "",
+                );
+
+                setResult(
+                  null,
+                );
+              }}
+            />
+          ) : (
+            <div className="flex items-center gap-3 rounded-2xl border border-[#87be00]/20 bg-[#87be00]/5 px-4 py-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
+                <FiBriefcase
+                  size={16}
+                />
+              </span>
+
+              <div className="min-w-0">
+                <p className="text-[8px] font-black uppercase tracking-[0.14em] text-[#679300]">
+                  Empresa de la carga
+                </p>
+
+                <p className="mt-0.5 truncate text-xs font-black text-gray-800">
+                  {selectedCompany?.name ||
+                    selectedCompany?.nombre ||
+                    "Tu empresa"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <label
+            className={`relative flex min-h-[190px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[1.7rem] border-2 border-dashed p-6 text-center transition-all ${
+              file
+                ? "border-[#87be00] bg-[#87be00]/5"
+                : "border-gray-200 bg-gray-50 hover:border-[#87be00]/50 hover:bg-[#87be00]/5"
+            } ${
+              loading
+                ? "pointer-events-none opacity-60"
+                : ""
+            }`}
+          >
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={
+                handleFileChange
+              }
+              disabled={
+                loading
+              }
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+
+            <span
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                file
+                  ? "bg-[#87be00] text-white"
+                  : "bg-white text-gray-400 shadow-sm"
+              }`}
+            >
+              {file ? (
+                <FiCheckCircle
+                  size={22}
+                />
+              ) : (
+                <FiUploadCloud
+                  size={22}
+                />
+              )}
+            </span>
+
+            <div className="max-w-full">
+              <p className="break-all text-xs font-black text-gray-800">
+                {file
+                  ? file.name
+                  : "Seleccionar archivo"}
+              </p>
+
+              <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400">
+                Formatos .xlsx, .xls o .csv
+              </p>
+            </div>
+          </label>
+
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-blue-600">
+              Columnas esperadas
+            </p>
+
+            <p className="mt-1 text-[10px] font-semibold leading-relaxed text-blue-500">
+              Nombre, Ean, Marca y Categoria.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={
+                onClose
+              }
+              disabled={
+                loading
+              }
+              className="order-2 rounded-2xl border border-gray-100 bg-gray-50 px-5 py-3.5 text-[9px] font-black uppercase tracking-[0.15em] text-gray-500 transition-all hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
+            >
+              Cerrar
+            </button>
+
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                !file ||
+                !companyId
+              }
+              className="order-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-900 px-5 py-3.5 text-[9px] font-black uppercase tracking-[0.15em] text-white shadow-lg shadow-gray-200 transition-all hover:bg-[#87be00] disabled:cursor-not-allowed disabled:opacity-50 sm:order-2"
+            >
+              {loading ? (
+                <FiRotateCw
+                  className="animate-spin"
+                  size={15}
+                />
+              ) : (
+                <FiUploadCloud
+                  size={15}
+                />
+              )}
+
+              {loading
+                ? "Procesando..."
+                : "Iniciar carga"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
