@@ -9,6 +9,186 @@ mapboxgl.accessToken = MAPBOX_TOKEN;
 
 const POLL_INTERVAL = 15000;
 
+const PLANNING_ENDPOINT =
+  "/routes/planning/supervisor";
+
+const LIVE_MONITORING_ENDPOINT =
+  "/routes/monitoring/supervisor-live";
+
+const CHILE_TIME_ZONE =
+  "America/Santiago";
+
+const getTodayChileDateKey = () => {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone:
+          CHILE_TIME_ZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      },
+    ).formatToParts(
+      new Date(),
+    );
+
+  const values =
+    Object.fromEntries(
+      parts.map((part) => [
+        part.type,
+        part.value,
+      ]),
+    );
+
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const extractArray = (
+  response,
+) => {
+  const payload =
+    response?.data ??
+    response;
+
+  if (
+    Array.isArray(
+      payload,
+    )
+  ) {
+    return payload;
+  }
+
+  const candidates = [
+    payload?.data,
+    payload?.routes,
+    payload?.planning,
+    payload?.rows,
+    payload?.items,
+    payload?.result,
+  ];
+
+  return (
+    candidates.find(
+      Array.isArray,
+    ) ||
+    []
+  );
+};
+
+const normalizePlanningStatus = (
+  route,
+) => {
+  const rawStatus =
+    String(
+      route?.status ||
+      route?.estado ||
+      "",
+    )
+      .trim()
+      .toUpperCase();
+
+  if (
+    route?.check_out ||
+    route?.hora_termino ||
+    [
+      "COMPLETED",
+      "FINALIZADO",
+      "FINALIZADA",
+      "FINISHED",
+      "CLOSED",
+    ].includes(
+      rawStatus,
+    )
+  ) {
+    return "COMPLETED";
+  }
+
+  if (
+    route?.check_in ||
+    route?.hora_inicio ||
+    [
+      "IN_PROGRESS",
+      "EN_CURSO",
+      "EN PROCESO",
+      "STARTED",
+      "ACTIVE",
+    ].includes(
+      rawStatus,
+    )
+  ) {
+    return "IN_PROGRESS";
+  }
+
+  return "PENDING";
+};
+
+const normalizePlanningRoute = (
+  route,
+  requestedDate,
+) => ({
+  ...route,
+
+  id:
+    route?.id ||
+    route?.route_id ||
+    route?.visit_number,
+
+  route_id:
+    route?.route_id ||
+    route?.id ||
+    route?.visit_number,
+
+  visit_date:
+    route?.visit_date ||
+    route?.fecha ||
+    route?.fecha_planificada ||
+    requestedDate,
+
+  lat:
+    route?.lat ??
+    route?.latitude ??
+    route?.local_lat ??
+    route?.local?.lat ??
+    null,
+
+  lng:
+    route?.lng ??
+    route?.longitude ??
+    route?.local_lng ??
+    route?.local?.lng ??
+    null,
+
+  cadena:
+    route?.cadena ||
+    route?.local_nombre ||
+    route?.nombre_local ||
+    route?.local?.cadena ||
+    "Local sin nombre",
+
+  codigo_local:
+    route?.codigo_local ||
+    route?.local?.codigo_local ||
+    "S/N",
+
+  usuario_nombre:
+    route?.usuario_nombre ||
+    route?.mercaderista ||
+    route?.user_name ||
+    route?.usuario ||
+    "Sin asignar",
+
+  usuario_email:
+    route?.usuario_email ||
+    route?.email ||
+    "",
+
+  status:
+    normalizePlanningStatus(
+      route,
+    ),
+});
+
 // 🎨 Colores de Estados de Planificación
 const statusToColor = (status) => {
   switch (status) {
@@ -108,26 +288,127 @@ const GpsMonitor = () => {
   const toggleExpandLocaleUser = (key) => setExpandedLocaleUsers(prev => ({ ...prev, [key]: !prev[key] }));
   const toggleExpandUser       = (key) => setExpandedUsers(prev => ({ ...prev, [key]: !prev[key] }));
 
-  // Obtener ambas datas simultáneamente
+  // Obtener planificación y monitoreo vivo del supervisor/viewer.
   const fetchData = useCallback(async (silent = false) => {
     try {
-      if (!silent) setLoading(true);
-      else setRefreshing(true);
+      if (!silent) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
 
-      const [planningRes, liveRes] = await Promise.all([
-        api.get("/planning/data"),
-        api.get("/routes/monitoring/live")
-      ]);
+      const requestedDate =
+        getTodayChileDateKey();
 
-      setRoutes(Array.isArray(planningRes) ? planningRes : (Array.isArray(planningRes.data) ? planningRes.data : []));
-      
-      const liveData = Array.isArray(liveRes) ? liveRes : (Array.isArray(liveRes.data) ? liveRes.data : []);
-      const active = liveData.filter((r) => !isNaN(parseFloat(r.lat_in)) && !isNaN(parseFloat(r.lng_in)));
-      setActiveRoutes(active);
+      const planningQuery =
+        new URLSearchParams({
+          dateFrom:
+            requestedDate,
+          dateTo:
+            requestedDate,
+          _ts:
+            String(
+              Date.now(),
+            ),
+        }).toString();
 
-      setLastUpdated(new Date());
+      const [
+        planningRes,
+        liveRes,
+      ] =
+        await Promise.all([
+          api.get(
+            `${PLANNING_ENDPOINT}?${planningQuery}`,
+          ),
+
+          api.get(
+            `${LIVE_MONITORING_ENDPOINT}?_ts=${Date.now()}`,
+          ),
+        ]);
+
+      /*
+       * getSupervisorPlanning responde:
+       * {
+       *   success: true,
+       *   data: [...]
+       * }
+       *
+       * Dependiendo de apiClient, esa respuesta puede venir
+       * directamente o dentro de response.data.
+       */
+      const planningRows =
+        extractArray(
+          planningRes,
+        );
+
+      const normalizedRoutes =
+        planningRows.map(
+          (route) =>
+            normalizePlanningRoute(
+              route,
+              requestedDate,
+            ),
+        );
+
+      setRoutes(
+        normalizedRoutes,
+      );
+
+      const liveData =
+        extractArray(
+          liveRes,
+        );
+
+      const active =
+        liveData.filter(
+          (route) =>
+            Number.isFinite(
+              Number.parseFloat(
+                route?.lat_in,
+              ),
+            ) &&
+            Number.isFinite(
+              Number.parseFloat(
+                route?.lng_in,
+              ),
+            ),
+        );
+
+      setActiveRoutes(
+        active,
+      );
+
+      setLastUpdated(
+        new Date(),
+      );
+
+      console.log(
+        "📍 Monitoreo supervisor actualizado:",
+        {
+          planning_endpoint:
+            PLANNING_ENDPOINT,
+          live_endpoint:
+            LIVE_MONITORING_ENDPOINT,
+          date:
+            requestedDate,
+          rutas:
+            normalizedRoutes.length,
+          usuarios_activos:
+            active.length,
+          primera_ruta:
+            normalizedRoutes[0] ||
+            null,
+          planning_response:
+            planningRes,
+        },
+      );
     } catch (error) {
-      console.error("Error cargando el dashboard vivo:", error);
+      console.error(
+        "❌ Error cargando el dashboard vivo:",
+        error?.response?.data ||
+          error?.data ||
+          error,
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -183,7 +464,11 @@ const GpsMonitor = () => {
         routes: {}
       };
       const userKey = route.usuario_nombre || 'Sin usuario';
-      if (!acc[localKey].routes[userKey]) acc[acc[localKey].routes[userKey] = []];
+
+      if (!acc[localKey].routes[userKey]) {
+        acc[localKey].routes[userKey] = [];
+      }
+
       acc[localKey].routes[userKey].push(route);
       return acc;
     }, {});
@@ -250,10 +535,28 @@ const GpsMonitor = () => {
 
       // ── PINTAR RUTAS PLANIFICADAS FILTRADAS ──
       filteredRoutes.forEach((route) => {
-        if (!route.lat || !route.lng) return;
+        const lng =
+          Number.parseFloat(
+            route?.lng,
+          );
+
+        const lat =
+          Number.parseFloat(
+            route?.lat,
+          );
+
+        if (
+          !Number.isFinite(
+            lat,
+          ) ||
+          !Number.isFinite(
+            lng,
+          )
+        ) {
+          return;
+        }
+
         hasCoords = true;
-        const lng = parseFloat(route.lng);
-        const lat = parseFloat(route.lat);
         
         // Wrapper neutro para Mapbox (mantiene la georreferencia intacta)
         const el = document.createElement("div");
@@ -366,10 +669,45 @@ const GpsMonitor = () => {
   }, [filteredRoutes, activeRoutes]);
 
   const flyToRoute = (route) => {
-    if (!map.current || !route.lat || !route.lng) return;
-    setSelectedRoute(route);
-    if (window.innerWidth < 1024) setPanelOpen(false);
-    map.current.flyTo({ center: [parseFloat(route.lng), parseFloat(route.lat)], zoom: 14, duration: 1200 });
+    const lng =
+      Number.parseFloat(
+        route?.lng,
+      );
+
+    const lat =
+      Number.parseFloat(
+        route?.lat,
+      );
+
+    if (
+      !map.current ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
+      return;
+    }
+
+    setSelectedRoute(
+      route,
+    );
+
+    if (
+      window.innerWidth <
+      1024
+    ) {
+      setPanelOpen(
+        false,
+      );
+    }
+
+    map.current.flyTo({
+      center: [
+        lng,
+        lat,
+      ],
+      zoom: 14,
+      duration: 1200,
+    });
   };
 
   const formatLastUpdated = (date) => {
