@@ -1474,19 +1474,12 @@ const AdminRoutes = () => {
       return;
     }
 
-    const representativeRouteId =
-      groupToDelete.id ||
-      groupToDelete.route_ids?.find(Boolean) ||
-      groupToDelete.scheduled_items?.find(
-        (item) => item?.route_id,
-      )?.route_id ||
-      Object.values(
-        groupToDelete.route_ids_by_user || {},
-      ).find(Boolean);
+    // Se obtienen TODOS los IDs de las rutas/asignaciones pertenecientes al grupo
+    const routeIdsToDelete = groupToDelete.route_ids || [];
 
-    if (!representativeRouteId) {
+    if (routeIdsToDelete.length === 0) {
       toast.error(
-        "No fue posible identificar la planificación.",
+        "No fue posible identificar las planificaciones a eliminar.",
       );
       setGroupToDelete(null);
       return;
@@ -1514,11 +1507,13 @@ const AdminRoutes = () => {
       }
 
       const query = params.toString();
+      const queryString = query ? `?${query}` : "";
 
-      await api.delete(
-        `/routes/${representativeRouteId}${
-          query ? `?${query}` : ""
-        }`,
+      // Ejecutar la eliminación de todas las rutas del grupo en paralelo
+      await Promise.all(
+        routeIdsToDelete.map(id => 
+          api.delete(`/routes/${id}${queryString}`)
+        )
       );
 
       toast.success(
