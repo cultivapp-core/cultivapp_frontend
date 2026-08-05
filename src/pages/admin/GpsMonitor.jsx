@@ -171,6 +171,12 @@ const normalizePlanningRoute = (
     route?.local?.codigo_local ||
     "S/N",
 
+  direccion:
+    route?.direccion ||
+    route?.address ||
+    route?.local?.direccion ||
+    "Sin dirección",
+
   usuario_nombre:
     route?.usuario_nombre ||
     route?.mercaderista ||
@@ -460,6 +466,10 @@ const GpsMonitor = () => {
       if (!acc[localKey]) acc[localKey] = {
         cadena: route.cadena,
         comuna: route.comuna,
+        direccion:
+          route.direccion ||
+          route.comuna ||
+          "Sin dirección",
         codigo: route.codigo_local,
         routes: {}
       };
@@ -910,8 +920,26 @@ const GpsMonitor = () => {
                                             <button key={idx} onClick={() => flyToRoute(route)} className={`w-full text-left px-3 py-2.5 rounded-xl transition-all group flex items-start gap-3 ${selectedRoute === route ? 'bg-[#5c9200]/5 ring-1 ring-[#5c9200]/20' : 'hover:bg-gray-50'}`}>
                                               <span className="w-2 h-2 rounded-full block mt-1 shrink-0" style={{ backgroundColor: statusToColor(route.status) }} />
                                               <div className="flex-1 min-w-0">
-                                                <p className="text-[9px] font-black uppercase italic truncate text-gray-700 group-hover:text-[#5c9200] transition-colors leading-none mb-0.5">{route.cadena || 'Sin nombre'}</p>
-                                                <span className={`mt-1 inline-flex items-center text-[7px] font-black uppercase px-2 py-0.5 rounded-lg border ${statusBg(route.status)}`}>{statusLabel(route.status)}</span>
+                                                <p className="text-[9px] font-black uppercase italic truncate text-gray-700 group-hover:text-[#5c9200] transition-colors leading-none mb-0.5">
+                                                  {route.cadena || "Sin nombre"}
+                                                </p>
+
+                                                <p className="mt-1 flex items-start gap-1 text-[8px] font-bold normal-case leading-relaxed text-gray-400">
+                                                  <FiMapPin
+                                                    size={10}
+                                                    className="mt-0.5 shrink-0 text-[#5c9200]"
+                                                  />
+
+                                                  <span className="line-clamp-2">
+                                                    {route.direccion ||
+                                                      route.comuna ||
+                                                      "Sin dirección"}
+                                                  </span>
+                                                </p>
+
+                                                <span className={`mt-1.5 inline-flex items-center text-[7px] font-black uppercase px-2 py-0.5 rounded-lg border ${statusBg(route.status)}`}>
+                                                  {statusLabel(route.status)}
+                                                </span>
                                               </div>
                                             </button>
                                           ))}
