@@ -134,6 +134,12 @@ const GPS_STATUS = {
 
 const MAX_CHECK_IN_DISTANCE_METERS = 300;
 
+const USER_HOME_PATH =
+  "/usuario/home";
+
+const GPS_OUT_OF_RANGE_MESSAGE =
+  "No se puede iniciar la visita fuera del rango permitido del GPS.";
+
 const primaryButtonClass =
   "flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-[#87be00] px-5 text-[9px] font-black uppercase tracking-wider text-white shadow-lg shadow-[#87be00]/20 transition hover:bg-[#76a600] active:scale-[0.98] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:active:scale-100";
 
@@ -467,6 +473,103 @@ const getGpsErrorMessage = (
   return (
     error?.message ||
     "No fue posible validar tu ubicación."
+  );
+};
+
+const isGpsRangeError = (
+  source,
+) => {
+  const payload =
+    source?.response?.data ??
+    source?.data ??
+    source ??
+    {};
+
+  const code =
+    String(
+      payload?.code ||
+      payload?.error_code ||
+      source?.code ||
+      "",
+    )
+      .trim()
+      .toUpperCase();
+
+  const message =
+    String(
+      payload?.message ||
+      source?.message ||
+      "",
+    )
+      .trim()
+      .toLowerCase();
+
+  const rawDistance =
+    payload?.distance ??
+    payload?.distance_meters ??
+    payload?.data?.distance ??
+    payload?.data?.distance_meters ??
+    null;
+
+  const distance =
+    Number(
+      rawDistance,
+    );
+
+  const isValid =
+    payload?.isValid ??
+    payload?.is_valid_gps ??
+    payload?.data?.isValid ??
+    payload?.data?.is_valid_gps;
+
+  return (
+    isValid === false ||
+    Number.isFinite(
+      distance,
+    ) ||
+    [
+      "GPS_OUT_OF_RANGE",
+      "OUT_OF_GPS_RANGE",
+      "OUTSIDE_GPS_RANGE",
+      "OUTSIDE_GEOFENCE",
+      "GEOFENCE_ERROR",
+      "DISTANCE_EXCEEDED",
+      "FUERA_DE_RANGO",
+      "FUERA_RANGO_GPS",
+    ].includes(
+      code,
+    ) ||
+    message.includes(
+      "fuera del rango",
+    ) ||
+    message.includes(
+      "fuera de rango",
+    ) ||
+    message.includes(
+      "rango permitido",
+    ) ||
+    message.includes(
+      "distancia máxima",
+    ) ||
+    message.includes(
+      "distancia maxima",
+    ) ||
+    message.includes(
+      "metros del local",
+    ) ||
+    (
+      message.includes(
+        "gps",
+      ) &&
+      (
+        message.includes(
+          "rango",
+        ) ||
+        message.includes(
+          "distancia",
+        )
+      )
+    )
   );
 };
 
@@ -3852,6 +3955,17 @@ const VisitFlow = () => {
               lng_in:
                 longitude,
             },
+            {
+              /*
+               * El backend puede responder 403 cuando el usuario
+               * está fuera del radio GPS. Ese 403 no representa
+               * una sesión vencida ni falta de acceso al módulo.
+               */
+              offlineFallback:
+                false,
+              preserveSessionOnAuthError:
+                true,
+            },
           );
 
         const payload =
@@ -3887,8 +4001,7 @@ const VisitFlow = () => {
 
         if (!isValid) {
           const message =
-            payload?.message ||
-            `Debes estar a un máximo de ${MAX_CHECK_IN_DISTANCE_METERS} metros del local para iniciar la visita.`;
+            GPS_OUT_OF_RANGE_MESSAGE;
 
           setGpsDistance(
             Number.isFinite(
@@ -3906,7 +4019,42 @@ const VisitFlow = () => {
             message,
           );
 
-          toast.error(message);
+          setVisitStarted(
+            false,
+          );
+
+          sessionStorage.removeItem(
+            visitSessionKey,
+          );
+
+          toast.error(
+            message,
+            {
+              id:
+                "gps-out-of-range",
+              duration:
+                5000,
+            },
+          );
+
+          navigate(
+            USER_HOME_PATH,
+            {
+              replace: true,
+              state: {
+                reason:
+                  "GPS_OUT_OF_RANGE",
+                message,
+                distance:
+                  Number.isFinite(
+                    distance,
+                  )
+                    ? distance
+                    : null,
+              },
+            },
+          );
+
           return;
         }
 
@@ -3937,6 +4085,97 @@ const VisitFlow = () => {
           "Ubicación validada. Visita iniciada.",
         );
       } catch (error) {
+        const backendData =
+          error?.response
+            ?.data ??
+          error?.data ??
+          null;
+
+        const rawDistance =
+          backendData
+            ?.distance ??
+          backendData
+            ?.distance_meters ??
+          backendData?.data
+            ?.distance ??
+          backendData?.data
+            ?.distance_meters ??
+          null;
+
+        const distance =
+          Number(
+            rawDistance,
+          );
+
+        /*
+         * El rechazo por radio GPS debe procesarse antes de
+         * revisar errores de autenticación. El apiClient ya no
+         * cerrará la sesión porque el request utiliza
+         * preserveSessionOnAuthError.
+         */
+        if (
+          isGpsRangeError(
+            error,
+          )
+        ) {
+          const message =
+            GPS_OUT_OF_RANGE_MESSAGE;
+
+          setGpsDistance(
+            Number.isFinite(
+              distance,
+            )
+              ? distance
+              : null,
+          );
+
+          setGpsStatus(
+            GPS_STATUS.ERROR,
+          );
+
+          setGpsMessage(
+            message,
+          );
+
+          setVisitStarted(
+            false,
+          );
+
+          sessionStorage.removeItem(
+            visitSessionKey,
+          );
+
+          toast.error(
+            message,
+            {
+              id:
+                "gps-out-of-range",
+              duration:
+                5000,
+            },
+          );
+
+          navigate(
+            USER_HOME_PATH,
+            {
+              replace: true,
+              state: {
+                reason:
+                  "GPS_OUT_OF_RANGE",
+                message,
+                distance:
+                  Number.isFinite(
+                    distance,
+                  )
+                    ? distance
+                    : null,
+              },
+            },
+          );
+
+          return;
+        }
+
         if (
           isSessionExpiredError(
             error,
@@ -3950,24 +4189,6 @@ const VisitFlow = () => {
             error,
           );
         }
-
-        const backendData =
-          error?.response
-            ?.data ??
-          error?.data ??
-          null;
-
-        const rawDistance =
-          backendData
-            ?.distance ??
-          backendData?.data
-            ?.distance_meters ??
-          null;
-
-        const distance =
-          Number(
-            rawDistance,
-          );
 
         const message =
           getGpsErrorMessage(
@@ -3990,9 +4211,13 @@ const VisitFlow = () => {
           message,
         );
 
-        setVisitStarted(false);
+        setVisitStarted(
+          false,
+        );
 
-        toast.error(message);
+        toast.error(
+          message,
+        );
       }
     };
 
