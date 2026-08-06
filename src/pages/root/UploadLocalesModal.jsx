@@ -10,6 +10,27 @@ import {
 import api from "../../api/apiClient";
 import toast from "react-hot-toast";
 
+const CULTIVA_ADMIN_USER_ID =
+  "97c6f210-eccc-48fe-b6b9-65dcf5968857";
+
+const getStoredUser = () => {
+  try {
+    const storedUser =
+      localStorage.getItem("user");
+
+    if (!storedUser) {
+      return null;
+    }
+
+    const parsedUser =
+      JSON.parse(storedUser);
+
+    return parsedUser?.user || parsedUser;
+  } catch {
+    return null;
+  }
+};
+
 const UploadLocalesModal = ({
   isOpen,
   onClose,
@@ -17,8 +38,46 @@ const UploadLocalesModal = ({
   companies = [],
   companyId: autoCompanyId = null
 }) => {
+  const currentUser = getStoredUser();
+
+  const normalizedRole = String(
+    currentUser?.role || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const currentUserId = String(
+    currentUser?.id ||
+      currentUser?.user_id ||
+      ""
+  ).trim();
+
+  const currentUserCompanyId =
+    currentUser?.company_id ||
+    currentUser?.companyId ||
+    "";
+
+  const isRoot =
+    normalizedRole === "ROOT";
+
+  const isCultivaAdmin =
+    currentUserId ===
+      CULTIVA_ADMIN_USER_ID &&
+    [
+      "ADMIN",
+      "ADMIN_CLIENTE"
+    ].includes(normalizedRole);
+
+  const canSelectCompany =
+    isRoot || isCultivaAdmin;
+
+  const assignedCompanyId =
+    autoCompanyId ||
+    currentUserCompanyId ||
+    "";
+
   const [company_id, setCompanyId] = useState(
-    autoCompanyId || ""
+    assignedCompanyId
   );
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -26,17 +85,29 @@ const UploadLocalesModal = ({
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    if (autoCompanyId) {
-      setCompanyId(autoCompanyId);
+    if (canSelectCompany) {
+      if (autoCompanyId) {
+        setCompanyId(autoCompanyId);
+      }
+
+      return;
     }
-  }, [autoCompanyId]);
+
+    setCompanyId(assignedCompanyId);
+  }, [
+    autoCompanyId,
+    assignedCompanyId,
+    canSelectCompany
+  ]);
 
   if (!isOpen) return null;
 
   const resetState = () => {
-    if (!autoCompanyId) {
-      setCompanyId("");
-    }
+    setCompanyId(
+      canSelectCompany
+        ? autoCompanyId || ""
+        : assignedCompanyId
+    );
 
     setFile(null);
     setError("");
@@ -110,34 +181,17 @@ const UploadLocalesModal = ({
 
       const formData = new FormData();
 
-      /*
-       * El nombre "file" debe coincidir con:
-       * upload.single("file")
-       */
       formData.append("file", file);
       formData.append(
         "company_id",
         company_id
       );
 
-      /*
-       * IMPORTANTE:
-       * No establecer manualmente:
-       *
-       * Content-Type: multipart/form-data
-       *
-       * El navegador agregará automáticamente
-       * el boundary requerido por Multer.
-       */
       const data = await api.post(
         "/locales/upload",
         formData
       );
 
-      console.log(
-        "✅ Resultado carga masiva:",
-        data
-      );
 
       setResult(data);
 
@@ -189,7 +243,6 @@ const UploadLocalesModal = ({
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-[Outfit]">
       <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 space-y-6 animate-in zoom-in duration-300">
-        {/* HEADER */}
         <div className="flex justify-between items-center border-b pb-4">
           <div>
             <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight">
@@ -226,7 +279,7 @@ const UploadLocalesModal = ({
             </div>
           )}
 
-          {!autoCompanyId && (
+          {canSelectCompany && (
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-gray-400 ml-2">
                 Asignar a Empresa
@@ -260,7 +313,6 @@ const UploadLocalesModal = ({
             </div>
           )}
 
-          {/* DROPZONE */}
           <div
             className={`relative border-2 border-dashed rounded-[2rem] p-8 transition-all flex flex-col items-center justify-center gap-3 ${
               file
@@ -308,10 +360,8 @@ const UploadLocalesModal = ({
             </div>
           </div>
 
-          {/* RESULTADOS Y ERRORES ESPECÍFICOS */}
           {result && (
             <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
-              {/* ÉXITOS */}
               {result.inserted > 0 && (
                 <div className="bg-green-50 p-4 rounded-2xl border border-green-100 flex items-center gap-3 text-green-700">
                   <FiCheckCircle
@@ -327,7 +377,6 @@ const UploadLocalesModal = ({
                 </div>
               )}
 
-              {/* OMITIDOS */}
               {result.skipped > 0 && (
                 <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-center gap-3 text-blue-700">
                   <FiInfo
@@ -343,7 +392,6 @@ const UploadLocalesModal = ({
                 </div>
               )}
 
-              {/* LISTA DE LOCALES NO INGRESADOS */}
               {result.errors &&
                 result.errors.length >
                   0 && (
