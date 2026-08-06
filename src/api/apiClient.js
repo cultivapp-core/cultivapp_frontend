@@ -318,6 +318,66 @@ const classifyAuthError = ({
   return null;
 };
 
+const isGpsGeofenceResponse = ({
+  endpoint,
+  data,
+  message,
+}) => {
+  const cleanEndpoint =
+    String(
+      endpoint || "",
+    ).toLowerCase();
+
+  if (
+    !cleanEndpoint.includes(
+      "/check-in",
+    )
+  ) {
+    return false;
+  }
+
+  const code =
+    String(
+      data?.code ||
+      data?.error_code ||
+      "",
+    )
+      .trim()
+      .toUpperCase();
+
+  const normalizedMessage =
+    String(
+      message || "",
+    )
+      .trim()
+      .toLowerCase();
+
+  return (
+    code ===
+      "OUTSIDE_GEOFENCE" ||
+    code ===
+      "OUT_OF_GPS_RANGE" ||
+    code ===
+      "GPS_OUT_OF_RANGE" ||
+    data?.isValid ===
+      false ||
+    data?.is_valid_gps ===
+      false ||
+    data?.data
+      ?.is_valid_gps ===
+      false ||
+    normalizedMessage.includes(
+      "fuera del rango",
+    ) ||
+    normalizedMessage.includes(
+      "fuera de rango",
+    ) ||
+    normalizedMessage.includes(
+      "metros del local",
+    )
+  );
+};
+
 const request = async (
   endpoint,
   options = {},
@@ -406,13 +466,28 @@ const request = async (
       );
 
     if (!response.ok) {
-      const authErrorType =
-        classifyAuthError({
-          status:
-            response.status,
+      /*
+       * Un rechazo por geocerca GPS puede llegar como HTTP 403,
+       * pero no representa falta de permisos ni sesión vencida.
+       * Nunca se debe borrar la sesión por OUTSIDE_GEOFENCE.
+       */
+      const isGpsGeofenceError =
+        isGpsGeofenceResponse({
+          endpoint:
+            cleanEndpoint,
           data,
           message,
         });
+
+      const authErrorType =
+        isGpsGeofenceError
+          ? null
+          : classifyAuthError({
+              status:
+                response.status,
+              data,
+              message,
+            });
 
       if (
         !isLoginRequest &&

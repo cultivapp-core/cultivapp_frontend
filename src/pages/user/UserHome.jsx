@@ -65,6 +65,76 @@ const STATUS_CONFIG = {
   },
 };
 
+const GPS_OUT_OF_RANGE_MESSAGE =
+  "No se puede iniciar la visita fuera del rango permitido del GPS.";
+
+const getApiErrorPayload = (
+  error,
+) =>
+  error?.response?.data ??
+  error?.data ??
+  error ??
+  {};
+
+const isGpsOutOfRangeError = (
+  error,
+) => {
+  const payload =
+    getApiErrorPayload(
+      error,
+    );
+
+  const code =
+    String(
+      payload?.code ||
+      payload?.error_code ||
+      error?.code ||
+      "",
+    )
+      .trim()
+      .toUpperCase();
+
+  const message =
+    String(
+      payload?.message ||
+      error?.message ||
+      "",
+    )
+      .trim()
+      .toLowerCase();
+
+  return (
+    code ===
+      "OUTSIDE_GEOFENCE" ||
+    code ===
+      "OUT_OF_GPS_RANGE" ||
+    code ===
+      "GPS_OUT_OF_RANGE" ||
+    payload?.isValid ===
+      false ||
+    payload?.is_valid_gps ===
+      false ||
+    payload?.data
+      ?.is_valid_gps ===
+      false ||
+    message.includes(
+      "fuera del rango",
+    ) ||
+    message.includes(
+      "fuera de rango",
+    ) ||
+    message.includes(
+      "máximo de",
+    ) ||
+    message.includes(
+      "maximo de",
+    ) ||
+    message.includes(
+      "metros del local",
+    )
+  );
+};
+
 const UserHome = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -85,6 +155,18 @@ const UserHome = () => {
     selectedDate,
     setSelectedDate,
   ] = useState(new Date());
+
+  const [
+    gpsRangeModal,
+    setGpsRangeModal,
+  ] = useState({
+    isOpen: false,
+    message:
+      GPS_OUT_OF_RANGE_MESSAGE,
+    distance: null,
+    maximumDistance:
+      null,
+  });
 
   const toLocalDateKey = (
     date,
@@ -466,6 +548,18 @@ const UserHome = () => {
                   position.coords
                     .longitude,
               },
+              {
+                /*
+                 * Un 403 por OUTSIDE_GEOFENCE no es un error
+                 * de permisos ni de sesión. El apiClient debe
+                 * conservar la cuenta activa para que UserHome
+                 * pueda mostrar el modal correspondiente.
+                 */
+                offlineFallback:
+                  false,
+                preserveSessionOnAuthError:
+                  true,
+              },
             );
 
             toast.success(
@@ -479,11 +573,80 @@ const UserHome = () => {
               `/usuario/reporte/${taskId}`,
             );
           } catch (error) {
+            const payload =
+              getApiErrorPayload(
+                error,
+              );
+
+            if (
+              isGpsOutOfRangeError(
+                error,
+              )
+            ) {
+              const rawDistance =
+                payload?.distance ??
+                payload
+                  ?.distance_meters ??
+                payload?.data
+                  ?.distance ??
+                payload?.data
+                  ?.distance_meters ??
+                null;
+
+              const rawMaximumDistance =
+                payload
+                  ?.maximumDistance ??
+                payload
+                  ?.maximum_distance ??
+                payload?.data
+                  ?.maximumDistance ??
+                null;
+
+              const distance =
+                Number(
+                  rawDistance,
+                );
+
+              const maximumDistance =
+                Number(
+                  rawMaximumDistance,
+                );
+
+              toast.error(
+                GPS_OUT_OF_RANGE_MESSAGE,
+                {
+                  id:
+                    toastId,
+                  duration:
+                    5000,
+                },
+              );
+
+              setGpsRangeModal({
+                isOpen:
+                  true,
+                message:
+                  GPS_OUT_OF_RANGE_MESSAGE,
+                distance:
+                  Number.isFinite(
+                    distance,
+                  )
+                    ? distance
+                    : null,
+                maximumDistance:
+                  Number.isFinite(
+                    maximumDistance,
+                  )
+                    ? maximumDistance
+                    : null,
+              });
+
+              return;
+            }
+
             toast.error(
-              error?.response?.data
-                ?.message ||
-                error?.data
-                  ?.message ||
+              payload?.message ||
+                error?.message ||
                 "Error al iniciar la visita",
               {
                 id: toastId,
@@ -499,7 +662,11 @@ const UserHome = () => {
           const message =
             error?.code === 1
               ? "Debes permitir el acceso a tu ubicación"
-              : "No fue posible obtener tu ubicación";
+              : error?.code === 2
+                ? "No fue posible determinar tu ubicación. Activa el GPS e inténtalo nuevamente."
+                : error?.code === 3
+                  ? "La ubicación tardó demasiado en responder. Verifica la señal GPS."
+                  : "No fue posible obtener tu ubicación";
 
           toast.error(
             message,
@@ -515,7 +682,7 @@ const UserHome = () => {
         {
           enableHighAccuracy:
             true,
-          timeout: 15000,
+          timeout: 20000,
           maximumAge: 0,
         },
       );
@@ -541,6 +708,100 @@ const UserHome = () => {
 
   return (
     <div className="min-h-full bg-slate-50 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 font-[Outfit] sm:px-5 md:px-6 md:pb-10">
+      {gpsRangeModal.isOpen && (
+        <div
+          className="fixed inset-0 z-[12000] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gps-range-modal-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-2xl">
+            <div className="h-1.5 bg-red-500" />
+
+            <div className="p-6 text-center sm:p-7">
+              <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-[1.5rem] bg-red-50 text-red-500">
+                <FiMapPin
+                  size={28}
+                />
+              </span>
+
+              <p className="mt-5 text-[9px] font-black uppercase tracking-[0.22em] text-red-500">
+                Validación GPS
+              </p>
+
+              <h2
+                id="gps-range-modal-title"
+                className="mt-2 text-xl font-black tracking-tight text-slate-900"
+              >
+                Fuera del rango permitido
+              </h2>
+
+              <p className="mx-auto mt-3 max-w-sm text-sm font-semibold leading-relaxed text-slate-500">
+                {gpsRangeModal.message}
+              </p>
+
+              {gpsRangeModal.distance !==
+                null && (
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                    <p className="text-[8px] font-black uppercase tracking-wider text-red-500">
+                      Distancia actual
+                    </p>
+
+                    <p className="mt-1 text-xl font-black text-red-700">
+                      {
+                        gpsRangeModal.distance
+                      }{" "}
+                      m
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">
+                      Distancia permitida
+                    </p>
+
+                    <p className="mt-1 text-xl font-black text-slate-800">
+                      {gpsRangeModal.maximumDistance !==
+                      null
+                        ? `${gpsRangeModal.maximumDistance} m`
+                        : "Según configuración"}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-left">
+                <FiAlertCircle
+                  className="mt-0.5 shrink-0 text-amber-500"
+                  size={17}
+                />
+
+                <p className="text-xs font-semibold leading-relaxed text-amber-800">
+                  Acércate al local y vuelve a intentar iniciar la visita desde este menú.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setGpsRangeModal(
+                    (current) => ({
+                      ...current,
+                      isOpen:
+                        false,
+                    }),
+                  )
+                }
+                className="mt-6 flex min-h-[52px] w-full items-center justify-center rounded-2xl bg-slate-900 px-5 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-slate-900/15 transition hover:bg-[#87be00] active:scale-[0.98]"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5">
         {/* RESUMEN DEL DÍA */}
         <section className="overflow-hidden rounded-[2rem] bg-slate-900 p-5 text-white shadow-xl shadow-slate-900/10">
