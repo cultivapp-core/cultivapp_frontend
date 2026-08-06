@@ -1542,10 +1542,19 @@ const AdminRoutes = () => {
     }
   };
 
+  /*
+   * Las semanas del filtro deben usar exactamente la misma
+   * cuadrícula que el calendario visual:
+   *
+   * - comienzan el lunes;
+   * - terminan el domingo;
+   * - incluyen los días visibles del mes anterior/siguiente;
+   * - pueden existir 4, 5 o 6 semanas según el mes y el año.
+   */
   const selectedMonthWeeks =
     useMemo(
       () =>
-        getWeeksOfMonthCalendar(
+        getCalendarWeeksMondayFirst(
           visibleMonthDate,
         ),
       [visibleMonthDate],
@@ -1554,25 +1563,49 @@ const AdminRoutes = () => {
   const weekRanges = useMemo(
     () =>
       selectedMonthWeeks.map(
-        (week, index) => ({
-          weekNum:
-            Number(week.id) ||
-            index + 1,
-          label: `S${index + 1}`,
-          dates: `${formatDate(
-            week.start,
-            {
-              day: "2-digit",
-              month: "short",
-            },
-          )} — ${formatDate(
-            week.end,
-            {
-              day: "2-digit",
-              month: "short",
-            },
-          )}`,
-        }),
+        (week, index) => {
+          const startYear =
+            week.start.getFullYear();
+
+          const endYear =
+            week.end.getFullYear();
+
+          const crossesYear =
+            startYear !== endYear;
+
+          const dateOptions = {
+            day: "2-digit",
+            month: "short",
+            ...(crossesYear
+              ? {
+                  year: "numeric",
+                }
+              : {}),
+          };
+
+          return {
+            weekNum:
+              index + 1,
+            label:
+              `S${index + 1}`,
+            start:
+              toDateKey(
+                week.start,
+              ),
+            end:
+              toDateKey(
+                week.end,
+              ),
+            dates:
+              `${formatDate(
+                week.start,
+                dateOptions,
+              )} — ${formatDate(
+                week.end,
+                dateOptions,
+              )}`,
+          };
+        },
       ),
     [selectedMonthWeeks],
   );
@@ -1582,23 +1615,50 @@ const AdminRoutes = () => {
       return null;
     }
 
-    const selected = parseDateKey(filterDate);
+    const selected =
+      parseDateKey(
+        filterDate,
+      );
 
     if (!selected) {
       return null;
     }
 
-    const weeks =
-      getWeeksOfMonthCalendar(selected);
+    /*
+     * Se calcula contra el mes seleccionado en el filtro.
+     * Esto evita diferencias al cambiar de mes o de año.
+     */
+    const filterMonthDate =
+      parseMonthKey(
+        filterDate.slice(
+          0,
+          7,
+        ),
+      );
 
-    const found = weeks.find((week) =>
-      isDateInsideWeek(selected, week),
-    );
+    const weeks =
+      getCalendarWeeksMondayFirst(
+        filterMonthDate,
+      );
+
+    const foundIndex =
+      weeks.findIndex(
+        (week) =>
+          isDateInsideWeek(
+            selected,
+            week,
+          ),
+      );
 
     return {
-      date: filterDate,
-      weekNum: Number(found?.id) || 1,
-      dayId: selected.getDay(),
+      date:
+        filterDate,
+      weekNum:
+        foundIndex >= 0
+          ? foundIndex + 1
+          : null,
+      dayId:
+        selected.getDay(),
     };
   }, [filterDate]);
 
