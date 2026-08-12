@@ -66,6 +66,46 @@ const getResponseData = (
   return response?.data ?? response;
 };
 
+const getLocalName = (local = {}) =>
+  local.nombre_local ||
+  local.local_nombre ||
+  local.nombre ||
+  local.name ||
+  local.descripcion_local ||
+  local.descripcion ||
+  "";
+
+const getLocalCode = (local = {}) =>
+  local.codigo_local ||
+  local.local_code ||
+  local.codigo ||
+  local.code ||
+  "";
+
+const getLocalLabel = (local = {}) => {
+  const name = String(
+    getLocalName(local),
+  ).trim();
+
+  const code = String(
+    getLocalCode(local),
+  ).trim();
+
+  if (name && code) {
+    return `${name} — ${code}`;
+  }
+
+  if (name) {
+    return name;
+  }
+
+  if (code) {
+    return `Local ${code}`;
+  }
+
+  return "Local sin identificación";
+};
+
 const NotificationManager = () => {
   const { user } = useAuth();
 
@@ -242,11 +282,23 @@ const NotificationManager = () => {
             [],
           );
 
-        setLocales(
+        const uniqueLocales =
           Array.isArray(data)
-            ? data
-            : [],
-        );
+            ? Array.from(
+                new Map(
+                  data.map(
+                    (local, index) => [
+                      local?.id ||
+                        getLocalCode(local) ||
+                        `local-${index}`,
+                      local,
+                    ],
+                  ),
+                ).values(),
+              )
+            : [];
+
+        setLocales(uniqueLocales);
       } catch (requestError) {
         console.error(
           "Error cargando locales:",
@@ -739,12 +791,7 @@ const NotificationManager = () => {
                           key={local.id}
                           value={local.id}
                         >
-                          {local.nombre_local ||
-                            local.cadena ||
-                            `Local ${
-                              local.codigo_local ||
-                              ""
-                            }`}
+                          {getLocalLabel(local)}
                         </option>
                       ),
                     )}
