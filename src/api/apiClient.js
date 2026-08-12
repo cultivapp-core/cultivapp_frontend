@@ -7,22 +7,12 @@ const BASE_URL =
 
 const API_URL =
   BASE_URL.replace(/\/+$/, "") +
-  (
-    /\/api$/i.test(
-      BASE_URL.replace(/\/+$/, ""),
-    )
-      ? ""
-      : "/api"
-  );
+  (/\/api$/i.test(BASE_URL.replace(/\/+$/, "")) ? "" : "/api");
 
-export const getApiBaseUrl =
-  () => API_URL;
+export const getApiBaseUrl = () => API_URL;
 
 const getToken = () => {
-  let token =
-    localStorage.getItem(
-      "token",
-    );
+  let token = localStorage.getItem("token");
 
   if (
     !token ||
@@ -33,106 +23,61 @@ const getToken = () => {
     return null;
   }
 
-  token =
-    token.replace(
-      /^"|"$/g,
-      "",
-    );
+  token = token.replace(/^"|"$/g, "");
 
-  const cleanToken =
-    token.startsWith(
-      "Bearer ",
-    )
-      ? token.split(" ")[1]
-      : token;
+  const cleanToken = token.startsWith("Bearer ")
+    ? token.split(" ")[1]
+    : token;
 
-  return (
-    cleanToken?.trim() ||
-    null
-  );
+  return cleanToken?.trim() || null;
 };
 
 const clearSession = () => {
-  localStorage.removeItem(
-    "token",
-  );
-
-  localStorage.removeItem(
-    "user",
-  );
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
 };
 
-const redirectToLogin = (
-  errorType,
-) => {
-  const currentPath =
-    window.location.pathname;
-
-  const currentSearch =
-    window.location.search;
-
-  const targetSearch =
-    `?error=${errorType}`;
+const redirectToLogin = (errorType) => {
+  const currentPath = window.location.pathname;
+  const currentSearch = window.location.search;
+  const targetSearch = `?error=${errorType}`;
 
   if (
     currentPath === "/" &&
-    currentSearch ===
-      targetSearch
+    currentSearch === targetSearch
   ) {
     return;
   }
 
-  window.location.href =
-    `/${targetSearch}`;
+  window.location.href = `/${targetSearch}`;
 };
 
-const parseResponseData =
-  async (response) => {
-    const contentType =
-      response.headers.get(
-        "content-type",
-      ) || "";
+const parseResponseData = async (response) => {
+  const contentType = response.headers.get("content-type") || "";
 
-    if (
-      contentType.includes(
-        "application/json",
-      )
-    ) {
-      try {
-        return (
-          await response.json()
-        );
-      } catch {
-        return {};
-      }
-    }
-
+  if (contentType.includes("application/json")) {
     try {
-      return (
-        await response.text()
-      );
+      return await response.json();
     } catch {
-      return "";
+      return {};
     }
-  };
+  }
 
-const isHtmlDocument = (
-  value,
-) => {
-  if (
-    typeof value !==
-      "string"
-  ) {
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
+};
+
+const isHtmlDocument = (value) => {
+  if (typeof value !== "string") {
     return false;
   }
 
   return (
-    /^\s*<!doctype html/i.test(
-      value,
-    ) ||
-    /^\s*<html/i.test(
-      value,
-    )
+    /^\s*<!doctype html/i.test(value) ||
+    /^\s*<html/i.test(value)
   );
 };
 
@@ -143,8 +88,7 @@ const getResponseMessage = (
 ) => {
   if (
     data &&
-    typeof data ===
-      "object"
+    typeof data === "object"
   ) {
     return (
       data.message ||
@@ -155,11 +99,7 @@ const getResponseMessage = (
     );
   }
 
-  if (
-    isHtmlDocument(
-      data,
-    )
-  ) {
+  if (isHtmlDocument(data)) {
     return (
       `El servidor respondió HTML en lugar de JSON para ${endpoint}. ` +
       "Revisa la ruta API y el prefijo /api."
@@ -167,8 +107,7 @@ const getResponseMessage = (
   }
 
   if (
-    typeof data ===
-      "string" &&
+    typeof data === "string" &&
     data.trim()
   ) {
     return data;
@@ -182,89 +121,51 @@ const classifyAuthError = ({
   data,
   message,
 }) => {
-  const code =
-    String(
-      data?.code ||
+  const code = String(
+    data?.code ||
       data?.error_code ||
       data?.type ||
       "",
-    ).toLowerCase();
+  ).toLowerCase();
 
-  const normalizedMessage =
-    String(
-      message || "",
-    ).toLowerCase();
+  const normalizedMessage = String(
+    message || "",
+  ).toLowerCase();
 
   if (
-    code ===
-      "multiple_session" ||
-    code ===
-      "session_replaced" ||
-    normalizedMessage.includes(
-      "otro dispositivo",
-    ) ||
-    normalizedMessage.includes(
-      "sesión reemplazada",
-    ) ||
-    normalizedMessage.includes(
-      "session replaced",
-    ) ||
-    normalizedMessage.includes(
-      "multiple session",
-    )
+    code === "multiple_session" ||
+    code === "session_replaced" ||
+    normalizedMessage.includes("otro dispositivo") ||
+    normalizedMessage.includes("sesión reemplazada") ||
+    normalizedMessage.includes("session replaced") ||
+    normalizedMessage.includes("multiple session")
   ) {
     return "multiple_session";
   }
 
   if (
-    code ===
-      "account_disabled" ||
-    code ===
-      "user_disabled" ||
-    normalizedMessage.includes(
-      "cuenta deshabilitada",
-    ) ||
-    normalizedMessage.includes(
-      "usuario deshabilitado",
-    ) ||
-    normalizedMessage.includes(
-      "cuenta inactiva",
-    ) ||
-    normalizedMessage.includes(
-      "usuario inactivo",
-    )
+    code === "account_disabled" ||
+    code === "user_disabled" ||
+    normalizedMessage.includes("cuenta deshabilitada") ||
+    normalizedMessage.includes("usuario deshabilitado") ||
+    normalizedMessage.includes("cuenta inactiva") ||
+    normalizedMessage.includes("usuario inactivo")
   ) {
     return "account_disabled";
   }
 
   if (
-    code ===
-      "company_disabled" ||
-    code ===
-      "company_inactive" ||
+    code === "company_disabled" ||
+    code === "company_inactive" ||
     (
-      normalizedMessage.includes(
-        "empresa",
-      ) &&
+      normalizedMessage.includes("empresa") &&
       (
-        normalizedMessage.includes(
-          "deshabilitada",
-        ) ||
-        normalizedMessage.includes(
-          "deshabilitado",
-        ) ||
-        normalizedMessage.includes(
-          "inactiva",
-        ) ||
-        normalizedMessage.includes(
-          "inactivo",
-        ) ||
-        normalizedMessage.includes(
-          "suspendida",
-        ) ||
-        normalizedMessage.includes(
-          "suspendido",
-        )
+        normalizedMessage.includes("deshabilitada") ||
+        normalizedMessage.includes("deshabilitado") ||
+        normalizedMessage.includes("inactiva") ||
+        normalizedMessage.includes("inactivo") ||
+        normalizedMessage.includes("suspendida") ||
+        normalizedMessage.includes("suspendido")
       )
     )
   ) {
@@ -272,25 +173,13 @@ const classifyAuthError = ({
   }
 
   if (
-    code ===
-      "token_expired" ||
-    code ===
-      "session_expired" ||
-    normalizedMessage.includes(
-      "jwt expired",
-    ) ||
-    normalizedMessage.includes(
-      "token expirado",
-    ) ||
-    normalizedMessage.includes(
-      "token expired",
-    ) ||
-    normalizedMessage.includes(
-      "sesión expirada",
-    ) ||
-    normalizedMessage.includes(
-      "session expired",
-    )
+    code === "token_expired" ||
+    code === "session_expired" ||
+    normalizedMessage.includes("jwt expired") ||
+    normalizedMessage.includes("token expirado") ||
+    normalizedMessage.includes("token expired") ||
+    normalizedMessage.includes("sesión expirada") ||
+    normalizedMessage.includes("session expired")
   ) {
     return "session_expired";
   }
@@ -298,15 +187,9 @@ const classifyAuthError = ({
   if (
     status === 403 ||
     code === "forbidden" ||
-    normalizedMessage.includes(
-      "acceso denegado",
-    ) ||
-    normalizedMessage.includes(
-      "sin permisos",
-    ) ||
-    normalizedMessage.includes(
-      "no tienes permisos",
-    )
+    normalizedMessage.includes("acceso denegado") ||
+    normalizedMessage.includes("sin permisos") ||
+    normalizedMessage.includes("no tienes permisos")
   ) {
     return "forbidden";
   }
@@ -323,58 +206,38 @@ const isGpsGeofenceResponse = ({
   data,
   message,
 }) => {
-  const cleanEndpoint =
-    String(
-      endpoint || "",
-    ).toLowerCase();
+  const cleanEndpoint = String(
+    endpoint || "",
+  ).toLowerCase();
 
-  if (
-    !cleanEndpoint.includes(
-      "/check-in",
-    )
-  ) {
+  if (!cleanEndpoint.includes("/check-in")) {
     return false;
   }
 
-  const code =
-    String(
-      data?.code ||
+  const code = String(
+    data?.code ||
       data?.error_code ||
       "",
-    )
-      .trim()
-      .toUpperCase();
+  )
+    .trim()
+    .toUpperCase();
 
-  const normalizedMessage =
-    String(
-      message || "",
-    )
-      .trim()
-      .toLowerCase();
+  const normalizedMessage = String(
+    message || "",
+  )
+    .trim()
+    .toLowerCase();
 
   return (
-    code ===
-      "OUTSIDE_GEOFENCE" ||
-    code ===
-      "OUT_OF_GPS_RANGE" ||
-    code ===
-      "GPS_OUT_OF_RANGE" ||
-    data?.isValid ===
-      false ||
-    data?.is_valid_gps ===
-      false ||
-    data?.data
-      ?.is_valid_gps ===
-      false ||
-    normalizedMessage.includes(
-      "fuera del rango",
-    ) ||
-    normalizedMessage.includes(
-      "fuera de rango",
-    ) ||
-    normalizedMessage.includes(
-      "metros del local",
-    )
+    code === "OUTSIDE_GEOFENCE" ||
+    code === "OUT_OF_GPS_RANGE" ||
+    code === "GPS_OUT_OF_RANGE" ||
+    data?.isValid === false ||
+    data?.is_valid_gps === false ||
+    data?.data?.is_valid_gps === false ||
+    normalizedMessage.includes("fuera del rango") ||
+    normalizedMessage.includes("fuera de rango") ||
+    normalizedMessage.includes("metros del local")
   );
 };
 
@@ -384,38 +247,42 @@ const request = async (
 ) => {
   const {
     offlineFallback = true,
-    preserveSessionOnAuthError =
-      false,
+    preserveSessionOnAuthError = false,
     ...fetchOptions
   } = options;
 
-  const token =
-    getToken();
+  const token = getToken();
 
-  const cleanEndpoint =
-    endpoint.startsWith("/")
-      ? endpoint
-      : `/${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith("/")
+    ? endpoint
+    : `/${endpoint}`;
 
-  const finalUrl =
-    `${API_URL}${cleanEndpoint}`;
+  const finalUrl = `${API_URL}${cleanEndpoint}`;
 
-  const method =
-    String(
-      fetchOptions.method ||
-      "GET",
-    ).toUpperCase();
+  const method = String(
+    fetchOptions.method || "GET",
+  ).toUpperCase();
 
-  const isFD =
-    fetchOptions.body instanceof
-      FormData;
+  const isFD = fetchOptions.body instanceof FormData;
 
   const isLoginRequest =
-    cleanEndpoint ===
-      "/auth/login" ||
-    cleanEndpoint.startsWith(
-      "/auth/login?",
-    );
+    cleanEndpoint === "/auth/login" ||
+    cleanEndpoint.startsWith("/auth/login?");
+
+  // Conserva todos los headers enviados por cada módulo.
+  // Para FormData se elimina únicamente Content-Type para que
+  // fetch/browser genere automáticamente multipart/form-data + boundary.
+  const incomingHeaders = {
+    ...(fetchOptions.headers || {}),
+  };
+
+  if (isFD) {
+    Object.keys(incomingHeaders).forEach((key) => {
+      if (key.toLowerCase() === "content-type") {
+        delete incomingHeaders[key];
+      }
+    });
+  }
 
   const config = {
     ...fetchOptions,
@@ -424,57 +291,48 @@ const request = async (
       ...(
         !isFD
           ? {
-              "Content-Type":
-                "application/json",
+              "Content-Type": "application/json",
             }
           : {}
       ),
       ...(
         token
           ? {
-              Authorization:
-                `Bearer ${token}`,
+              Authorization: `Bearer ${token}`,
             }
           : {}
       ),
-      ...(
-        fetchOptions.headers ||
-        {}
-      ),
+      ...incomingHeaders,
     },
   };
 
   delete config.params;
 
   try {
-    const response =
-      await fetch(
-        finalUrl,
-        config,
-      );
+    const response = await fetch(
+      finalUrl,
+      config,
+    );
 
-    const data =
-      await parseResponseData(
-        response,
-      );
+    const data = await parseResponseData(
+      response,
+    );
 
-    const message =
-      getResponseMessage(
-        data,
-        response.status,
-        cleanEndpoint,
-      );
+    const message = getResponseMessage(
+      data,
+      response.status,
+      cleanEndpoint,
+    );
 
     if (!response.ok) {
-      /*
+      /**
        * Un rechazo por geocerca GPS puede llegar como HTTP 403,
        * pero no representa falta de permisos ni sesión vencida.
        * Nunca se debe borrar la sesión por OUTSIDE_GEOFENCE.
        */
       const isGpsGeofenceError =
         isGpsGeofenceResponse({
-          endpoint:
-            cleanEndpoint,
+          endpoint: cleanEndpoint,
           data,
           message,
         });
@@ -483,8 +341,7 @@ const request = async (
         isGpsGeofenceError
           ? null
           : classifyAuthError({
-              status:
-                response.status,
+              status: response.status,
               data,
               message,
             });
@@ -502,10 +359,8 @@ const request = async (
             "session_expired",
             {
               detail: {
-                type:
-                  authErrorType,
-                status:
-                  response.status,
+                type: authErrorType,
+                status: response.status,
                 message,
               },
             },
@@ -518,33 +373,26 @@ const request = async (
       }
 
       throw {
-        status:
-          response.status,
+        status: response.status,
         code:
           data &&
-          typeof data ===
-            "object"
+          typeof data === "object"
             ? data.code
             : undefined,
         message,
         data,
-        endpoint:
-          cleanEndpoint,
-        url:
-          finalUrl,
+        endpoint: cleanEndpoint,
+        url: finalUrl,
       };
     }
 
     return data;
   } catch (error) {
     const isNetworkError =
-      error?.name ===
-        "TypeError" ||
+      error?.name === "TypeError" ||
       String(
         error?.message || "",
-      ).includes(
-        "Failed to fetch",
-      );
+      ).includes("Failed to fetch");
 
     const isMutation = [
       "POST",
@@ -554,21 +402,11 @@ const request = async (
     ].includes(method);
 
     const isTerrainRoute =
-      cleanEndpoint.includes(
-        "/reports/",
-      ) ||
-      cleanEndpoint.includes(
-        "/scans",
-      ) ||
-      cleanEndpoint.includes(
-        "/finish",
-      ) ||
-      cleanEndpoint.includes(
-        "/photo",
-      ) ||
-      cleanEndpoint.includes(
-        "/task",
-      );
+      cleanEndpoint.includes("/reports/") ||
+      cleanEndpoint.includes("/scans") ||
+      cleanEndpoint.includes("/finish") ||
+      cleanEndpoint.includes("/photo") ||
+      cleanEndpoint.includes("/task");
 
     if (
       offlineFallback &&
@@ -592,43 +430,32 @@ const request = async (
   }
 };
 
-const serializeBody = (
-  body,
-) =>
+const serializeBody = (body) =>
   body instanceof FormData
     ? body
-    : typeof body ===
-        "string"
+    : typeof body === "string"
       ? body
-      : JSON.stringify(
-          body,
-        );
+      : JSON.stringify(body);
 
 const api = {
   get: (
     endpoint,
     config = null,
   ) => {
-    let url =
-      endpoint;
+    let url = endpoint;
 
-    const hasRequestOptions =
-      Boolean(
-        config &&
-        typeof config ===
-          "object" &&
-        (
-          "headers" in config ||
-          "credentials" in
-            config ||
-          "signal" in config ||
-          "cache" in config ||
-          "offlineFallback" in
-            config ||
-          "preserveSessionOnAuthError" in
-            config
-        ),
-      );
+    const hasRequestOptions = Boolean(
+      config &&
+      typeof config === "object" &&
+      (
+        "headers" in config ||
+        "credentials" in config ||
+        "signal" in config ||
+        "cache" in config ||
+        "offlineFallback" in config ||
+        "preserveSessionOnAuthError" in config
+      )
+    );
 
     const params =
       config?.params ||
@@ -640,40 +467,27 @@ const api = {
 
     if (
       params &&
-      typeof params ===
-        "object" &&
-      !(
-        params instanceof
-          FormData
-      )
+      typeof params === "object" &&
+      !(params instanceof FormData)
     ) {
-      const cleanParams =
-        Object.fromEntries(
-          Object.entries(
-            params,
-          ).filter(
-            ([
-              key,
-              value,
-            ]) =>
-              key !==
-                "params" &&
-              value != null,
-          ),
-        );
+      const cleanParams = Object.fromEntries(
+        Object.entries(params).filter(
+          ([key, value]) =>
+            key !== "params" &&
+            value != null,
+        ),
+      );
 
-      const query =
-        new URLSearchParams(
-          cleanParams,
-        ).toString();
+      const query = new URLSearchParams(
+        cleanParams,
+      ).toString();
 
       if (query) {
-        url +=
-          `${
-            url.includes("?")
-              ? "&"
-              : "?"
-          }${query}`;
+        url += `${
+          url.includes("?")
+            ? "&"
+            : "?"
+        }${query}`;
       }
     }
 
@@ -690,8 +504,7 @@ const api = {
       url,
       {
         ...requestConfig,
-        method:
-          "GET",
+        method: "GET",
       },
     );
   },
@@ -705,12 +518,8 @@ const api = {
       endpoint,
       {
         ...config,
-        method:
-          "POST",
-        body:
-          serializeBody(
-            body,
-          ),
+        method: "POST",
+        body: serializeBody(body),
       },
     ),
 
@@ -723,12 +532,8 @@ const api = {
       endpoint,
       {
         ...config,
-        method:
-          "PUT",
-        body:
-          serializeBody(
-            body,
-          ),
+        method: "PUT",
+        body: serializeBody(body),
       },
     ),
 
@@ -741,12 +546,8 @@ const api = {
       endpoint,
       {
         ...config,
-        method:
-          "PATCH",
-        body:
-          serializeBody(
-            body,
-          ),
+        method: "PATCH",
+        body: serializeBody(body),
       },
     ),
 
@@ -759,16 +560,12 @@ const api = {
       endpoint,
       {
         ...config,
-        method:
-          "DELETE",
+        method: "DELETE",
         ...(
           body !== null &&
           body !== undefined
             ? {
-                body:
-                  serializeBody(
-                    body,
-                  ),
+                body: serializeBody(body),
               }
             : {}
         ),
