@@ -32,6 +32,9 @@ const ALLOWED_EXTENSIONS = [
 const MAX_FILE_SIZE =
   25 * 1024 * 1024;
 
+const ADMIN_CULTIVA_USER_ID =
+  "97c6f210-eccc-48fe-b6b9-65dcf5968857";
+
 const INITIAL_UPLOAD_STATE = {
   loading: false,
   success: false,
@@ -85,7 +88,20 @@ const UploadSalesData = () => {
   const { user } = useAuth();
 
   const isRoot =
-    user?.role === "ROOT";
+    String(user?.role || "").toUpperCase() ===
+    "ROOT";
+
+  const currentUserId =
+    user?.id ||
+    user?.user_id ||
+    "";
+
+  const isAdminCultiva =
+    currentUserId ===
+    ADMIN_CULTIVA_USER_ID;
+
+  const canSelectCompany =
+    isRoot || isAdminCultiva;
 
   const [file, setFile] =
     useState(null);
@@ -119,7 +135,7 @@ const UploadSalesData = () => {
 
   useEffect(() => {
     if (
-      !isRoot &&
+      !canSelectCompany &&
       user?.company_id
     ) {
       setCompanyId(
@@ -127,13 +143,13 @@ const UploadSalesData = () => {
       );
     }
   }, [
-    isRoot,
+    canSelectCompany,
     user?.company_id,
   ]);
 
   const fetchCompanies =
     useCallback(async () => {
-      if (!isRoot) return;
+      if (!canSelectCompany) return;
 
       try {
         setLoadingCompanies(true);
@@ -168,7 +184,7 @@ const UploadSalesData = () => {
       } finally {
         setLoadingCompanies(false);
       }
-    }, [isRoot]);
+    }, [canSelectCompany]);
 
   useEffect(() => {
     fetchCompanies();
@@ -373,10 +389,6 @@ const UploadSalesData = () => {
           "/sales/upload",
           formData,
           {
-            headers: {
-              "Content-Type":
-                "multipart/form-data",
-            },
             onUploadProgress: (
               progressEvent,
             ) => {
@@ -480,7 +492,7 @@ const UploadSalesData = () => {
         </header>
 
         <section className="bg-white p-5 sm:p-7 md:p-9 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-gray-100">
-          {isRoot && (
+          {canSelectCompany && (
             <div className="mb-6">
               <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider ml-1 mb-2 block">
                 Empresa de destino
@@ -533,7 +545,7 @@ const UploadSalesData = () => {
             </div>
           )}
 
-          {!isRoot &&
+          {!canSelectCompany &&
             user?.company_id && (
               <div className="mb-6 rounded-2xl border border-green-100 bg-green-50 px-4 py-3">
                 <p className="text-[9px] font-black text-green-700 uppercase tracking-wider">
