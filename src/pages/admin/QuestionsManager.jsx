@@ -202,13 +202,9 @@ const QuestionsManager = () => {
 
         const response =
           await api.get(
-            "/questions",
-            {
-              params: {
-                company_id:
-                  effectiveCompanyId,
-              },
-            },
+            `/questions?company_id=${encodeURIComponent(
+              effectiveCompanyId,
+            )}`,
           );
 
         const data =
@@ -231,37 +227,24 @@ const QuestionsManager = () => {
          * La autorización definitiva también debe aplicarse en el
          * backend utilizando la empresa contenida en el token.
          */
-        const includesCompanyMetadata =
-          data.some(
-            (question) =>
-              question?.company_id ||
-              question?.company?.id,
-          );
-
         const tenantQuestions =
-          includesCompanyMetadata
-            ? data.filter(
-                (question) => {
-                  const questionCompanyId =
-                    question?.company_id ||
-                    question?.company?.id ||
-                    "";
+          data.filter((question) => {
+            const questionCompanyId =
+              question?.company_id ||
+              question?.company?.id ||
+              "";
 
-                  return (
-                    String(
-                      questionCompanyId,
-                    ) ===
-                    String(
-                      effectiveCompanyId,
-                    )
-                  );
-                },
-              )
-            : data;
+            if (!questionCompanyId) {
+              return true;
+            }
 
-        setQuestions(
-          tenantQuestions,
-        );
+            return (
+              String(questionCompanyId) ===
+              String(effectiveCompanyId)
+            );
+          });
+
+        setQuestions(tenantQuestions);
       } catch (requestError) {
         console.error(
           "Error cargando preguntas:",
@@ -356,13 +339,9 @@ const QuestionsManager = () => {
 
     try {
       await api.delete(
-        `/questions/${question.id}`,
-        {
-          params: {
-            company_id:
-              effectiveCompanyId,
-          },
-        },
+        `/questions/${question.id}?company_id=${encodeURIComponent(
+          effectiveCompanyId,
+        )}`,
       );
 
       toast.success(

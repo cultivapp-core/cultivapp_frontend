@@ -35,6 +35,7 @@ import {
 import toast from "react-hot-toast";
 
 import api from "../../api/apiClient";
+import { useAuth } from "../../context/AuthContext";
 import Scanner from "../../components/Scanner";
 import QuestionRenderer from "../../components/modals/QuestionRenderer";
 import OfflineManager, {
@@ -855,6 +856,17 @@ const notifySessionExpired = (
 const VisitFlow = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const sessionCompanyId =
+    String(
+      user?.company_id || "",
+    );
+
+  const questionsCacheKey =
+    sessionCompanyId
+      ? `cultivapp_questions_cache_${sessionCompanyId}`
+      : null;
 
   const fileInputRef =
     useRef(null);
@@ -2270,6 +2282,15 @@ const VisitFlow = () => {
 
   const loadQuestions =
     useCallback(async () => {
+      if (!sessionCompanyId) {
+        setQuestions([]);
+        setQuestionsError(
+          "No se pudo identificar la empresa asociada a tu sesión.",
+        );
+        setQuestionsLoading(false);
+        return;
+      }
+
       try {
         setQuestionsLoading(
           true,
@@ -2281,17 +2302,43 @@ const VisitFlow = () => {
 
         const response =
           await api.get(
-            "/questions?flow=reponedor",
+            `/questions?flow=reponedor&company_id=${encodeURIComponent(
+              sessionCompanyId,
+            )}`,
           );
 
         const rows =
           extractRows(response);
 
-        setQuestions(rows);
+        const tenantRows =
+          rows.filter(
+            (question) =>
+              String(
+                question?.company_id ||
+                  "",
+              ) ===
+              sessionCompanyId,
+          );
 
-        localStorage.setItem(
+        setQuestions(
+          tenantRows,
+        );
+
+        if (questionsCacheKey) {
+          localStorage.setItem(
+            questionsCacheKey,
+            JSON.stringify(
+              tenantRows,
+            ),
+          );
+        }
+
+        /*
+         * Elimina la caché histórica compartida entre empresas.
+         * Desde ahora cada tenant utiliza su propia encuesta offline.
+         */
+        localStorage.removeItem(
           "cultivapp_questions_cache",
-          JSON.stringify(rows),
         );
       } catch (error) {
         console.error(
@@ -2301,9 +2348,11 @@ const VisitFlow = () => {
 
         try {
           const cached =
-            localStorage.getItem(
-              "cultivapp_questions_cache",
-            );
+            questionsCacheKey
+              ? localStorage.getItem(
+                  questionsCacheKey,
+                )
+              : null;
 
           const parsed =
             cached
@@ -2312,15 +2361,27 @@ const VisitFlow = () => {
                 )
               : [];
 
+          const tenantCached =
+            Array.isArray(parsed)
+              ? parsed.filter(
+                  (question) =>
+                    String(
+                      question?.company_id ||
+                        "",
+                    ) ===
+                    sessionCompanyId,
+                )
+              : [];
+
           if (
-            Array.isArray(
-              parsed,
-            ) &&
-            parsed.length > 0
+            tenantCached.length > 0
           ) {
-            setQuestions(parsed);
+            setQuestions(
+              tenantCached,
+            );
+
             toast(
-              "Se utilizó la encuesta guardada en el dispositivo.",
+              "Se utilizó la encuesta guardada para tu empresa.",
               {
                 icon: "📋",
               },
@@ -2328,13 +2389,13 @@ const VisitFlow = () => {
           } else {
             setQuestions([]);
             setQuestionsError(
-              "La encuesta no está disponible en este momento.",
+              "La encuesta de tu empresa no está disponible en este momento.",
             );
           }
         } catch {
           setQuestions([]);
           setQuestionsError(
-            "La encuesta no está disponible en este momento.",
+            "La encuesta de tu empresa no está disponible en este momento.",
           );
         }
       } finally {
@@ -2342,7 +2403,10 @@ const VisitFlow = () => {
           false,
         );
       }
-    }, []);
+    }, [
+      sessionCompanyId,
+      questionsCacheKey,
+    ]);
 
   useEffect(() => {
     if (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FiX,
   FiTrash2,
@@ -10,8 +10,10 @@ import {
   FiAlertCircle,
   FiList,
   FiType,
+  FiBriefcase,
 } from "react-icons/fi";
 import api from "../../api/apiClient";
+import { useAuth } from "../../context/AuthContext";
 
 const defaultForm = () => ({
   question: "",
@@ -23,11 +25,68 @@ const defaultForm = () => ({
   max_selections: "",
 });
 
+const ADMIN_CULTIVA_USER_ID =
+  "97c6f210-eccc-48fe-b6b9-65dcf5968857";
+
 const CreateQuestionModal = ({
   isOpen,
   onClose,
   onCreated,
+  companyId = "",
+  companies = [],
 }) => {
+  const { user } = useAuth();
+
+  const currentRole = String(
+    user?.role || "",
+  ).toUpperCase();
+
+  const currentUserId = String(
+    user?.id ||
+      user?.user_id ||
+      "",
+  );
+
+  const isRoot =
+    currentRole === "ROOT";
+
+  const isAuthorizedCultivaAdmin =
+    [
+      "ADMIN",
+      "ADMIN_CLIENTE",
+    ].includes(currentRole) &&
+    currentUserId ===
+      ADMIN_CULTIVA_USER_ID;
+
+  const canSelectCompany =
+    isRoot ||
+    isAuthorizedCultivaAdmin;
+
+  const sessionCompanyId = String(
+    user?.company_id || "",
+  );
+
+  const normalizedCompanies =
+    useMemo(
+      () =>
+        Array.isArray(companies)
+          ? companies.filter(
+              (company) =>
+                company?.is_active !== false,
+            )
+          : [],
+      [companies],
+    );
+
+  const [
+    selectedCompanyId,
+    setSelectedCompanyId,
+  ] = useState(
+    canSelectCompany
+      ? String(companyId || "")
+      : sessionCompanyId ||
+          String(companyId || ""),
+  );
   const [form, setForm] =
     useState(defaultForm());
 
@@ -36,6 +95,27 @@ const CreateQuestionModal = ({
 
   const [error, setError] =
     useState("");
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (canSelectCompany) {
+      setSelectedCompanyId(
+        String(companyId || ""),
+      );
+      return;
+    }
+
+    setSelectedCompanyId(
+      sessionCompanyId ||
+        String(companyId || ""),
+    );
+  }, [
+    isOpen,
+    companyId,
+    canSelectCompany,
+    sessionCompanyId,
+  ]);
 
   if (!isOpen) {
     return null;
@@ -83,8 +163,22 @@ const CreateQuestionModal = ({
     event,
   ) => {
     event.preventDefault();
-    setLoading(true);
     setError("");
+
+    const effectiveCompanyId =
+      canSelectCompany
+        ? selectedCompanyId
+        : sessionCompanyId ||
+          String(companyId || "");
+
+    if (!effectiveCompanyId) {
+      setError(
+        "Debes seleccionar una empresa para crear la pregunta.",
+      );
+      return;
+    }
+
+    setLoading(true);
 
     const finalFlow =
       form.target_flows.length > 1
@@ -92,6 +186,8 @@ const CreateQuestionModal = ({
         : form.target_flows[0];
 
     const payload = {
+      company_id:
+        effectiveCompanyId,
       question:
         form.question,
       is_required:
@@ -131,6 +227,13 @@ const CreateQuestionModal = ({
       onCreated();
       onClose();
       setForm(defaultForm());
+
+      setSelectedCompanyId(
+        canSelectCompany
+          ? String(companyId || "")
+          : sessionCompanyId ||
+              String(companyId || ""),
+      );
     } catch (err) {
       setError(
         err?.response?.data
@@ -242,6 +345,81 @@ const CreateQuestionModal = ({
                   </p>
                 </div>
               </div>
+            )}
+
+            {canSelectCompany && (
+              <section className="rounded-[1.6rem] border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#87be00]/10 text-[#87be00]">
+                    <FiBriefcase size={16} />
+                  </div>
+
+                  <div>
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-800">
+                      Empresa de destino
+                    </h3>
+
+                    <p className="mt-0.5 text-[10px] font-medium text-gray-400">
+                      Define a qué empresa pertenecerá esta pregunta.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className={labelClassName}>
+                    <FiBriefcase size={11} />
+                    Empresa
+                  </label>
+
+                  <div className="relative">
+                    <select
+                      value={selectedCompanyId}
+                      onChange={(event) => {
+                        setSelectedCompanyId(
+                          event.target.value,
+                        );
+                        setError("");
+                      }}
+                      required
+                      disabled={loading}
+                      className={`${inputClassName} appearance-none pr-10`}
+                    >
+                      <option value="">
+                        Seleccionar empresa
+                      </option>
+
+                      {normalizedCompanies.map(
+                        (company) => (
+                          <option
+                            key={company.id}
+                            value={company.id}
+                          >
+                            {company.name ||
+                              company.nombre ||
+                              "Empresa"}
+                          </option>
+                        ),
+                      )}
+                    </select>
+
+                    <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="3"
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </section>
             )}
 
             {/* FLUJO DESTINO */}
@@ -656,7 +834,11 @@ const CreateQuestionModal = ({
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={
+                loading ||
+                (canSelectCompany &&
+                  !selectedCompanyId)
+              }
               className="order-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-900 px-6 py-3.5 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-gray-200 transition-all hover:bg-[#87be00] disabled:cursor-not-allowed disabled:opacity-60 sm:order-2"
             >
               {loading ? (
