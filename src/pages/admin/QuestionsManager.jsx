@@ -112,6 +112,14 @@ const QuestionsManager = () => {
     selectedQuestion,
     setSelectedQuestion,
   ] = useState(null);
+  const [
+    deleteQuestionTarget,
+    setDeleteQuestionTarget,
+  ] = useState(null);
+  const [
+    deletingQuestion,
+    setDeletingQuestion,
+  ] = useState(false);
   const [loading, setLoading] =
     useState(true);
   const [error, setError] =
@@ -327,41 +335,77 @@ const QuestionsManager = () => {
       searchTerm,
     ]);
 
-  const handleDelete = async (
+  const handleDelete = (
     question,
   ) => {
-    const confirmed =
-      window.confirm(
-        `¿Eliminar esta pregunta?\n\n${question.question}\n\nID: ${question.id}`,
-      );
-
-    if (!confirmed) return;
-
-    try {
-      await api.delete(
-        `/questions/${question.id}?company_id=${encodeURIComponent(
-          effectiveCompanyId,
-        )}`,
-      );
-
-      toast.success(
-        "Pregunta eliminada",
-      );
-
-      await loadQuestions();
-    } catch (requestError) {
-      console.error(
-        "Error eliminando pregunta:",
-        requestError,
-      );
-
-      toast.error(
-        requestError?.response?.data
-          ?.message ||
-          "No se pudo eliminar la pregunta",
-      );
+    if (
+      !question ||
+      deletingQuestion
+    ) {
+      return;
     }
+
+    setDeleteQuestionTarget(
+      question,
+    );
   };
+
+  const closeDeleteQuestionModal =
+    () => {
+      if (deletingQuestion) {
+        return;
+      }
+
+      setDeleteQuestionTarget(
+        null,
+      );
+    };
+
+  const confirmDeleteQuestion =
+    async () => {
+      if (
+        !deleteQuestionTarget?.id ||
+        deletingQuestion
+      ) {
+        return;
+      }
+
+      try {
+        setDeletingQuestion(true);
+
+        await api.delete(
+          `/questions/${deleteQuestionTarget.id}?company_id=${encodeURIComponent(
+            effectiveCompanyId,
+          )}`,
+        );
+
+        toast.success(
+          "Pregunta eliminada",
+        );
+
+        setDeleteQuestionTarget(
+          null,
+        );
+
+        await loadQuestions();
+      } catch (requestError) {
+        console.error(
+          "Error eliminando pregunta:",
+          requestError,
+        );
+
+        toast.error(
+          requestError?.response?.data
+            ?.message ||
+            requestError?.data
+              ?.message ||
+            requestError?.message ||
+            "No se pudo eliminar la pregunta",
+        );
+      } finally {
+        setDeletingQuestion(false);
+      }
+    };
 
   const handleEdit = (
     question,
@@ -683,6 +727,195 @@ const QuestionsManager = () => {
             : []
         }
       />
+
+      {deleteQuestionTarget && (
+        <DeleteQuestionModal
+          question={
+            deleteQuestionTarget
+          }
+          loading={
+            deletingQuestion
+          }
+          onClose={
+            closeDeleteQuestionModal
+          }
+          onConfirm={
+            confirmDeleteQuestion
+          }
+        />
+      )}
+    </div>
+  );
+};
+
+const DeleteQuestionModal = ({
+  question,
+  loading,
+  onClose,
+  onConfirm,
+}) => {
+  const flow = String(
+    question?.target_flow || "",
+  ).toLowerCase();
+
+  const type = String(
+    question?.type || "TEXT",
+  ).toUpperCase();
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#111111]/70 p-3 font-[Outfit] backdrop-blur-sm sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-question-title"
+      onMouseDown={(event) => {
+        if (
+          event.target ===
+            event.currentTarget &&
+          !loading
+        ) {
+          onClose();
+        }
+      }}
+    >
+      <div className="relative w-full max-w-lg overflow-hidden rounded-[2rem] border border-white/60 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <div className="absolute inset-x-0 top-0 h-1 bg-red-500" />
+
+        <header className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-5 sm:px-7 sm:py-6">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+              <FiTrash2 size={21} />
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-red-500">
+                Confirmar eliminación
+              </p>
+
+              <h2
+                id="delete-question-title"
+                className="mt-1 text-xl font-black leading-tight tracking-tight text-gray-900 sm:text-2xl"
+              >
+                Eliminar pregunta
+              </h2>
+
+              <p className="mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
+                Revisa la información antes de continuar.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            aria-label="Cerrar modal de eliminación"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-gray-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FiX size={18} />
+          </button>
+        </header>
+
+        <div className="space-y-4 bg-gray-50/40 px-5 py-5 sm:px-7 sm:py-6">
+          <section className="rounded-[1.5rem] border border-red-100 bg-red-50/70 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <FiAlertCircle
+                className="mt-0.5 shrink-0 text-red-500"
+                size={18}
+              />
+
+              <div>
+                <h3 className="text-[10px] font-black uppercase tracking-[0.14em] text-red-600">
+                  Esta acción requiere confirmación
+                </h3>
+
+                <p className="mt-2 text-[11px] font-semibold leading-relaxed text-red-700/80">
+                  La pregunta dejará de estar disponible en el cuestionario de la empresa.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-[1.5rem] border border-gray-100 bg-white shadow-sm">
+            <div className="border-b border-gray-100 p-4 sm:p-5">
+              <p className="text-[8px] font-black uppercase tracking-[0.16em] text-gray-400">
+                Pregunta seleccionada
+              </p>
+
+              <p className="mt-2 text-sm font-black leading-relaxed text-gray-900">
+                {question?.question ||
+                  "Pregunta sin contenido"}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5">
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3.5 py-3">
+                <p className="text-[8px] font-black uppercase tracking-[0.14em] text-gray-400">
+                  Flujo
+                </p>
+
+                <p className="mt-1 text-[10px] font-bold text-gray-700">
+                  {FLOW_LABELS[flow] ||
+                    question?.target_flow ||
+                    "Sin flujo"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3.5 py-3">
+                <p className="text-[8px] font-black uppercase tracking-[0.14em] text-gray-400">
+                  Tipo
+                </p>
+
+                <p className="mt-1 text-[10px] font-bold text-gray-700">
+                  {TYPE_LABELS[type] ||
+                    type}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3.5 py-3 sm:col-span-2">
+                <p className="text-[8px] font-black uppercase tracking-[0.14em] text-gray-400">
+                  ID
+                </p>
+
+                <p className="mt-1 break-all font-mono text-[9px] font-bold text-gray-500">
+                  {question?.id ||
+                    "No disponible"}
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <footer className="grid grid-cols-1 gap-3 border-t border-gray-100 bg-white px-5 py-4 sm:grid-cols-2 sm:px-7">
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            fullWidth
+            disabled={loading}
+            onClick={onClose}
+          >
+            Cancelar
+          </Button>
+
+          <Button
+            type="button"
+            variant="danger"
+            size="lg"
+            fullWidth
+            loading={loading}
+            loadingText="Eliminando..."
+            leftIcon={
+              !loading ? (
+                <FiTrash2 size={15} />
+              ) : null
+            }
+            onClick={onConfirm}
+          >
+            Eliminar pregunta
+          </Button>
+        </footer>
+      </div>
     </div>
   );
 };
