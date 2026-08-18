@@ -91,6 +91,12 @@ const REGIONAL_ROLE_OPTIONS = [
   },
 ];
 
+const MERCADERISTA_ROLES = new Set([
+  "USUARIO",
+  "MERCADERISTA",
+  "MERCADERISTA_REGIONAL",
+]);
+
 const normalizeRole = (
   value,
 ) =>
@@ -223,10 +229,7 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
     );
 
   const isMercaderista =
-    [
-      "USUARIO",
-      "MERCADERISTA",
-    ].includes(
+    MERCADERISTA_ROLES.has(
       normalizeRole(
         form.role,
       ),
@@ -322,19 +325,22 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
       return;
     }
 
+    const keepsSupervisorData =
+      MERCADERISTA_ROLES.has(
+        nextRole,
+      );
+
     setForm(
       (current) => ({
         ...current,
         role:
           nextRole,
         supervisor_nombre:
-          nextRole ===
-          "USUARIO"
+          keepsSupervisorData
             ? current.supervisor_nombre
             : "",
         supervisor_telefono:
-          nextRole ===
-          "USUARIO"
+          keepsSupervisorData
             ? current.supervisor_telefono
             : "",
       }),

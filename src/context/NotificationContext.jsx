@@ -93,21 +93,44 @@ export const NotificationProvider = ({
     useState(0);
   const [loading, setLoading] =
     useState(false);
+  const [error, setError] =
+    useState("");
+
+  const userId =
+    user?.id ||
+    user?.user_id ||
+    user?.sub ||
+    null;
+
+  const companyId =
+    user?.company_id ||
+    user?.tenant_id ||
+    null;
 
   const processedIds = useRef(new Set());
   const broadcastRef = useRef(null);
 
   const fetchNotifs = useCallback(
-    async () => {
+    async (
+      options = {},
+    ) => {
+      const silent =
+        options?.silent ===
+        true;
+
       const token =
         localStorage.getItem("token");
 
-      if (!user?.id || !token) {
+      if (!userId || !token) {
+        setNotifications([]);
+        setUnreadCount(0);
         return;
       }
 
       try {
-        setLoading(true);
+        if (!silent) {
+          setLoading(true);
+        }
 
         const response =
           await service.getMyNotifications();
@@ -136,6 +159,8 @@ export const NotificationProvider = ({
           ).length,
         );
 
+        setError("");
+
         processedIds.current =
           new Set(
             normalizedData.map(
@@ -146,27 +171,54 @@ export const NotificationProvider = ({
 
         console.log(
           "📊 [Historial] Sincronizado para el usuario:",
-          user.id,
+          userId,
         );
       } catch (error) {
+        setError(
+          error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            error?.message ||
+            "No fue posible cargar las notificaciones.",
+        );
+
         console.error(
           "❌ [API Error]:",
           error,
         );
       } finally {
-        setLoading(false);
+        if (!silent) {
+          setLoading(false);
+        }
       }
     },
-    [user?.id],
+    [userId],
   );
 
   useEffect(() => {
+    if (!userId) {
+      return undefined;
+    }
+
     fetchNotifs();
-  }, [fetchNotifs]);
+
+    const intervalId =
+      window.setInterval(
+        () =>
+          fetchNotifs({
+            silent: true,
+          }),
+        15_000,
+      );
+
+    return () =>
+      window.clearInterval(
+        intervalId,
+      );
+  }, [fetchNotifs, userId]);
 
   useEffect(() => {
     if (
-      !user?.id ||
+      !userId ||
       typeof BroadcastChannel ===
         "undefined"
     ) {
@@ -175,7 +227,7 @@ export const NotificationProvider = ({
 
     const broadcastChannel =
       new BroadcastChannel(
-        `notif-lock-${user.id}`,
+        `notif-lock-${userId}`,
       );
 
     broadcastRef.current =
@@ -204,7 +256,7 @@ export const NotificationProvider = ({
       broadcastChannel.close();
       broadcastRef.current = null;
     };
-  }, [user?.id]);
+  }, [userId]);
 
   useEffect(() => {
     let channel;
@@ -225,7 +277,7 @@ export const NotificationProvider = ({
 
         if (
           cancelled ||
-          !user?.id ||
+          !userId ||
           !token
         ) {
           return;
@@ -248,7 +300,7 @@ export const NotificationProvider = ({
 
           channel = supabase
             .channel(
-              `db-changes-notifications-${user.id}`,
+              `db-changes-notifications-${userId}`,
             )
             .on(
               "postgres_changes",
@@ -295,7 +347,7 @@ export const NotificationProvider = ({
 
                 const cleanUserId =
                   String(
-                    user.id || "",
+                    userId || "",
                   )
                     .toLowerCase()
                     .trim();
@@ -311,7 +363,7 @@ export const NotificationProvider = ({
 
                 const cleanUserTenant =
                   String(
-                    user.company_id ||
+                    companyId ||
                       "",
                   )
                     .toLowerCase()
@@ -448,8 +500,8 @@ export const NotificationProvider = ({
       }
     };
   }, [
-    user?.id,
-    user?.company_id,
+    userId,
+    companyId,
   ]);
 
   const markAsRead = async (
@@ -486,13 +538,48 @@ export const NotificationProvider = ({
     }
   };
 
+  const markAllAsRead = async () => {
+    try {
+      await service.markAllAsRead();
+
+      setNotifications(
+        (current) =>
+          current.map(
+            (notification) => ({
+              ...notification,
+              is_read: true,
+            }),
+          ),
+      );
+
+      setUnreadCount(0);
+      setError("");
+    } catch (requestError) {
+      setError(
+        requestError?.response?.data?.message ||
+          requestError?.response?.data?.error ||
+          requestError?.message ||
+          "No fue posible marcar las notificaciones como leídas.",
+      );
+
+      console.error(
+        "❌ [Error al marcar todas como leídas]:",
+        requestError,
+      );
+
+      throw requestError;
+    }
+  };
+
   return (
     <NotificationContext.Provider
       value={{
         notifications,
         unreadCount,
         loading,
+        error,
         onMarkRead: markAsRead,
+        onMarkAllRead: markAllAsRead,
         refresh: fetchNotifs,
       }}
     >

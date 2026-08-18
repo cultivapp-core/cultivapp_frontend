@@ -42,16 +42,22 @@ const TYPE_LABELS = {
 };
 
 const ROLE_LABELS = {
-  MERCADERISTA:
-    "Mercaderista",
+  MERCADERISTA: "Mercaderista",
   USUARIO: "Mercaderista",
+
   MERCADERISTA_REGIONAL:
     "Mercaderista regional",
+
   VIEW: "Viewer",
-  SUPERVISOR:
-    "Supervisor",
+
+  SUPERVISOR: "Supervisor",
+
   ADMIN_CLIENTE:
     "Administrador",
+
+  ADMIN_REGIONAL:
+    "Administrador regional",
+
   ROOT: "Root",
 };
 
