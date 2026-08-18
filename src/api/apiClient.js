@@ -346,10 +346,21 @@ const request = async (
               message,
             });
 
+      /*
+       * Un 403 indica falta de permiso para un recurso concreto,
+       * pero la sesión continúa siendo válida. Solo se limpia la
+       * sesión ante errores reales de autenticación, expiración o
+       * deshabilitación de cuenta/empresa.
+       */
+      const shouldClearSession =
+        authErrorType &&
+        authErrorType !==
+          "forbidden";
+
       if (
         !isLoginRequest &&
         token &&
-        authErrorType &&
+        shouldClearSession &&
         !preserveSessionOnAuthError
       ) {
         clearSession();

@@ -75,6 +75,20 @@ import SalesTrendReport from "./pages/reports/SalesTrendReport";
 import ProductReport from "./pages/reports/ProductReport";
 import GeoChainReport from "./pages/reports/GeoChainReport";
 
+/* ================= ADMIN REGIONAL ================= */
+import RegionalAdminLayout from "./pages/regional-admin/RegionalAdminLayout";
+import RegionalInventoryDashboard from "./pages/regional-admin/RegionalInventoryDashboard";
+import RegionalProductCatalog from "./pages/regional-admin/RegionalProductCatalog";
+import RegionalStockLoads from "./pages/regional-admin/RegionalStockLoads";
+import RegionalMovements from "./pages/regional-admin/RegionalMovements";
+import RegionalVisitControl from "./pages/regional-admin/RegionalVisitControl";
+import RegionalPhotoValidation from "./pages/regional-admin/RegionalPhotoValidation";
+
+/* ================= MERCADERISTA REGIONAL ================= */
+import RegionalWorkerDashboard from "./pages/regional-worker/RegionalWorkerDashboard";
+import RegionalWorkerLocales from "./pages/regional-worker/RegionalWorkerLocales";
+import RegionalWorkerLayout from "./pages/regional-worker/RegionalWorkerLayout";
+
 import "./App.css"
 
 const HeartbeatMonitor = () => {
@@ -508,6 +522,56 @@ function App() {
               <Route path="task-control" element={<TaskControl />} />
               <Route path="attendance-control" element={<AttendanceControl />} />
               <Route path="photo-validation" element={<PhotoValidation />} />
+            </Route>
+
+            {/* ADMIN REGIONAL */}
+            <Route
+              path="/admin-regional"
+              element={
+                <ProtectedRoute role="ADMIN_REGIONAL">
+                  <RegionalAdminLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<RegionalInventoryDashboard />} />
+
+              {/* INVENTARIO REGIONAL */}
+              <Route path="catalogo" element={<RegionalProductCatalog />} />
+              <Route path="cargas" element={<RegionalStockLoads />} />
+              <Route path="movimientos" element={<RegionalMovements />} />
+
+              {/* SECCIONES DEL ADMINISTRADOR */}
+              <Route path="informes" element={<ReportsPage />} />
+              <Route path="locales" element={<AdminLocales />} />
+              <Route path="turnos" element={<TurnosManager />} />
+              <Route path="routes" element={<AdminRoutes />} />
+              <Route path="gps-monitor" element={<GpsMonitor />} />
+              <Route path="notification-manager" element={<NotificationManager />} />
+              <Route path="questions" element={<QuestionsManager />} />
+              <Route
+                path="notifications"
+                element={<NotificationsLayout userRole="ADMIN_REGIONAL" />}
+              />
+              <Route path="task-control" element={<RegionalVisitControl />} />
+              <Route path="attendance-control" element={<AttendanceControl />} />
+              <Route path="photo-validation" element={<RegionalPhotoValidation />} />
+            </Route>
+
+            {/* MERCADERISTA REGIONAL */}
+            <Route
+              path="/mercaderista-regional"
+              element={
+                <ProtectedRoute role="MERCADERISTA_REGIONAL">
+                  <RegionalWorkerLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="home" replace />} />
+              <Route path="home" element={<RegionalWorkerDashboard />} />
+              <Route path="agenda" element={<RegionalWorkerDashboard />} />
+              <Route path="jornada" element={<Navigate to="/mercaderista-regional/home" replace />} />
+              <Route path="locales" element={<RegionalWorkerLocales />} />
+              <Route path="notifications" element={<NotificationsLayout userRole="MERCADERISTA_REGIONAL" />} />
             </Route>
 
             {/* VIEWER */}

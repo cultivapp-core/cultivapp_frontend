@@ -3,11 +3,13 @@ export const ROLE_LABELS = {
 
   ADMIN: "Administrador",
   ADMIN_CLIENTE: "Administrador",
+  ADMIN_REGIONAL: "Administrador regional",
 
   SUPERVISOR: "Supervisor",
 
   MERCADERISTA: "Mercaderista",
   USUARIO: "Mercaderista",
+  MERCADERISTA_REGIONAL: "Mercaderista regional",
 
   VIEWER: "Visualizador",
   VIEW: "Visualizador",

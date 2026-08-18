@@ -21,6 +21,7 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
   const userAdmin = storedUser ? JSON.parse(storedUser) : null;
 
   const isRoot = userAdmin?.role === "ROOT";
+  const isAdminCliente = userAdmin?.role === "ADMIN_CLIENTE";
 
   const isCultivaAdmin =
     userAdmin?.role === "ADMIN_CLIENTE" &&
@@ -28,6 +29,10 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
 
   const canSelectCompany =
     isRoot || isCultivaAdmin;
+
+  /* Todo ADMIN_CLIENTE puede crear perfiles regionales en su empresa. */
+  const canManageRegionalRoles =
+    isRoot || isAdminCliente;
 
   const loggedCompanyId =
     userAdmin?.company_id || "";
@@ -365,6 +370,16 @@ const CreateAdminUserModal = ({ isOpen, onClose, onCreated }) => {
                       <option value="USUARIO">Mercaderista</option>
                       <option value="SUPERVISOR">Supervisor</option>
                       <option value="VIEW">Visualizador</option>
+                      {canManageRegionalRoles && (
+                        <>
+                          <option value="ADMIN_REGIONAL">
+                            Administrador regional
+                          </option>
+                          <option value="MERCADERISTA_REGIONAL">
+                            Mercaderista regional
+                          </option>
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>

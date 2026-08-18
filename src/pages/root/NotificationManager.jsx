@@ -30,8 +30,10 @@ const CULTIVA_COMPANY_ID =
 const ROLE_LABELS = {
   ROOT: "Administrador general",
   ADMIN_CLIENTE: "Administrador",
+  ADMIN_REGIONAL: "Administrador regional",
   SUPERVISOR: "Supervisor",
   USUARIO: "Mercaderista",
+  MERCADERISTA_REGIONAL: "Mercaderista regional",
   VIEW: "Visualizador",
 };
 
@@ -40,10 +42,14 @@ const ROLE_STYLES = {
     "bg-purple-50 text-purple-700 border-purple-200",
   ADMIN_CLIENTE:
     "bg-blue-50 text-blue-700 border-blue-200",
+  ADMIN_REGIONAL:
+    "bg-indigo-50 text-indigo-700 border-indigo-200",
   SUPERVISOR:
     "bg-amber-50 text-amber-700 border-amber-200",
   USUARIO:
     "bg-green-50 text-green-700 border-green-200",
+  MERCADERISTA_REGIONAL:
+    "bg-lime-50 text-lime-700 border-lime-200",
   VIEW:
     "bg-cyan-50 text-cyan-700 border-cyan-200",
 };
@@ -82,6 +88,37 @@ const getLocalCode = (local = {}) =>
   local.code ||
   "";
 
+const WITHOUT_CHAIN_ID =
+  "__without_chain__";
+
+const getLocalChainId = (local = {}) =>
+  String(
+    local.chain_id ||
+      local.cadena ||
+      WITHOUT_CHAIN_ID,
+  );
+
+const getLocalChainLabel = (
+  local = {},
+) =>
+  local.chain_name ||
+  local.cadena ||
+  "Sin cadena";
+
+const getUniqueLocales = (data) =>
+  Array.isArray(data)
+    ? Array.from(
+        new Map(
+          data.map((local, index) => [
+            local?.id ||
+              getLocalCode(local) ||
+              `local-${index}`,
+            local,
+          ]),
+        ).values(),
+      )
+    : [];
+
 const getLocalLabel = (local = {}) => {
   const name = String(
     getLocalName(local),
@@ -109,6 +146,9 @@ const getLocalLabel = (local = {}) => {
 const NotificationManager = () => {
   const { user } = useAuth();
 
+  const isRegionalAdmin =
+    user?.role === "ADMIN_REGIONAL";
+
   const canSeeCompanies =
     user?.role === "ROOT" ||
     (user?.role === "ADMIN_CLIENTE" &&
@@ -121,6 +161,10 @@ const NotificationManager = () => {
     useState([]);
   const [locales, setLocales] =
     useState([]);
+  const [
+    regionalLocales,
+    setRegionalLocales,
+  ] = useState([]);
   const [users, setUsers] =
     useState([]);
 
@@ -199,12 +243,74 @@ const NotificationManager = () => {
         setChains([]);
         setUsers([]);
         setLocales([]);
+        setRegionalLocales([]);
         return;
       }
 
       try {
         setLoadingRecipients(true);
         setError("");
+
+        if (isRegionalAdmin) {
+          const [
+            localesResponse,
+            usersResponse,
+          ] = await Promise.all([
+            api.get(
+              "/regional-admins/me/locales",
+            ),
+            api.get(
+              "/regional-admins/me/users",
+            ),
+          ]);
+
+          const assignedLocales =
+            getUniqueLocales(
+              getResponseData(
+                localesResponse,
+                [],
+              ),
+            );
+
+          const usersData =
+            getResponseData(
+              usersResponse,
+              [],
+            );
+
+          const assignedChains =
+            Array.from(
+              new Map(
+                assignedLocales.map(
+                  (local) => [
+                    getLocalChainId(
+                      local,
+                    ),
+                    {
+                      id: getLocalChainId(
+                        local,
+                      ),
+                      name: getLocalChainLabel(
+                        local,
+                      ),
+                    },
+                  ],
+                ),
+              ).values(),
+            );
+
+          setRegionalLocales(
+            assignedLocales,
+          );
+          setLocales(assignedLocales);
+          setChains(assignedChains);
+          setUsers(
+            Array.isArray(usersData)
+              ? usersData
+              : [],
+          );
+          return;
+        }
 
         const [
           chainsResponse,
@@ -255,7 +361,10 @@ const NotificationManager = () => {
       } finally {
         setLoadingRecipients(false);
       }
-    }, [form.companyId]);
+    }, [
+      form.companyId,
+      isRegionalAdmin,
+    ]);
 
   useEffect(() => {
     fetchCompanyResources();
@@ -263,6 +372,23 @@ const NotificationManager = () => {
 
   useEffect(() => {
     const fetchLocales = async () => {
+      if (isRegionalAdmin) {
+        setLocales(
+          form.chainId
+            ? regionalLocales.filter(
+                (local) =>
+                  getLocalChainId(
+                    local,
+                  ) ===
+                  String(
+                    form.chainId,
+                  ),
+              )
+            : regionalLocales,
+        );
+        return;
+      }
+
       if (
         !form.chainId ||
         !form.companyId
@@ -283,20 +409,7 @@ const NotificationManager = () => {
           );
 
         const uniqueLocales =
-          Array.isArray(data)
-            ? Array.from(
-                new Map(
-                  data.map(
-                    (local, index) => [
-                      local?.id ||
-                        getLocalCode(local) ||
-                        `local-${index}`,
-                      local,
-                    ],
-                  ),
-                ).values(),
-              )
-            : [];
+          getUniqueLocales(data);
 
         setLocales(uniqueLocales);
       } catch (requestError) {
@@ -313,6 +426,8 @@ const NotificationManager = () => {
   }, [
     form.chainId,
     form.companyId,
+    isRegionalAdmin,
+    regionalLocales,
   ]);
 
   useEffect(() => {
@@ -328,7 +443,9 @@ const NotificationManager = () => {
         setLoadingRecipients(true);
 
         const response = await api.get(
-          `/users?local_id=${form.localId}`,
+          isRegionalAdmin
+            ? "/regional-admins/me/users"
+            : `/users?local_id=${form.localId}`,
         );
 
         const data =
@@ -353,7 +470,11 @@ const NotificationManager = () => {
     };
 
     fetchLocalUsers();
-  }, [form.scope, form.localId]);
+  }, [
+    form.scope,
+    form.localId,
+    isRegionalAdmin,
+  ]);
 
   const updateForm = (
     field,

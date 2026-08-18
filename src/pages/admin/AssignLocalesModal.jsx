@@ -4,6 +4,8 @@ import api from '../../api/apiClient';
 import toast from 'react-hot-toast';
 
 const AssignLocalesModal = ({ supervisor, onClose, onRefresh }) => {
+  const isRegionalMercaderista =
+    supervisor?.role === "MERCADERISTA_REGIONAL";
   const [allLocales, setAllLocales] = useState([]);
   const [assignedIds, setAssignedIds] = useState([]);
   
@@ -18,6 +20,8 @@ const AssignLocalesModal = ({ supervisor, onClose, onRefresh }) => {
 
   useEffect(() => {
     fetchData();
+    // fetchData se reinicia intencionalmente al cambiar el usuario objetivo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supervisor.id]);
 
   const fetchData = async () => {
@@ -31,7 +35,11 @@ const AssignLocalesModal = ({ supervisor, onClose, onRefresh }) => {
       // 2. Traer los locales ya asignados
       let currentIds = [];
       try {
-        const currentRes = await api.get(`/users/${supervisor.id}/locales`);
+        const currentRes = await api.get(
+          isRegionalMercaderista
+            ? `/regional-mercaderistas/${supervisor.id}/locales`
+            : `/users/${supervisor.id}/locales`
+        );
         currentIds = Array.isArray(currentRes) ? currentRes.map(l => l.id) : [];
       } catch (e) {
         if (e.status !== 404) console.error("Error al obtener asignados:", e);
@@ -42,7 +50,7 @@ const AssignLocalesModal = ({ supervisor, onClose, onRefresh }) => {
       try {
         const rRes = await api.get(`/regions`);
         regionsData = Array.isArray(rRes) ? rRes : (rRes?.data || []);
-      } catch (e) {
+      } catch {
         console.warn("No se pudo cargar /regions, se intentará usar datos de locales");
       }
 
@@ -78,11 +86,19 @@ const AssignLocalesModal = ({ supervisor, onClose, onRefresh }) => {
   const handleSave = async () => {
     try {
       setSaving(true);
-      await api.post(`/users/${supervisor.id}/assign-locales`, { localeIds: assignedIds });
+      if (isRegionalMercaderista) {
+        await api.put(`/regional-mercaderistas/${supervisor.id}/locales`, {
+          localeIds: assignedIds,
+        });
+      } else {
+        await api.post(`/users/${supervisor.id}/assign-locales`, {
+          localeIds: assignedIds,
+        });
+      }
       toast.success("Cobertura actualizada con éxito");
       onRefresh();
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Error al guardar la asignación");
     } finally {
       setSaving(false);
@@ -133,7 +149,11 @@ const AssignLocalesModal = ({ supervisor, onClose, onRefresh }) => {
         {/* HEADER */}
         <div className="p-6 md:p-8 border-b border-gray-50 flex justify-between items-center bg-gray-900 text-white shrink-0">
           <div>
-            <p className="text-[10px] font-black text-[#87be00] uppercase tracking-widest italic">Gestión de Cobertura</p>
+            <p className="text-[10px] font-black text-[#87be00] uppercase tracking-widest italic">
+              {isRegionalMercaderista
+                ? "Cobertura del mercaderista regional"
+                : "Gestión de Cobertura"}
+            </p>
             <h2 className="text-xl md:text-2xl font-black italic uppercase leading-none mt-1">
               {supervisor.first_name} {supervisor.last_name}
             </h2>

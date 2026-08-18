@@ -70,6 +70,27 @@ const ROOT_ROLE_OPTION = {
     "border-slate-300 bg-slate-900 text-white",
 };
 
+const REGIONAL_ROLE_OPTIONS = [
+  {
+    value: "ADMIN_REGIONAL",
+    label: "Administrador regional",
+    description:
+      "Administra inventario y operaciones de las regiones, empresas y locales asignados.",
+    icon: FiShield,
+    accent:
+      "border-indigo-200 bg-indigo-50 text-indigo-700",
+  },
+  {
+    value: "MERCADERISTA_REGIONAL",
+    label: "Mercaderista regional",
+    description:
+      "Gestiona jornadas, inventario, reposición y evidencias de los locales asignados.",
+    icon: FiUser,
+    accent:
+      "border-lime-200 bg-lime-50 text-lime-700",
+  },
+];
+
 const normalizeRole = (
   value,
 ) =>
@@ -118,6 +139,9 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
       authenticatedRole,
     );
 
+  const canManageRegionalRoles =
+    isRoot || isAdminCliente;
+
   const isEditingOwnProfile =
     Boolean(
       authenticatedUserId &&
@@ -143,14 +167,26 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
 
   const availableRoleOptions =
     useMemo(
-      () =>
-        isRoot
+      () => {
+        const baseOptions =
+          isRoot
+            ? [
+                ROOT_ROLE_OPTION,
+                ...ROLE_OPTIONS,
+              ]
+            : ROLE_OPTIONS;
+
+        return canManageRegionalRoles
           ? [
-              ROOT_ROLE_OPTION,
-              ...ROLE_OPTIONS,
+              ...baseOptions,
+              ...REGIONAL_ROLE_OPTIONS,
             ]
-          : ROLE_OPTIONS,
-      [isRoot],
+          : baseOptions;
+      },
+      [
+        canManageRegionalRoles,
+        isRoot,
+      ],
     );
 
   const [form, setForm] = useState({
@@ -175,6 +211,7 @@ const EditAdminUserModal = ({ isOpen, onClose, onUpdated, user }) => {
         [
           ROOT_ROLE_OPTION,
           ...ROLE_OPTIONS,
+          ...REGIONAL_ROLE_OPTIONS,
         ].find(
           (option) =>
             option.value ===
