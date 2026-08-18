@@ -298,6 +298,7 @@ const NotificationsLayout = ({
     onMarkRead,
     onMarkAllRead,
     loading = false,
+    error = "",
     refresh,
   } = useNotificationContext();
 
@@ -623,6 +624,33 @@ const NotificationsLayout = ({
             </div>
           </div>
         </header>
+
+        {error && (
+          <section className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+            <AlertTriangle
+              size={18}
+              className="mt-0.5 shrink-0"
+            />
+
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black">
+                No fue posible sincronizar la bandeja
+              </p>
+              <p className="mt-1 text-[11px] font-semibold leading-relaxed">
+                {error}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="shrink-0 rounded-xl border border-red-200 bg-white px-3 py-2 text-[8px] font-black uppercase tracking-wider transition hover:bg-red-100 disabled:opacity-50"
+            >
+              Reintentar
+            </button>
+          </section>
+        )}
 
         {/* FILTROS */}
         <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">

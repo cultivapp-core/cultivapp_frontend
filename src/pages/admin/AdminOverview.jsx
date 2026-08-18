@@ -124,7 +124,9 @@ const AdminOverview = () => {
   const usedSupervisors = safeNumber(
     statsCounts.SUPERVISOR,
   );
-  const usedUsers = safeNumber(statsCounts.USUARIO);
+  const usedUsers =
+    safeNumber(statsCounts.USUARIO) +
+    safeNumber(statsCounts.MERCADERISTA_REGIONAL);
   const usedView = safeNumber(statsCounts.VIEW);
 
   const maxSupervisors = safeNumber(

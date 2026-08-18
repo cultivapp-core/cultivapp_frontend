@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FiCalendar,
   FiCheckCircle,
-  FiChevronLeft,
-  FiChevronRight,
   FiClock,
   FiLoader,
   FiMapPin,
@@ -125,14 +123,14 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
   const { user } = useAuth();
   const [allTasks, setAllTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate] = useState(() => new Date());
   const [stockByLocal, setStockByLocal] = useState({});
   const [stockLoadingByLocal, setStockLoadingByLocal] = useState({});
 
-  const selectedDateKey = toLocalDateKey(selectedDate);
-  const todayKey = toLocalDateKey(new Date());
-  const isSelectedDateToday = selectedDateKey === todayKey;
-  const isSelectedDatePast = selectedDateKey < todayKey;
+  const today = useMemo(() => new Date(), []);
+  const todayKey = toLocalDateKey(today);
+  const selectedDateKey = todayKey;
+  const isSelectedDateToday = true;
   const assignedLocalIds = useMemo(
     () => new Set(locales.map((local) => String(localIdOf(local)))),
     [locales]
@@ -163,28 +161,28 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
   const displayTasks = useMemo(() => {
     return allTasks.filter((task) => {
       if (!assignedLocalIds.has(String(task?.local_id ?? ""))) return false;
-      if (task.visit_date) return routeDateKey(task.visit_date) === selectedDateKey;
+      if (task.visit_date) return routeDateKey(task.visit_date) === todayKey;
       if (!task.is_recurring) return false;
 
       if (task.created_at) {
         const createdDate = new Date(task.created_at);
         if (
           !Number.isNaN(createdDate.getTime()) &&
-          (createdDate.getMonth() !== selectedDate.getMonth() ||
-            createdDate.getFullYear() !== selectedDate.getFullYear())
+          (createdDate.getMonth() !== today.getMonth() ||
+            createdDate.getFullYear() !== today.getFullYear())
         ) {
           return false;
         }
       }
 
-      const jsDay = selectedDate.getDay();
+      const jsDay = today.getDay();
       const isoDay = jsDay === 0 ? 7 : jsDay;
       return (
-        Number(task.week_number) === getWeekNumber(selectedDate) &&
+        Number(task.week_number) === getWeekNumber(today) &&
         Number(task.day_of_week) === isoDay
       );
     });
-  }, [allTasks, assignedLocalIds, selectedDate, selectedDateKey]);
+  }, [allTasks, assignedLocalIds, today, todayKey]);
 
   useEffect(() => {
     const localIds = [
@@ -226,7 +224,7 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
     };
   }, [displayTasks, stockByLocal]);
 
-  const weekDays = useMemo(() => getWeekDays(selectedDate), [selectedDate]);
+  const weekDays = useMemo(() => getWeekDays(today), [today]);
 
   const daySummary = useMemo(
     () =>
@@ -246,12 +244,6 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
       ),
     [displayTasks]
   );
-
-  const changeWeek = (offset) => {
-    const nextDate = new Date(selectedDate);
-    nextDate.setDate(nextDate.getDate() + offset * 7);
-    setSelectedDate(nextDate);
-  };
 
   if (loading && allTasks.length === 0) {
     return (
@@ -273,7 +265,7 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
               Mi agenda regional
             </p>
             <h1 className="mt-2 text-2xl font-black tracking-tight capitalize">
-              {selectedDate.toLocaleDateString("es-CL", {
+              {today.toLocaleDateString("es-CL", {
                 weekday: "long",
                 day: "numeric",
                 month: "long",
@@ -285,15 +277,6 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
                 : `${displayTasks.length} visitas programadas`}
             </p>
           </div>
-          {!isSelectedDateToday && (
-            <button
-              type="button"
-              onClick={() => setSelectedDate(new Date())}
-              className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[8px] font-black uppercase tracking-wider text-white"
-            >
-              Hoy
-            </button>
-          )}
         </div>
         <div className="mt-5 grid grid-cols-3 gap-2">
           {[
@@ -312,18 +295,10 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
       </section>
 
       <section className="rounded-[2rem] border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="mb-3 flex items-center justify-between px-1">
-          <button
-            type="button"
-            onClick={() => changeWeek(-1)}
-            aria-label="Semana anterior"
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-500"
-          >
-            <FiChevronLeft size={17} />
-          </button>
+        <div className="mb-3 flex items-center justify-center px-1">
           <div className="text-center">
             <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">
-              Semana
+              Semana actual
             </p>
             <p className="mt-0.5 text-[10px] font-black text-slate-700">
               {weekDays[0]?.toLocaleDateString("es-CL", {
@@ -337,29 +312,23 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
               })}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => changeWeek(1)}
-            aria-label="Semana siguiente"
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-500"
-          >
-            <FiChevronRight size={17} />
-          </button>
         </div>
         <div className="grid grid-cols-7 gap-1">
           {weekDays.map((date) => {
             const dateKey = toLocalDateKey(date);
-            const isSelected = dateKey === selectedDateKey;
             const isToday = dateKey === todayKey;
+
             return (
               <button
                 key={dateKey}
                 type="button"
-                onClick={() => setSelectedDate(date)}
+                disabled={!isToday}
+                aria-disabled={!isToday}
+                aria-current={isToday ? "date" : undefined}
                 className={`relative flex min-h-[58px] flex-col items-center justify-center rounded-2xl transition-all ${
-                  isSelected
+                  isToday
                     ? "bg-slate-900 text-white shadow-lg shadow-slate-900/15"
-                    : "text-slate-400 hover:bg-slate-50 hover:text-slate-900"
+                    : "cursor-not-allowed bg-slate-50/60 text-slate-300 opacity-50"
                 }`}
               >
                 <span className="text-[7px] font-black uppercase tracking-wider">
@@ -368,17 +337,23 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
                     .replace(".", "")
                     .slice(0, 2)}
                 </span>
-                <span className="mt-1 text-sm font-black">{date.getDate()}</span>
+
+                <span className="mt-1 text-sm font-black">
+                  {date.getDate()}
+                </span>
+
                 {isToday && (
-                  <span
-                    className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${
-                      isSelected ? "bg-[#a8d52c]" : "bg-[#87be00]"
-                    }`}
-                  />
+                  <span className="absolute bottom-1.5 h-1.5 w-1.5 rounded-full bg-[#a8d52c]" />
                 )}
               </button>
             );
           })}
+        </div>
+
+        <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-center">
+          <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-400">
+            Por seguridad operativa, solo puedes visualizar y gestionar las visitas de hoy.
+          </p>
         </div>
       </section>
 
@@ -406,7 +381,7 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
               Sin visitas programadas
             </p>
             <p className="mt-2 max-w-xs text-sm text-slate-500">
-              No tienes locales regionales asignados para la fecha seleccionada.
+              No tienes locales regionales asignados para hoy.
             </p>
           </div>
         ) : (
@@ -558,9 +533,7 @@ const RegionalWorkerAgenda = ({ locales, onStartJourney, startingRouteId }) => {
                       ) : (
                         <>
                           <FiClock size={16} />
-                          {isSelectedDatePast
-                            ? "Visita pasada"
-                            : "Disponible el día programado"}
+                          Visita no disponible
                         </>
                       )}
                     </button>

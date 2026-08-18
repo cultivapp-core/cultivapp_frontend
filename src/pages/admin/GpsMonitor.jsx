@@ -76,6 +76,25 @@ const extractArray = (
   );
 };
 
+const extractRequestError = (
+  result,
+  fallback,
+) => {
+  if (
+    result?.status !==
+    "rejected"
+  ) {
+    return null;
+  }
+
+  return (
+    result.reason?.response?.data?.message ||
+    result.reason?.data?.message ||
+    result.reason?.message ||
+    fallback
+  );
+};
+
 const normalizePlanningStatus = (
   route,
 ) => {
@@ -278,6 +297,7 @@ const GpsMonitor = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedRoute, setSelectedRoute] = useState(null);
 
@@ -319,10 +339,10 @@ const GpsMonitor = () => {
         }).toString();
 
       const [
-        planningRes,
-        liveRes,
+        planningResult,
+        liveResult,
       ] =
-        await Promise.all([
+        await Promise.allSettled([
           api.get(
             `${PLANNING_ENDPOINT}?${planningQuery}`,
           ),
@@ -331,6 +351,18 @@ const GpsMonitor = () => {
             `${LIVE_MONITORING_ENDPOINT}?_ts=${Date.now()}`,
           ),
         ]);
+
+      const planningRes =
+        planningResult.status ===
+        "fulfilled"
+          ? planningResult.value
+          : null;
+
+      const liveRes =
+        liveResult.status ===
+        "fulfilled"
+          ? liveResult.value
+          : null;
 
       /*
        * getSupervisorPlanning responde:
@@ -343,9 +375,11 @@ const GpsMonitor = () => {
        * directamente o dentro de response.data.
        */
       const planningRows =
-        extractArray(
-          planningRes,
-        );
+        planningRes
+          ? extractArray(
+              planningRes,
+            )
+          : [];
 
       const normalizedRoutes =
         planningRows.map(
@@ -361,9 +395,11 @@ const GpsMonitor = () => {
       );
 
       const liveData =
-        extractArray(
-          liveRes,
-        );
+        liveRes
+          ? extractArray(
+              liveRes,
+            )
+          : [];
 
       const active =
         liveData.filter(
@@ -388,6 +424,23 @@ const GpsMonitor = () => {
         new Date(),
       );
 
+      const requestErrors = [
+        extractRequestError(
+          planningResult,
+          "No fue posible cargar la planificación.",
+        ),
+        extractRequestError(
+          liveResult,
+          "No fue posible cargar el monitoreo en vivo.",
+        ),
+      ].filter(Boolean);
+
+      setErrorMessage(
+        requestErrors.join(
+          " ",
+        ),
+      );
+
       console.log(
         "📍 Monitoreo supervisor actualizado:",
         {
@@ -409,6 +462,13 @@ const GpsMonitor = () => {
         },
       );
     } catch (error) {
+      setErrorMessage(
+        error?.response?.data?.message ||
+          error?.data?.message ||
+          error?.message ||
+          "No fue posible actualizar el monitoreo GPS.",
+      );
+
       console.error(
         "❌ Error cargando el dashboard vivo:",
         error?.response?.data ||
@@ -761,6 +821,18 @@ const GpsMonitor = () => {
           )}
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="mx-4 mt-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700 md:mx-8">
+          <FiAlertCircle
+            size={18}
+            className="mt-0.5 shrink-0"
+          />
+          <p className="text-xs font-bold leading-relaxed">
+            {errorMessage}
+          </p>
+        </div>
+      )}
 
       {/* CONTENIDO DE MONITOREO */}
       <div className="flex-1 flex flex-col p-4 md:p-8 gap-4 md:gap-6 overflow-y-auto relative min-h-0">

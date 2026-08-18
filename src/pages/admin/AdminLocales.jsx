@@ -82,6 +82,7 @@ const AdminLocales = () => {
   const [openUploadHelp, setOpenUploadHelp] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
   const [selectedLocal, setSelectedLocal] = useState(null);
+  const [selectedMapLocal, setSelectedMapLocal] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deletingLocal, setDeletingLocal] = useState(false);
 
@@ -353,6 +354,17 @@ const AdminLocales = () => {
     showInactive,
   ]);
 
+  useEffect(() => {
+    if (
+      selectedMapLocal &&
+      !filteredLocales.some(
+        (local) => String(local.id) === String(selectedMapLocal.id),
+      )
+    ) {
+      setSelectedMapLocal(null);
+    }
+  }, [filteredLocales, selectedMapLocal]);
+
   const hasFilters =
     Boolean(searchTerm) ||
     Boolean(selectedCompanyId) ||
@@ -368,6 +380,7 @@ const AdminLocales = () => {
     setSelectedRegion("");
     setSelectedComuna("");
     setShowInactive(false);
+    setSelectedMapLocal(null);
   };
 
   const handleEdit = (local) => {
@@ -744,7 +757,10 @@ const AdminLocales = () => {
 
           <div className="h-[300px] w-full bg-gray-50 sm:h-[380px] lg:h-[420px]">
             {filteredLocales.length > 0 ? (
-              <LocalesMap locales={filteredLocales} />
+              <LocalesMap
+                locales={filteredLocales}
+                selectedLocal={selectedMapLocal}
+              />
             ) : (
               <EmptyState
                 title={
@@ -806,7 +822,16 @@ const AdminLocales = () => {
                   filteredLocales.map((local) => (
                     <tr
                       key={local.id}
-                      className="transition-colors hover:bg-gray-50/60"
+                      onClick={() => setSelectedMapLocal(local)}
+                      aria-selected={
+                        String(selectedMapLocal?.id || "") ===
+                        String(local.id)
+                      }
+                      className={`cursor-pointer transition-all ${
+                        String(selectedMapLocal?.id || "") === String(local.id)
+                          ? "bg-[#87be00]/5 ring-1 ring-inset ring-[#87be00]/20"
+                          : "hover:bg-gray-50/60"
+                      }`}
                     >
                       <td className="p-5 align-top">
                         <div className="flex items-start gap-3">
@@ -855,7 +880,10 @@ const AdminLocales = () => {
                         </p>
                       </td>
 
-                      <td className="p-5 text-center align-top">
+                      <td
+                        className="p-5 text-center align-top"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         {canManageLocales ? (
                           <StatusButton
                             active={local.is_active}
@@ -867,7 +895,10 @@ const AdminLocales = () => {
                       </td>
 
                       {canManageLocales && (
-                        <td className="p-5 align-top">
+                        <td
+                          className="p-5 align-top"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <div className="flex justify-end gap-2">
                             <IconButton
                               label={`Editar local ${local.cadena}`}
@@ -944,7 +975,15 @@ const AdminLocales = () => {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.03 }}
-                className="rounded-[1.6rem] border border-gray-100 bg-white p-4 shadow-sm"
+                onClick={() => setSelectedMapLocal(local)}
+                aria-selected={
+                  String(selectedMapLocal?.id || "") === String(local.id)
+                }
+                className={`cursor-pointer rounded-[1.6rem] border bg-white p-4 shadow-sm transition-all ${
+                  String(selectedMapLocal?.id || "") === String(local.id)
+                    ? "border-[#87be00]/40 ring-2 ring-[#87be00]/10"
+                    : "border-gray-100"
+                }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
@@ -964,10 +1003,12 @@ const AdminLocales = () => {
                   </div>
 
                   {canManageLocales ? (
-                    <StatusButton
-                      active={local.is_active}
-                      onClick={() => toggleLocal(local.id)}
-                    />
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <StatusButton
+                        active={local.is_active}
+                        onClick={() => toggleLocal(local.id)}
+                      />
+                    </div>
                   ) : (
                     <ReadOnlyStatus active={local.is_active} />
                   )}
@@ -996,7 +1037,10 @@ const AdminLocales = () => {
                 </div>
 
                 {canManageLocales && (
-                  <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-50 pt-4">
+                  <div
+                    className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-50 pt-4"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <Button
                       type="button"
                       variant="secondary"

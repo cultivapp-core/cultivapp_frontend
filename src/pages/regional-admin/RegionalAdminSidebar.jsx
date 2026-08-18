@@ -72,18 +72,6 @@ const NAVIGATION = [
     section: "Métricas",
   },
   {
-    to: "/admin-regional/routes",
-    icon: FiCalendar,
-    label: "Planificación",
-    section: "Logística",
-  },
-  {
-    to: "/admin-regional/turnos",
-    icon: FiClock,
-    label: "Configurar turno",
-    section: "Logística",
-  },
-  {
     to: "/admin-regional/gps-monitor",
     icon: FiNavigation,
     label: "Monitoreo GPS",
@@ -456,7 +444,7 @@ const RegionalAdminSidebar = () => {
                 </span>
               </h2>
               <p className="mt-1 whitespace-nowrap text-[8px] font-black uppercase tracking-[0.28em] text-slate-400">
-                Administración Regional
+                Administrador Lactalis
               </p>
             </div>
           </div>
