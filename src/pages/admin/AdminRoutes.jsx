@@ -1354,6 +1354,10 @@ const AdminRoutes = () => {
   const normalizedRole =
     normalizeRole(user?.role);
 
+  const isRegionalAdmin =
+    normalizedRole ===
+    "ADMIN_REGIONAL";
+
   const currentUserId =
     String(
       user?.id ||
@@ -1397,9 +1401,19 @@ const AdminRoutes = () => {
           companiesResponse,
         ] = await Promise.all([
           api.get("/routes"),
-          api.get("/users"),
-          api.get("/locales"),
-          api.get("/companies"),
+          isRegionalAdmin
+            ? api.get(
+                "/regional-admins/me/users",
+              )
+            : api.get("/users"),
+          isRegionalAdmin
+            ? api.get(
+                "/regional-admins/me/locales",
+              )
+            : api.get("/locales"),
+          isRegionalAdmin
+            ? Promise.resolve([])
+            : api.get("/companies"),
         ]);
 
         setRoutes(
@@ -1428,7 +1442,7 @@ const AdminRoutes = () => {
       } finally {
         setLoading(false);
       }
-    }, []);
+    }, [isRegionalAdmin]);
 
   useEffect(() => {
     fetchData();

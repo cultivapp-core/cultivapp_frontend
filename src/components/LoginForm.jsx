@@ -478,9 +478,11 @@ const LoginForm = () => {
       const roleRoutes = {
         ROOT: "/root",
         ADMIN_CLIENTE: "/admin",
+        ADMIN_REGIONAL: "/admin-regional",
         SUPERVISOR: "/supervisor",
         USER: "/usuario",
         USUARIO: "/usuario",
+        MERCADERISTA_REGIONAL: "/mercaderista-regional",
         VIEW: "/viewer"
       };
 

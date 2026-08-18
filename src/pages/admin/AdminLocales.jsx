@@ -26,21 +26,25 @@ import {
   FiX,
   FiRefreshCw,
   FiBriefcase,
+  FiEye,
   FiEyeOff,
 } from "react-icons/fi";
 import api from "../../api/apiClient";
+import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import CreateLocalModal from "../root/CreateLocalModal";
 import UploadLocalesModal from "../root/UploadLocalesModal";
 import EditLocalModal from "../root/EditLocalModal";
 import LocalesMap from "../../components/LocalesMap";
-import { motion } from "framer-motion";
+import { motion as Motion } from "framer-motion";
 import * as XLSX from "xlsx";
 
 const CULTIVA_COMPANY_ID =
   "0e342e01-d213-4353-b210-39a12ac335cf";
 
 const AdminLocales = () => {
+  const { user: currentUser } = useAuth();
+
   const [locales, setLocales] = useState([]);
   const [chains, setChains] = useState([]);
   const [regions, setRegions] = useState([]);
@@ -54,24 +58,24 @@ const AdminLocales = () => {
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedComuna, setSelectedComuna] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const currentUser = useMemo(() => {
-    try {
-      const storedUser =
-        localStorage.getItem("user");
-
-      return storedUser
-        ? JSON.parse(storedUser)
-        : null;
-    } catch {
-      return null;
-    }
-  }, []);
+  const normalizedRole = String(
+    currentUser?.role || "",
+  )
+    .trim()
+    .toUpperCase();
 
   const isCultivaAdmin =
-    currentUser?.role === "ADMIN_CLIENTE" &&
+    normalizedRole === "ADMIN_CLIENTE" &&
     String(currentUser?.company_id) ===
       CULTIVA_COMPANY_ID;
+
+  const isRegionalAdmin =
+    normalizedRole ===
+    "ADMIN_REGIONAL";
+
+  const canManageLocales = !isRegionalAdmin;
 
   const [openCreate, setOpenCreate] = useState(false);
   const [openUpload, setOpenUpload] = useState(false);
@@ -83,9 +87,32 @@ const AdminLocales = () => {
 
   const fetchLocalesAndCompanies = useCallback(async () => {
     try {
+      setIsLoading(true);
+
+      const authenticatedCompanyId = String(
+        currentUser?.company_id || "",
+      ).trim();
+
+      if (
+        isRegionalAdmin &&
+        !authenticatedCompanyId
+      ) {
+        throw new Error(
+          "Tu cuenta regional no tiene una empresa asignada",
+        );
+      }
+
+      const localesEndpoint = isRegionalAdmin
+        ? `/locales?company_id=${encodeURIComponent(
+            authenticatedCompanyId,
+          )}`
+        : "/locales";
+
       const [localesData, companiesData] = await Promise.all([
-        api.get("/locales"),
-        api.get("/companies"),
+        api.get(localesEndpoint),
+        isRegionalAdmin
+          ? Promise.resolve([])
+          : api.get("/companies"),
       ]);
 
       const normalizedLocales =
@@ -142,15 +169,33 @@ const AdminLocales = () => {
         );
       }
     } catch (error) {
-      toast.error("Error al cargar datos");
+      setLocales([]);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Error al cargar los locales",
+      );
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [
+    currentUser?.company_id,
+    isRegionalAdmin,
+  ]);
 
   useEffect(() => {
     fetchLocalesAndCompanies();
   }, [fetchLocalesAndCompanies]);
 
   const companyScopedLocales = useMemo(() => {
+    if (isRegionalAdmin) {
+      return locales.filter(
+        (local) =>
+          String(local.company_id) ===
+          String(currentUser?.company_id),
+      );
+    }
+
     if (
       !isCultivaAdmin ||
       !selectedCompanyId
@@ -165,7 +210,9 @@ const AdminLocales = () => {
     );
   }, [
     locales,
+    currentUser?.company_id,
     isCultivaAdmin,
+    isRegionalAdmin,
     selectedCompanyId,
   ]);
 
@@ -341,7 +388,7 @@ const AdminLocales = () => {
       );
 
       toast.success("Estado actualizado");
-    } catch (error) {
+    } catch {
       toast.error("Error al cambiar estado");
     }
   };
@@ -407,56 +454,68 @@ const AdminLocales = () => {
               </h1>
 
               <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#87be00]">
-                Administración de puntos y geocercas
+                {isRegionalAdmin
+                  ? `Locales de ${
+                      currentUser?.company_name ||
+                      "tu empresa"
+                    }`
+                  : "Administración de puntos y geocercas"}
               </p>
             </div>
           </div>
 
-          <div className="flex w-full items-center gap-2 md:gap-3 lg:w-auto">
-            <div className="group relative shrink-0">
-              <IconButton
-                label="Ver formato de carga masiva de locales"
-                size="lg"
-                onClick={() => setOpenUploadHelp(true)}
-                className="shrink-0"
-              >
-                <FiHelpCircle size={19} />
-              </IconButton>
+          {canManageLocales ? (
+            <div className="flex w-full items-center gap-2 md:gap-3 lg:w-auto">
+              <div className="group relative shrink-0">
+                <IconButton
+                  label="Ver formato de carga masiva de locales"
+                  size="lg"
+                  onClick={() => setOpenUploadHelp(true)}
+                  className="shrink-0"
+                >
+                  <FiHelpCircle size={19} />
+                </IconButton>
 
-              <div className="pointer-events-none absolute left-0 top-[calc(100%+10px)] z-[300] hidden w-64 rounded-2xl border border-gray-100 bg-gray-900 px-4 py-3 text-left shadow-2xl group-hover:block">
-                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#87be00]">
-                  Formato de carga
-                </p>
+                <div className="pointer-events-none absolute left-0 top-[calc(100%+10px)] z-[300] hidden w-64 rounded-2xl border border-gray-100 bg-gray-900 px-4 py-3 text-left shadow-2xl group-hover:block">
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#87be00]">
+                    Formato de carga
+                  </p>
 
-                <p className="mt-1 text-[10px] font-medium leading-relaxed text-gray-300">
-                  Revisa las columnas requeridas y descarga la plantilla oficial para cargar locales.
-                </p>
+                  <p className="mt-1 text-[10px] font-medium leading-relaxed text-gray-300">
+                    Revisa las columnas requeridas y descarga la plantilla oficial para cargar locales.
+                  </p>
 
-                <div className="absolute -top-1.5 left-4 h-3 w-3 rotate-45 bg-gray-900" />
+                  <div className="absolute -top-1.5 left-4 h-3 w-3 rotate-45 bg-gray-900" />
+                </div>
               </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                leftIcon={<FiUpload size={16} />}
+                onClick={() => setOpenUpload(true)}
+                className="min-w-0 flex-1 whitespace-nowrap lg:flex-none"
+              >
+                Importar locales
+              </Button>
+
+              <Button
+                type="button"
+                size="lg"
+                leftIcon={<FiPlus size={18} />}
+                onClick={() => setOpenCreate(true)}
+                className="min-w-0 flex-1 whitespace-nowrap lg:flex-none"
+              >
+                Crear local
+              </Button>
             </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              leftIcon={<FiUpload size={16} />}
-              onClick={() => setOpenUpload(true)}
-              className="min-w-0 flex-1 whitespace-nowrap lg:flex-none"
-            >
-              Importar locales
-            </Button>
-
-            <Button
-              type="button"
-              size="lg"
-              leftIcon={<FiPlus size={18} />}
-              onClick={() => setOpenCreate(true)}
-              className="min-w-0 flex-1 whitespace-nowrap lg:flex-none"
-            >
-              Crear local
-            </Button>
-          </div>
+          ) : (
+            <div className="inline-flex w-max items-center gap-2 rounded-2xl border border-[#87be00]/20 bg-[#87be00]/10 px-4 py-3 text-[9px] font-black uppercase tracking-[0.14em] text-[#679300]">
+              <FiEye size={15} />
+              Vista de los locales de tu empresa
+            </div>
+          )}
         </div>
       </header>
 
@@ -688,8 +747,16 @@ const AdminLocales = () => {
               <LocalesMap locales={filteredLocales} />
             ) : (
               <EmptyState
-                title="Sin información disponible"
-                description="No existen locales que coincidan con los filtros seleccionados."
+                title={
+                  isLoading
+                    ? "Cargando locales"
+                    : "Sin información disponible"
+                }
+                description={
+                  isLoading
+                    ? "Estamos consultando los locales de tu empresa."
+                    : "No existen locales que coincidan con los filtros seleccionados."
+                }
               />
             )}
           </div>
@@ -704,7 +771,9 @@ const AdminLocales = () => {
               </p>
 
               <p className="mt-1 text-[11px] font-semibold text-gray-500">
-                Estado, ubicación y acciones disponibles.
+                {canManageLocales
+                  ? "Estado, ubicación y acciones disponibles."
+                  : "Estado y ubicación de los locales asociados a tu empresa."}
               </p>
             </div>
 
@@ -726,7 +795,9 @@ const AdminLocales = () => {
                   <th className={thClass}>Ubicación</th>
                   <th className={thClass}>Dirección</th>
                   <th className={`${thClass} text-center`}>Estado</th>
-                  <th className={`${thClass} text-right`}>Acciones</th>
+                  {canManageLocales && (
+                    <th className={`${thClass} text-right`}>Acciones</th>
+                  )}
                 </tr>
               </thead>
 
@@ -785,40 +856,54 @@ const AdminLocales = () => {
                       </td>
 
                       <td className="p-5 text-center align-top">
-                        <StatusButton
-                          active={local.is_active}
-                          onClick={() => toggleLocal(local.id)}
-                        />
+                        {canManageLocales ? (
+                          <StatusButton
+                            active={local.is_active}
+                            onClick={() => toggleLocal(local.id)}
+                          />
+                        ) : (
+                          <ReadOnlyStatus active={local.is_active} />
+                        )}
                       </td>
 
-                      <td className="p-5 align-top">
-                        <div className="flex justify-end gap-2">
-                          <IconButton
-                            label={`Editar local ${local.cadena}`}
-                            size="sm"
-                            onClick={() => handleEdit(local)}
-                          >
-                            <FiEdit size={14} />
-                          </IconButton>
+                      {canManageLocales && (
+                        <td className="p-5 align-top">
+                          <div className="flex justify-end gap-2">
+                            <IconButton
+                              label={`Editar local ${local.cadena}`}
+                              size="sm"
+                              onClick={() => handleEdit(local)}
+                            >
+                              <FiEdit size={14} />
+                            </IconButton>
 
-                          <IconButton
-                            label={`Eliminar local ${local.cadena}`}
-                            size="sm"
-                            variant="danger"
-                            onClick={() => deleteLocal(local)}
-                          >
-                            <FiTrash2 size={14} />
-                          </IconButton>
-                        </div>
-                      </td>
+                            <IconButton
+                              label={`Eliminar local ${local.cadena}`}
+                              size="sm"
+                              variant="danger"
+                              onClick={() => deleteLocal(local)}
+                            >
+                              <FiTrash2 size={14} />
+                            </IconButton>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="p-6">
+                    <td colSpan={canManageLocales ? 5 : 4} className="p-6">
                       <EmptyState
-                        title="Sin información disponible"
-                        description="No existen locales que coincidan con los filtros seleccionados."
+                        title={
+                          isLoading
+                            ? "Cargando locales"
+                            : "Sin información disponible"
+                        }
+                        description={
+                          isLoading
+                            ? "Estamos consultando los locales de tu empresa."
+                            : "No existen locales que coincidan con los filtros seleccionados."
+                        }
                         compact
                       />
                     </td>
@@ -854,7 +939,7 @@ const AdminLocales = () => {
 
           {filteredLocales.length > 0 ? (
             filteredLocales.map((local, index) => (
-              <motion.article
+              <Motion.article
                 key={local.id}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -878,10 +963,14 @@ const AdminLocales = () => {
                     </div>
                   </div>
 
-                  <StatusButton
-                    active={local.is_active}
-                    onClick={() => toggleLocal(local.id)}
-                  />
+                  {canManageLocales ? (
+                    <StatusButton
+                      active={local.is_active}
+                      onClick={() => toggleLocal(local.id)}
+                    />
+                  ) : (
+                    <ReadOnlyStatus active={local.is_active} />
+                  )}
                 </div>
 
                 <div className="mt-4 space-y-2 rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
@@ -906,59 +995,73 @@ const AdminLocales = () => {
                   </p>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-50 pt-4">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    leftIcon={<FiEdit size={13} />}
-                    onClick={() => handleEdit(local)}
-                  >
-                    Editar
-                  </Button>
+                {canManageLocales && (
+                  <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-50 pt-4">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={<FiEdit size={13} />}
+                      onClick={() => handleEdit(local)}
+                    >
+                      Editar
+                    </Button>
 
-                  <Button
-                    type="button"
-                    variant="danger"
-                    size="sm"
-                    leftIcon={<FiTrash2 size={13} />}
-                    onClick={() => deleteLocal(local)}
-                  >
-                    Eliminar
-                  </Button>
-                </div>
-              </motion.article>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      leftIcon={<FiTrash2 size={13} />}
+                      onClick={() => deleteLocal(local)}
+                    >
+                      Eliminar
+                    </Button>
+                  </div>
+                )}
+              </Motion.article>
             ))
           ) : (
             <EmptyState
-              title="Sin información disponible"
-              description="No existen locales que coincidan con los filtros seleccionados."
+              title={
+                isLoading
+                  ? "Cargando locales"
+                  : "Sin información disponible"
+              }
+              description={
+                isLoading
+                  ? "Estamos consultando los locales de tu empresa."
+                  : "No existen locales que coincidan con los filtros seleccionados."
+              }
             />
           )}
         </section>
       </main>
 
-      {openUploadHelp && (
+      {canManageLocales && openUploadHelp && (
         <BulkLocalesHelpModal
           onClose={() => setOpenUploadHelp(false)}
         />
       )}
 
-      <CreateLocalModal
-        isOpen={openCreate}
-        onClose={() => setOpenCreate(false)}
-        onCreated={fetchLocalesAndCompanies}
-        companies={companies}
-      />
+      {canManageLocales && (
+        <>
+          <CreateLocalModal
+            isOpen={openCreate}
+            onClose={() => setOpenCreate(false)}
+            onCreated={fetchLocalesAndCompanies}
+            companies={companies}
+          />
 
-      <UploadLocalesModal
-        isOpen={openUpload}
-        onClose={() => setOpenUpload(false)}
-        onUploaded={fetchLocalesAndCompanies}
-        companies={companies}
-      />
+          <UploadLocalesModal
+            isOpen={openUpload}
+            onClose={() => setOpenUpload(false)}
+            onUploaded={fetchLocalesAndCompanies}
+            companies={companies}
+          />
+        </>
+      )}
 
-      {selectedLocal && (
+      {canManageLocales && selectedLocal && (
         <EditLocalModal
           isOpen={openEdit}
           onClose={() => {
@@ -971,7 +1074,7 @@ const AdminLocales = () => {
         />
       )}
 
-      {deleteTarget && (
+      {canManageLocales && deleteTarget && (
         <DeleteLocalModal
           local={deleteTarget}
           loading={deletingLocal}
@@ -1157,6 +1260,18 @@ const DeleteLocalModal = ({
     </div>
   );
 };
+
+const ReadOnlyStatus = ({ active }) => (
+  <span
+    className={`inline-flex min-w-[84px] items-center justify-center rounded-full border px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.12em] ${
+      active
+        ? "border-emerald-100 bg-emerald-50 text-emerald-600"
+        : "border-gray-200 bg-gray-100 text-gray-400"
+    }`}
+  >
+    {active ? "Activo" : "Inactivo"}
+  </span>
+);
 
 const FilterSelect = ({
   icon,
@@ -1554,25 +1669,6 @@ const filterControlClass = `
   outline-none
   transition-all
   placeholder:text-gray-400
-  focus:border-[#87be00]/40
-  focus:bg-white
-  focus:ring-4
-  focus:ring-[#87be00]/10
-  disabled:cursor-not-allowed
-  disabled:opacity-50
-`;
-
-const inputClass = `
-  h-12 w-full rounded-2xl
-  border border-gray-100
-  bg-gray-50
-  px-4
-  text-[11px] font-bold
-  text-gray-700
-  outline-none
-  shadow-inner
-  transition-all
-  placeholder:text-gray-300
   focus:border-[#87be00]/40
   focus:bg-white
   focus:ring-4

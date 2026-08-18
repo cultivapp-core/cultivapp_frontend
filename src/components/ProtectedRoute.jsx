@@ -47,8 +47,10 @@ const redirectByRole = (role) => {
   switch (role) {
     case "ROOT": return <Navigate to="/root" replace />;
     case "ADMIN_CLIENTE": return <Navigate to="/admin" replace />;
+    case "ADMIN_REGIONAL": return <Navigate to="/admin-regional" replace />;
     case "SUPERVISOR": return <Navigate to="/supervisor" replace />;
     case "USUARIO": return <Navigate to="/usuario" replace />;
+    case "MERCADERISTA_REGIONAL": return <Navigate to="/mercaderista-regional" replace />;
     case "VIEW": return <Navigate to="/viewer" replace />;
     default: return <Navigate to="/" replace />;
   }

@@ -37,6 +37,8 @@ import UserQuickView from "../../components/UserQuickView"
 import { motion, AnimatePresence } from "framer-motion"
 import * as XLSX from "xlsx"
 
+const CULTIVA_COMPANY_ID =
+  "0e342e01-d213-4353-b210-39a12ac335cf"
 
 const parseContractDate = (value) => {
   if (!value) return null
@@ -132,6 +134,12 @@ const getRoleVisual = (role) => {
       avatar:
         "border-orange-100 bg-orange-50 text-orange-700",
     },
+    ADMIN_REGIONAL: {
+      badge:
+        "border-indigo-100 bg-indigo-50 text-indigo-700",
+      avatar:
+        "border-indigo-100 bg-indigo-50 text-indigo-700",
+    },
     SUPERVISOR: {
       badge:
         "border-blue-100 bg-blue-50 text-blue-700",
@@ -149,6 +157,12 @@ const getRoleVisual = (role) => {
         "border-[#87be00]/20 bg-[#87be00]/10 text-[#679300]",
       avatar:
         "border-[#87be00]/20 bg-[#87be00]/10 text-[#679300]",
+    },
+    MERCADERISTA_REGIONAL: {
+      badge:
+        "border-lime-100 bg-lime-50 text-lime-700",
+      avatar:
+        "border-lime-100 bg-lime-50 text-lime-700",
     },
     VIEW: {
       badge:
@@ -211,7 +225,9 @@ const AdminUsers = () => {
 
   // 🚩 DETERMINAR SI TIENE ACCESO TOTAL (ROOT O CULTIVA)
   const isOwnerAdmin = userLocal?.role === "ADMIN_CLIENTE";
-  const isCultivaAdmin = isOwnerAdmin && userLocal?.company_name?.toLowerCase().includes("cultiva");
+  const isCultivaAdmin =
+    isOwnerAdmin &&
+    String(userLocal?.company_id || "") === CULTIVA_COMPANY_ID;
   const tieneAccesoGlobal = userLocal?.role === "ROOT" || isCultivaAdmin;
 
   // FILTRADO EN CASCADA: SI HAY EMPRESA SELECCIONADA FILTRA POR ELLA, SINO DEJA PASAR TODO
@@ -815,7 +831,9 @@ const AdminUsers = () => {
                             {(user.role ===
                               "SUPERVISOR" ||
                               user.role ===
-                                "VIEW") && (
+                                "VIEW" ||
+                              user.role ===
+                                "MERCADERISTA_REGIONAL") && (
                               <IconButton
                                 label={`Asignar locales a ${user.first_name} ${user.last_name}`}
                                 size="sm"
@@ -833,9 +851,15 @@ const AdminUsers = () => {
                             {(user.role ===
                               "VIEW" ||
                               user.role ===
-                                "SUPERVISOR") && (
+                                "SUPERVISOR" ||
+                              user.role ===
+                                "ADMIN_REGIONAL") && (
                               <IconButton
-                                label={`Asignar usuarios a ${user.first_name} ${user.last_name}`}
+                                label={
+                                  user.role === "ADMIN_REGIONAL"
+                                    ? `Asignar usuarios y locales a ${user.first_name} ${user.last_name}`
+                                    : `Asignar usuarios a ${user.first_name} ${user.last_name}`
+                                }
                                 size="sm"
                                 variant="info"
                                 onClick={() =>
@@ -1052,7 +1076,9 @@ const AdminUsers = () => {
                       {(user.role ===
                         "SUPERVISOR" ||
                         user.role ===
-                          "VIEW") && (
+                          "VIEW" ||
+                        user.role ===
+                          "MERCADERISTA_REGIONAL") && (
                         <IconButton
                           label={`Asignar locales a ${user.first_name} ${user.last_name}`}
                           size="sm"
@@ -1070,9 +1096,15 @@ const AdminUsers = () => {
                       {(user.role ===
                         "VIEW" ||
                         user.role ===
-                          "SUPERVISOR") && (
+                          "SUPERVISOR" ||
+                        user.role ===
+                          "ADMIN_REGIONAL") && (
                         <IconButton
-                          label={`Asignar usuarios a ${user.first_name} ${user.last_name}`}
+                          label={
+                            user.role === "ADMIN_REGIONAL"
+                              ? `Asignar usuarios y locales a ${user.first_name} ${user.last_name}`
+                              : `Asignar usuarios a ${user.first_name} ${user.last_name}`
+                          }
                           size="sm"
                           variant="info"
                           onClick={() =>

@@ -10,7 +10,12 @@ import { useAuth } from "../../context/AuthContext";
 import { useNotificationContext } from "../../context/NotificationContext";
 
 // 🚩 MEJORA: Ahora recibe isCollapsed y setIsCollapsed como props desde AdminLayout
-const AdminSidebar = ({ isCollapsed, setIsCollapsed }) => {
+const AdminSidebar = ({
+  isCollapsed,
+  setIsCollapsed,
+  basePath = "/admin",
+  isRegional = false,
+}) => {
   const { user, logout } = useAuth();
   const { unreadCount } = useNotificationContext();
   const location = useLocation();
@@ -22,9 +27,13 @@ const AdminSidebar = ({ isCollapsed, setIsCollapsed }) => {
 
   const ID_CULTIVA = '0e342e01-d213-4353-b210-39a12ac335cf';
   const canManageCompanies =
+    isRegional ||
     user?.role === "ROOT" ||
     (user?.role === "ADMIN_CLIENTE" &&
       user?.company_id === ID_CULTIVA);
+
+  const buildPath = (path = "") =>
+    path ? `${basePath}/${path}` : basePath;
 
   const userName = [
     user?.first_name,
@@ -167,7 +176,7 @@ const AdminSidebar = ({ isCollapsed, setIsCollapsed }) => {
           
           {/* HEADER / LOGO CENTRADO */}
           <Link
-            to="/admin"
+            to={basePath}
             className={`mt-7 md:mt-8 mb-8 transition-all duration-300 hover:opacity-80 flex items-center px-6 ${
               isCollapsed
                 ? "justify-start md:justify-center md:px-0"
@@ -186,7 +195,9 @@ const AdminSidebar = ({ isCollapsed, setIsCollapsed }) => {
                   Cultiva<span className="text-[#87be00]">App</span>
                 </h2>
                 <p className="text-[8px] font-black text-gray-400 uppercase tracking-[0.3em] mt-1">
-                  Panel de administración
+                  {isRegional
+                    ? "Administración regional"
+                    : "Panel de administración"}
                 </p>
               </div>
             </div>
@@ -198,37 +209,73 @@ const AdminSidebar = ({ isCollapsed, setIsCollapsed }) => {
               isCollapsed ? "px-3 md:px-2" : "px-3 md:px-4"
             }`}
           >
+            {isRegional && (
+              <>
+                <SectionTitle title="Inventario regional" />
+                <NavItem
+                  to={buildPath()}
+                  end={true}
+                  icon={FiBarChart2}
+                  label="Resumen inventario"
+                />
+                <NavItem
+                  to={buildPath("catalogo")}
+                  icon={FiBox}
+                  label="Catálogo regional"
+                />
+                <NavItem
+                  to={buildPath("cargas")}
+                  icon={FiTrendingUp}
+                  label="Cargas de stock"
+                />
+                <NavItem
+                  to={buildPath("movimientos")}
+                  icon={FiClipboard}
+                  label="Movimientos"
+                />
+              </>
+            )}
+
             <SectionTitle title="Métricas" />
-            <NavItem to="/admin" end={true} icon={FiBarChart2} label="Resumen" />
-            <NavItem to="/admin/informes" icon={FiFileText} label="Informes" />
-            <NavItem to="/admin/upload-sales" icon={FiTrendingUp} label="Cargar ventas" />
+            <NavItem
+              to={isRegional ? buildPath("resumen") : buildPath()}
+              end={true}
+              icon={FiBarChart2}
+              label="Resumen"
+            />
+            <NavItem to={buildPath("informes")} icon={FiFileText} label="Informes" />
+            <NavItem to={buildPath("upload-sales")} icon={FiTrendingUp} label="Cargar ventas" />
 
             <SectionTitle title="Logística" />
-            <NavItem to="/admin/routes" icon={FiCalendar} label="Planificación" />
-            <NavItem to="/admin/turnos" icon={FiClock} label="Configurar turnos" />
-            <NavItem to="/admin/gps-monitor" icon={FiNavigation} label="Monitoreo GPS" />
+            <NavItem to={buildPath("routes")} icon={FiCalendar} label="Planificación" />
+            <NavItem to={buildPath("turnos")} icon={FiClock} label="Configurar turnos" />
+            <NavItem to={buildPath("gps-monitor")} icon={FiNavigation} label="Monitoreo GPS" />
 
             <SectionTitle title="Comunicación" />
-            <NavItem to="/admin/notification-manager" icon={FiSend} label="Emitir alertas" />
-            <NavItem to="/admin/notifications" icon={FiBell} label="Mi bandeja" badge={unreadCount} />
+            <NavItem to={buildPath("notification-manager")} icon={FiSend} label="Emitir alertas" />
+            <NavItem to={buildPath("notifications")} icon={FiBell} label="Mi bandeja" badge={unreadCount} />
 
             {canManageCompanies && (
               <>
                 <SectionTitle title="Administración" />
-                <NavItem to="/admin/companies" icon={FiBriefcase} label="Empresas" />
+                <NavItem to={buildPath("companies")} icon={FiBriefcase} label="Empresas" />
               </>
             )}
 
             <SectionTitle title="Estructura" />
-            <NavItem to="/admin/users" icon={FiUsers} label="Usuarios" />
-            <NavItem to="/admin/locales" icon={FiHome} label="Red de locales" />
-            <NavItem to="/admin/catalogo" icon={FiBox} label="Catálogo" />
-            <NavItem to="/admin/task-control" icon={FiClipboard} label="Control de tareas" />
-            <NavItem to="/admin/attendance-control" icon={FiUserCheck} label="Asistencia" />
-            <NavItem to="/admin/photo-validation" icon={FiCamera} label="Validar fotos" />
+            <NavItem to={buildPath("users")} icon={FiUsers} label="Usuarios" />
+            <NavItem to={buildPath("locales")} icon={FiHome} label="Red de locales" />
+            <NavItem
+              to={buildPath(isRegional ? "catalogo-general" : "catalogo")}
+              icon={FiBox}
+              label={isRegional ? "Catálogo general" : "Catálogo"}
+            />
+            <NavItem to={buildPath("task-control")} icon={FiClipboard} label="Control de tareas" />
+            <NavItem to={buildPath("attendance-control")} icon={FiUserCheck} label="Asistencia" />
+            <NavItem to={buildPath("photo-validation")} icon={FiCamera} label="Validar fotos" />
 
             <SectionTitle title="Soporte" />
-            <NavItem to="/admin/questions" icon={FiHelpCircle} label="Preguntas" />
+            <NavItem to={buildPath("questions")} icon={FiHelpCircle} label="Preguntas" />
             
             <SectionTitle title="Cuenta" />
             <button 

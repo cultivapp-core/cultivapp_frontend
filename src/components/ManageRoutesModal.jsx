@@ -959,7 +959,14 @@ const ManageRoutesModal = ({
   }, [turnosRaw, brush.rol]);
 
   const filteredUsers = useMemo(() => {
-    let pool = users.filter((u) => u.role?.toUpperCase() === "USUARIO");
+    let pool = users.filter((u) =>
+      [
+        "USUARIO",
+        "MERCADERISTA_REGIONAL",
+      ].includes(
+        u.role?.toUpperCase(),
+      ),
+    );
     if (companyId) pool = pool.filter((u) => u.company_id === companyId);
     return pool;
   }, [users, companyId]);

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { FiX, FiCheck, FiSearch, FiUsers, FiLoader, FiMinusCircle } from 'react-icons/fi';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { FiX, FiCheck, FiSearch, FiUsers, FiMapPin, FiLoader, FiMinusCircle } from 'react-icons/fi';
 import api from '../../api/apiClient';
 import toast from 'react-hot-toast';
 
@@ -10,6 +10,9 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
 
   const [allUsers, setAllUsers] = useState([]);
   const [assignedIds, setAssignedIds] = useState([]);
+  const [allLocales, setAllLocales] = useState([]);
+  const [assignedLocaleIds, setAssignedLocaleIds] = useState([]);
+  const [activeTab, setActiveTab] = useState('users');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -17,48 +20,74 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
   // 🚩 LÓGICA DE JERARQUÍA: Determinar qué rol vamos a buscar según el rol del gestor
   const isViewer = managerUser.role === 'VIEW' || managerUser.role === 'VIEWER';
   const isSupervisor = managerUser.role === 'SUPERVISOR';
+  const isRegionalAdmin = managerUser.role === 'ADMIN_REGIONAL';
   
-  // Si es Viewer, le asignamos Supervisores. Si es Supervisor, le asignamos Usuarios.
-  const targetRole = isViewer ? 'SUPERVISOR' : 'USUARIO';
-  const targetLabel = isViewer ? 'Supervisores' : 'Usuarios';
+  // ADMIN_REGIONAL gestiona exclusivamente MERCADERISTA_REGIONAL.
+  const targetRoles = useMemo(() => (
+    isViewer
+      ? ['SUPERVISOR']
+      : isRegionalAdmin
+        ? ['MERCADERISTA_REGIONAL']
+        : ['USUARIO']
+  ), [isViewer, isRegionalAdmin]);
+  const targetLabel = isViewer
+    ? 'Supervisores'
+    : isRegionalAdmin
+      ? 'Usuarios regionales'
+      : 'Usuarios';
 
-  useEffect(() => {
-    if (managerUser?.id) {
-      fetchData();
-    }
-  }, [managerUser]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
 
-      // 1. Traer todos los usuarios de la empresa y filtrar por el rol objetivo (targetRole)
-      const usersRes = await api.get(`/users`);
+      // Los ADMIN_REGIONAL reciben además la cobertura de locales.
+      const requests = [
+        api.get('/users'),
+        isRegionalAdmin
+          ? api.get(`/regional-admins/${managerUser.id}/users`)
+          : api.get(`/users/${managerUser.id}/assigned-users`),
+      ];
+
+      if (isRegionalAdmin) {
+        requests.push(
+          api.get('/locales'),
+          api.get(`/regional-admins/${managerUser.id}/locales`),
+        );
+      }
+
+      const results = await Promise.allSettled(requests);
+      if (results[0].status === 'rejected') throw results[0].reason;
+
+      const usersRes = results[0].value;
       const onlyUsers = Array.isArray(usersRes)
         ? usersRes.filter(u => 
-            u.role === targetRole && 
+            targetRoles.includes(String(u.role || '').toUpperCase()) &&
             u.is_active && 
             u.id !== managerUser.id // Evita que el gestor se asigne a sí mismo
           )
         : [];
 
-      // 2. Traer los ya asignados a este SUPERVISOR o VIEW
-      let currentIds = [];
-      try {
-        const currentRes = await api.get(`/users/${managerUser.id}/assigned-users`);
-        currentIds = Array.isArray(currentRes) ? currentRes.map(u => u.id) : [];
-      } catch (e) {
-        if (e.status !== 404) console.error("Error al obtener asignados:", e);
-      }
+      const currentRes = results[1].status === 'fulfilled' ? results[1].value : [];
+      const currentIds = Array.isArray(currentRes) ? currentRes.map(u => u.id) : [];
 
       setAllUsers(onlyUsers);
       setAssignedIds(currentIds);
+
+      if (isRegionalAdmin) {
+        const localesRes = results[2].status === 'fulfilled' ? results[2].value : [];
+        const currentLocalesRes = results[3].status === 'fulfilled' ? results[3].value : [];
+        setAllLocales(Array.isArray(localesRes) ? localesRes : (localesRes?.data || []));
+        setAssignedLocaleIds(
+          Array.isArray(currentLocalesRes) ? currentLocalesRes.map(local => local.id) : []
+        );
+      }
     } catch (error) {
+      console.error('Error al cargar asignaciones:', error);
       toast.error(`Error al cargar la lista de ${targetLabel.toLowerCase()}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [managerUser?.id, isRegionalAdmin, targetLabel, targetRoles]);
 
   const toggleUser = (id) => {
     setAssignedIds(prev =>
@@ -66,14 +95,45 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
     );
   };
 
+  useEffect(() => {
+    if (managerUser?.id) {
+      fetchData();
+    }
+  }, [managerUser?.id, fetchData]);
+
+  const toggleLocale = (id) => {
+    setAssignedLocaleIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
-      await api.post(`/users/${managerUser.id}/assign-users`, { userIds: assignedIds });
-      toast.success(`${targetLabel} asignados al ${managerUser.role} con éxito`);
-      onRefresh();
-      onClose();
+      const requests = [
+        isRegionalAdmin
+          ? api.put(`/regional-admins/${managerUser.id}/users`, { userIds: assignedIds })
+          : api.post(`/users/${managerUser.id}/assign-users`, { userIds: assignedIds }),
+      ];
+
+      if (isRegionalAdmin) {
+        requests.push(
+          api.put(`/regional-admins/${managerUser.id}/locales`, {
+            localeIds: assignedLocaleIds,
+          })
+        );
+      }
+
+      await Promise.all(requests);
+      toast.success(
+        isRegionalAdmin
+          ? 'Usuarios y locales asignados con éxito'
+          : `${targetLabel} asignados al ${managerUser.role} con éxito`
+      );
+      await onRefresh?.();
+      onClose?.();
     } catch (error) {
+      console.error('Error al guardar asignaciones:', error);
       toast.error("Error al guardar la asignación");
     } finally {
       setSaving(false);
@@ -95,13 +155,31 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
       });
   }, [allUsers, assignedIds, searchTerm]);
 
+  const filteredLocales = useMemo(() => {
+    const search = searchTerm.toLowerCase();
+    return allLocales
+      .filter(local => {
+        const text = `${local.cadena || ''} ${local.nombre_local || ''} ${local.direccion || ''} ${local.codigo_local || ''} ${local.comuna_name || local.comuna || ''}`.toLowerCase();
+        return text.includes(search);
+      })
+      .sort((a, b) => {
+        const aSelected = assignedLocaleIds.includes(a.id);
+        const bSelected = assignedLocaleIds.includes(b.id);
+        return bSelected - aSelected;
+      });
+  }, [allLocales, assignedLocaleIds, searchTerm]);
+
+  const isLocalesTab = isRegionalAdmin && activeTab === 'locales';
+  const assignedCount = isLocalesTab ? assignedLocaleIds.length : assignedIds.length;
+
   // Color dinámico según el rol del gestor
-  const themeColor = isSupervisor ? 'text-[#87be00]' : 'text-blue-400';
-  const themeBg = isSupervisor ? 'bg-[#87be00]' : 'bg-blue-500';
-  const themeHoverBg = isSupervisor ? 'hover:bg-[#75a600]' : 'hover:bg-blue-600';
-  const themeRing = isSupervisor ? 'ring-[#87be00]/30' : 'ring-blue-200';
-  const themeBorder = isSupervisor ? 'border-[#87be00]' : 'border-blue-400';
-  const themeLightBg = isSupervisor ? 'bg-[#87be00]/5' : 'bg-blue-50/50';
+  const isGreenTheme = isSupervisor || isRegionalAdmin;
+  const themeColor = isGreenTheme ? 'text-[#87be00]' : 'text-blue-400';
+  const themeBg = isGreenTheme ? 'bg-[#87be00]' : 'bg-blue-500';
+  const themeHoverBg = isGreenTheme ? 'hover:bg-[#75a600]' : 'hover:bg-blue-600';
+  const themeRing = isGreenTheme ? 'ring-[#87be00]/30' : 'ring-blue-200';
+  const themeBorder = isGreenTheme ? 'border-[#87be00]' : 'border-blue-400';
+  const themeLightBg = isGreenTheme ? 'bg-[#87be00]/5' : 'bg-blue-50/50';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 font-[Outfit]">
@@ -111,7 +189,9 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
         <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-900 text-white">
           <div>
             <p className={`text-[10px] font-black uppercase tracking-widest italic mb-1 ${themeColor}`}>
-              Asignación de {targetLabel} • Perfil {managerUser.role || 'Gestor'}
+              {isRegionalAdmin
+                ? 'Asignación regional de usuarios y locales'
+                : `Asignación de ${targetLabel}`} • Perfil {managerUser.role || 'Gestor'}
             </p>
             <h2 className="text-2xl font-black italic uppercase leading-none">
               {managerUser.first_name} {managerUser.last_name}
@@ -122,21 +202,53 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
           </button>
         </div>
 
+        {/* PESTAÑAS EXCLUSIVAS PARA ADMIN_REGIONAL */}
+        {isRegionalAdmin && (
+          <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 border-b border-gray-100">
+            <button
+              type="button"
+              onClick={() => { setActiveTab('users'); setSearchTerm(''); }}
+              className={`flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                activeTab === 'users'
+                  ? 'bg-gray-900 text-white shadow-md'
+                  : 'bg-white text-gray-400 hover:text-gray-700'
+              }`}
+            >
+              <FiUsers size={15} /> Usuarios ({assignedIds.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab('locales'); setSearchTerm(''); }}
+              className={`flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                activeTab === 'locales'
+                  ? 'bg-[#87be00] text-white shadow-md'
+                  : 'bg-white text-gray-400 hover:text-gray-700'
+              }`}
+            >
+              <FiMapPin size={15} /> Locales ({assignedLocaleIds.length})
+            </button>
+          </div>
+        )}
+
         {/* BUSCADOR */}
         <div className="p-6 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full sm:flex-1">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder={`Buscar ${targetLabel.toLowerCase()}...`}
-              className={`w-full pl-12 pr-4 py-4 rounded-2xl border-none focus:ring-2 focus:${themeRing} text-sm font-bold shadow-inner outline-none transition-all`}
+              placeholder={
+                isLocalesTab
+                  ? 'Buscar local, dirección, comuna o código...'
+                  : `Buscar ${targetLabel.toLowerCase()}...`
+              }
+              className="w-full pl-12 pr-4 py-4 rounded-2xl border-none focus:ring-2 focus:ring-[#87be00]/30 text-sm font-bold shadow-inner outline-none transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <div className="text-right shrink-0 w-full sm:w-auto flex justify-between sm:block px-2 sm:px-0">
             <p className="text-[10px] font-black text-gray-400 uppercase leading-none sm:mb-1">Asignados</p>
-            <p className={`text-xl font-black italic leading-none ${themeColor}`}>{assignedIds.length}</p>
+            <p className={`text-xl font-black italic leading-none ${themeColor}`}>{assignedCount}</p>
           </div>
         </div>
 
@@ -147,11 +259,57 @@ const AssignUsersModal = ({ targetUser, viewUser, onClose, onRefresh }) => {
               <FiLoader className="animate-spin mb-2" size={30} />
               <p className="text-[10px] font-black uppercase tracking-widest">Cargando {targetLabel.toLowerCase()}...</p>
             </div>
-          ) : filteredUsers.length === 0 ? (
+          ) : isLocalesTab && filteredLocales.length === 0 ? (
+            <div className="col-span-full py-16 text-center opacity-40">
+              <FiMapPin size={32} className="mx-auto mb-2 text-gray-300" />
+              <p className="italic text-sm font-bold uppercase tracking-tighter">No se encontraron locales</p>
+            </div>
+          ) : !isLocalesTab && filteredUsers.length === 0 ? (
             <div className="col-span-full py-16 text-center opacity-40">
               <FiUsers size={32} className="mx-auto mb-2 text-gray-300" />
               <p className="italic text-sm font-bold uppercase tracking-tighter">No se encontraron {targetLabel.toLowerCase()}</p>
             </div>
+          ) : isLocalesTab ? (
+            filteredLocales.map(local => {
+              const isAssigned = assignedLocaleIds.includes(local.id);
+              const comuna = local.comuna_name || local.comuna;
+              return (
+                <button
+                  key={local.id}
+                  type="button"
+                  onClick={() => toggleLocale(local.id)}
+                  className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group ${
+                    isAssigned
+                      ? 'border-[#87be00] bg-[#87be00]/5 shadow-sm ring-1 ring-[#87be00]/30'
+                      : 'border-gray-100 hover:border-gray-300 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${
+                    isAssigned ? 'bg-[#87be00] text-white shadow-md' : 'bg-gray-100 text-gray-400'
+                  }`}>
+                    <FiMapPin size={17} />
+                  </div>
+                  <div className="overflow-hidden flex-1 min-w-0">
+                    <p className="text-[11px] font-black uppercase leading-none mb-1 italic text-gray-800 truncate">
+                      {local.cadena || local.nombre_local || 'Local'}
+                    </p>
+                    <p className="text-[9px] font-bold text-gray-500 truncate">
+                      {local.direccion || 'Sin dirección'}{comuna ? `, ${comuna}` : ''}
+                    </p>
+                    <p className="text-[8px] font-bold text-gray-400 mt-1 uppercase">
+                      Código: {local.codigo_local || 'S/N'}
+                    </p>
+                  </div>
+                  <div className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 border-2 transition-all ${
+                    isAssigned ? 'bg-[#87be00] border-[#87be00]' : 'border-gray-200'
+                  }`}>
+                    {isAssigned
+                      ? <FiCheck className="text-white" size={14} />
+                      : <div className="w-1 h-1 bg-gray-200 rounded-full" />}
+                  </div>
+                </button>
+              );
+            })
           ) : (
             filteredUsers.map(user => {
               const isAssigned = assignedIds.includes(user.id);

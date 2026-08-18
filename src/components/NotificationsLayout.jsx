@@ -45,11 +45,15 @@ const ROLE_LABELS = {
   MERCADERISTA:
     "Mercaderista",
   USUARIO: "Mercaderista",
+  MERCADERISTA_REGIONAL:
+    "Mercaderista regional",
   VIEW: "Viewer",
   SUPERVISOR:
     "Supervisor",
   ADMIN_CLIENTE:
     "Administrador",
+  ADMIN_REGIONAL:
+    "Administrador regional",
   ROOT: "Root",
 };
 
