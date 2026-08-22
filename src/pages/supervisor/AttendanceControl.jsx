@@ -25,6 +25,10 @@ import {
 import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import {
+  getSupervisorEffectiveCompanyId,
+  isRealRootUser,
+} from "./supervisorContext";
+import {
   Button,
   IconButton,
 } from "../../components/ui";
@@ -94,8 +98,11 @@ const formatWorkTime = (minutes) => {
 const AttendanceControl = () => {
   const { user } = useAuth();
 
+  const companyId =
+    getSupervisorEffectiveCompanyId(user);
+
   const isRoot =
-    user?.role === "ROOT";
+    isRealRootUser(user);
 
   const [attendance, setAttendance] =
     useState([]);
@@ -124,7 +131,7 @@ const AttendanceControl = () => {
   ] = useState(
     isRoot
       ? ""
-      : user?.company_id || "",
+      : companyId || "",
   );
 
   const [page, setPage] =
@@ -141,15 +148,15 @@ const AttendanceControl = () => {
   useEffect(() => {
     if (
       !isRoot &&
-      user?.company_id
+      companyId
     ) {
       setSelectedCompany(
-        user.company_id,
+        companyId,
       );
     }
   }, [
     isRoot,
-    user?.company_id,
+    companyId,
   ]);
 
   const fetchCompanies =

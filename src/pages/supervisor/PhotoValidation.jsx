@@ -26,6 +26,10 @@ import toast from "react-hot-toast";
 import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import {
+  getSupervisorEffectiveCompanyId,
+  isRealRootUser,
+} from "./supervisorContext";
+import {
   Button,
   IconButton,
 } from "../../components/ui";
@@ -91,8 +95,11 @@ const INITIAL_FILTERS = {
 const PhotoValidation = () => {
   const { user } = useAuth();
 
+  const companyId =
+    getSupervisorEffectiveCompanyId(user);
+
   const isRoot =
-    user?.role === "ROOT";
+    isRealRootUser(user);
 
   const [companies, setCompanies] =
     useState([]);
@@ -103,7 +110,7 @@ const PhotoValidation = () => {
       company_id:
         isRoot
           ? ""
-          : user?.company_id || "",
+          : companyId || "",
     });
 
   const [
@@ -115,7 +122,7 @@ const PhotoValidation = () => {
     company_id:
       isRoot
         ? ""
-        : user?.company_id || "",
+        : companyId || "",
   });
 
   const [
@@ -190,7 +197,7 @@ const PhotoValidation = () => {
     },
     enabled:
       isRoot ||
-      Boolean(user?.company_id),
+      Boolean(companyId),
   });
 
   useQuery({
@@ -415,7 +422,7 @@ const PhotoValidation = () => {
       company_id:
         isRoot
           ? ""
-          : user?.company_id || "",
+          : companyId || "",
     };
 
     setInputs(next);

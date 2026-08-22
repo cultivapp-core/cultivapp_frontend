@@ -29,6 +29,10 @@ import {
 import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import {
+  getSupervisorEffectiveCompanyId,
+  isRealRootUser,
+} from "./supervisorContext";
+import {
   Button,
   IconButton,
 } from "../../components/ui";
@@ -605,8 +609,11 @@ const getProductSurveyAnswers = (
 const TaskControl = () => {
   const { user } = useAuth();
 
+  const companyId =
+    getSupervisorEffectiveCompanyId(user);
+
   const isRoot =
-    user?.role === "ROOT";
+    isRealRootUser(user);
 
   const [
     groupedVisits,
@@ -653,7 +660,7 @@ const TaskControl = () => {
   ] = useState(
     isRoot
       ? ""
-      : user?.company_id || "",
+      : companyId || "",
   );
   const [
     showFilters,
@@ -663,15 +670,15 @@ const TaskControl = () => {
   useEffect(() => {
     if (
       !isRoot &&
-      user?.company_id
+      companyId
     ) {
       setSelectedCompany(
-        user.company_id,
+        companyId,
       );
     }
   }, [
     isRoot,
-    user?.company_id,
+    companyId,
   ]);
 
   const fetchCompanies =
@@ -747,13 +754,9 @@ const TaskControl = () => {
           ) {
             companyIds =
               taskCompanyIds;
-          } else if (
-            user?.company_id
-          ) {
+          } else if (companyId) {
             companyIds = [
-              String(
-                user.company_id,
-              ),
+              String(companyId),
             ];
           }
 
@@ -848,7 +851,7 @@ const TaskControl = () => {
       [
         isRoot,
         selectedCompany,
-        user?.company_id,
+        companyId,
       ],
     );
 

@@ -6,6 +6,9 @@ import { io } from "socket.io-client";
 import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom"; 
+import {
+  getSupervisorContext,
+} from "./supervisorContext";
 
 /* ============================================================
    GRÁFICO DE TORTA / DONUT (SVG en tiempo real, proporcional y tooltips)
@@ -71,7 +74,16 @@ const DonutChart = ({ stats }) => {
 ============================================================ */
 const SupervisorPanel = () => {
   const { user } = useAuth();
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
+
+  const supervisorContext =
+    getSupervisorContext(user);
+
+  const supervisorId =
+    supervisorContext.supervisorId;
+
+  const companyId =
+    supervisorContext.companyId;
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -138,7 +150,7 @@ const SupervisorPanel = () => {
 
         const currentCompanyId =
           String(
-            user?.company_id ||
+            companyId ||
             "",
           );
 
@@ -191,23 +203,23 @@ const SupervisorPanel = () => {
 
       socket.disconnect();
     };
-  }, [user?.company_id, queryClient]);
+  }, [companyId, queryClient]);
 
   const { data: stats, isLoading, error, isFetching } = useQuery({
-    queryKey: ['dashboard-stats', user?.company_id, user?.id],
+    queryKey: ['dashboard-stats', companyId, supervisorId],
     queryFn: async () => {
       const response = await api.get("/supervisor/dashboard-stats", {
         params: { 
-          company_id: user?.company_id,
-          supervisor_id: user?.id 
+          company_id: companyId,
+          supervisor_id: supervisorId 
         }
       });
       return response.data || response;
     },
     enabled:
       Boolean(
-        user?.id &&
-        user?.company_id,
+        supervisorId &&
+        companyId,
       ),
 
     /*
