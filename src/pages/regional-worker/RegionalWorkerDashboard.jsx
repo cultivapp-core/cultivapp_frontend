@@ -25,9 +25,10 @@ import {
 import toast from "react-hot-toast";
 import api from "../../api/apiClient";
 import Scanner from "../../components/Scanner";
-import { useAuth } from "../../context/AuthContext";
 import regionalInventoryService from "../../services/regionalInventoryService";
-import { getWeeksOfMonthCalendar } from "../../utils/helper";
+import RegionalOfflineManager, {
+  REGIONAL_OFFLINE_EVENTS,
+} from "../../services/regionalOfflineManager";
 
 const FLOW_STEPS = [1, 2, 3, 4, 5, 6];
 const GPS_OUT_OF_RANGE_MESSAGE =
@@ -286,139 +287,84 @@ const routeDateKey = (value) => {
   return Number.isNaN(parsed.getTime()) ? "" : dateKey(parsed);
 };
 
-const weekDaysFor = (date) => {
-  const base = new Date(date);
-  const jsDay = base.getDay();
-  const monday = new Date(base);
-  monday.setDate(base.getDate() - jsDay + (jsDay === 0 ? -6 : 1));
-  return Array.from({ length: 7 }, (_, index) => {
-    const current = new Date(monday);
-    current.setDate(monday.getDate() + index);
-    return current;
-  });
-};
-
-const planningWeek = (date) => {
-  const target = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate()
-  ).getTime();
-  return (
-    getWeeksOfMonthCalendar(date).find((week) => {
-      const start = new Date(week.start).setHours(0, 0, 0, 0);
-      const end = new Date(week.end).setHours(23, 59, 59, 999);
-      return target >= start && target <= end;
-    })?.id ?? 1
-  );
-};
-
-const routeMatchesDate = (route, date) => {
-  if (route?.visit_date) return routeDateKey(route.visit_date) === dateKey(date);
-  if (!route?.is_recurring) return false;
-
-  if (route.created_at) {
-    const created = new Date(route.created_at);
-    if (
-      !Number.isNaN(created.getTime()) &&
-      (created.getMonth() !== date.getMonth() ||
-        created.getFullYear() !== date.getFullYear())
-    ) {
-      return false;
-    }
-  }
-
-  const jsDay = date.getDay();
-  const isoDay = jsDay === 0 ? 7 : jsDay;
-  return (
-    Number(route.day_of_week) === isoDay &&
-    Number(route.week_number) === planningWeek(date)
-  );
-};
-
-const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
-  const { user } = useAuth();
+const RegionalPlanningHome = ({
+  locales,
+  onStartJourney,
+  startingRouteId,
+}) => {
   const [routes, setRoutes] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
   const [planningLoading, setPlanningLoading] = useState(true);
 
-  const selectedKey = dateKey(selectedDate);
-  const todayKey = dateKey(new Date());
-  const isToday = selectedKey === todayKey;
-  const isPast = selectedKey < todayKey;
+  const today = useMemo(() => new Date(), []);
+  const todayKey = dateKey(today);
+
   const assignedLocalIds = useMemo(
     () => new Set(locales.map((local) => String(idOf(local)))),
     [locales]
   );
 
-  useEffect(() => {
-    let active = true;
-    if (!user?.id) {
-      return undefined;
+  const loadPlanning = useCallback(async () => {
+    try {
+      setPlanningLoading(true);
+      const response =
+        await regionalInventoryService.getMercaderistaPlanningToday();
+      const rows = getArray(response, ["rows", "routes", "items"]);
+      setRoutes(
+        rows.filter((route) =>
+          assignedLocalIds.has(String(route?.local_id ?? ""))
+        )
+      );
+    } catch (requestError) {
+      toast.error(
+        getErrorMessage(
+          requestError,
+          "No fue posible cargar tu planificación regional."
+        )
+      );
+    } finally {
+      setPlanningLoading(false);
     }
+  }, [assignedLocalIds]);
 
-    api
-      .get(`/routes/user/${user.id}`)
-      .then((response) => {
-        if (active) setRoutes(getArray(response, ["rows", "routes"]));
-      })
-      .catch((requestError) => {
-        if (active) {
-          toast.error(
-            getErrorMessage(
-              requestError,
-              "No fue posible cargar tu planificación regional."
-            )
-          );
-        }
-      })
-      .finally(() => {
-        if (active) setPlanningLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id]);
+  useEffect(() => {
+    loadPlanning();
+  }, [loadPlanning]);
 
   const visibleRoutes = useMemo(
     () =>
       routes
-        .filter(
-          (route) =>
-            assignedLocalIds.has(String(route?.local_id ?? "")) &&
-            routeMatchesDate(route, selectedDate)
-        )
+        .filter((route) => {
+          if (route?.visit_date) {
+            return routeDateKey(route.visit_date) === todayKey;
+          }
+          return true;
+        })
         .sort((first, second) =>
           String(first?.start_time ?? "").localeCompare(
             String(second?.start_time ?? "")
           )
         ),
-    [assignedLocalIds, routes, selectedDate]
+    [routes, todayKey]
   );
 
-  const weekDays = useMemo(() => weekDaysFor(selectedDate), [selectedDate]);
   const summary = useMemo(
     () =>
       visibleRoutes.reduce(
         (result, route) => {
           const status = String(route?.status ?? "PENDING").toUpperCase();
-          if (["COMPLETED", "FINALIZADO"].includes(status)) result.completed += 1;
-          else if (["IN_PROGRESS", "EN_PROCESO"].includes(status))
+          if (["COMPLETED", "FINALIZADO"].includes(status)) {
+            result.completed += 1;
+          } else if (["IN_PROGRESS", "EN_PROCESO"].includes(status)) {
             result.inProgress += 1;
-          else result.pending += 1;
+          } else {
+            result.pending += 1;
+          }
           return result;
         },
         { pending: 0, inProgress: 0, completed: 0 }
       ),
     [visibleRoutes]
   );
-
-  const moveWeek = (amount) => {
-    const next = new Date(selectedDate);
-    next.setDate(next.getDate() + amount * 7);
-    setSelectedDate(next);
-  };
 
   if (planningLoading && routes.length === 0) {
     return (
@@ -432,7 +378,7 @@ const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
   }
 
   return (
-    <div className="space-y-5" data-regional-home="planning-only">
+    <div className="space-y-5" data-regional-home="today-only">
       <section className="rounded-[2rem] bg-slate-900 p-5 text-white shadow-xl shadow-slate-900/10">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -440,7 +386,7 @@ const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
               Mi agenda regional
             </p>
             <h1 className="mt-2 text-2xl font-black capitalize">
-              {selectedDate.toLocaleDateString("es-CL", {
+              {today.toLocaleDateString("es-CL", {
                 weekday: "long",
                 day: "numeric",
                 month: "long",
@@ -448,20 +394,20 @@ const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
             </h1>
             <p className="mt-2 text-sm text-slate-400">
               {visibleRoutes.length === 1
-                ? "1 visita programada"
-                : `${visibleRoutes.length} visitas programadas`}
+                ? "1 visita programada para hoy"
+                : `${visibleRoutes.length} visitas programadas para hoy`}
             </p>
           </div>
-          {!isToday && (
-            <button
-              type="button"
-              onClick={() => setSelectedDate(new Date())}
-              className="rounded-xl bg-white/10 px-3 py-2 text-[8px] font-black uppercase"
-            >
-              Hoy
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={loadPlanning}
+            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white"
+            aria-label="Actualizar planificación"
+          >
+            <FiRefreshCw className={planningLoading ? "animate-spin" : ""} />
+          </button>
         </div>
+
         <div className="mt-5 grid grid-cols-3 gap-2">
           {[
             [summary.pending, "Pendientes", "text-amber-400"],
@@ -478,68 +424,10 @@ const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
         </div>
       </section>
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="mb-3 flex items-center justify-between px-1">
-          <button
-            type="button"
-            onClick={() => moveWeek(-1)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-500"
-          >
-            <FiChevronLeft />
-          </button>
-          <div className="text-center">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#87be00]">
-              Semana
-            </p>
-            <p className="mt-1 text-[10px] font-black text-slate-700">
-              {weekDays[0]?.toLocaleDateString("es-CL", {
-                day: "2-digit",
-                month: "short",
-              })}{" "}
-              —{" "}
-              {weekDays[6]?.toLocaleDateString("es-CL", {
-                day: "2-digit",
-                month: "short",
-              })}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => moveWeek(1)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-500"
-          >
-            <FiChevronRight />
-          </button>
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {weekDays.map((date) => {
-            const currentKey = dateKey(date);
-            const selected = currentKey === selectedKey;
-            return (
-              <button
-                key={currentKey}
-                type="button"
-                onClick={() => setSelectedDate(date)}
-                className={`relative flex min-h-[58px] flex-col items-center justify-center rounded-2xl ${
-                  selected
-                    ? "bg-slate-900 text-white shadow-lg"
-                    : "text-slate-400 hover:bg-slate-50"
-                }`}
-              >
-                <span className="text-[7px] font-black uppercase">
-                  {date
-                    .toLocaleDateString("es-CL", { weekday: "short" })
-                    .replace(".", "")
-                    .slice(0, 2)}
-                </span>
-                <span className="mt-1 text-sm font-black">{date.getDate()}</span>
-                {currentKey === todayKey && (
-                  <span className="absolute bottom-1.5 h-1.5 w-1.5 rounded-full bg-[#87be00]" />
-                )}
-              </button>
-            );
-          })}
-        </div>
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-center text-[8px] font-black uppercase tracking-[0.14em] text-slate-400">
+          Por seguridad operativa, solo puedes visualizar y gestionar las visitas de hoy.
+        </p>
       </section>
 
       <section className="space-y-4">
@@ -564,7 +452,7 @@ const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
               Sin visitas programadas
             </p>
             <p className="mt-2 text-sm text-slate-500">
-              No tienes una planificación regional para esta fecha.
+              No tienes una planificación regional para hoy.
             </p>
           </div>
         ) : (
@@ -573,7 +461,7 @@ const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
             const statusInfo = ROUTE_STATUS[status] ?? ROUTE_STATUS.PENDING;
             const completed = ["COMPLETED", "FINALIZADO"].includes(status);
             const inProgress = ["IN_PROGRESS", "EN_PROCESO"].includes(status);
-            const canOpen = isToday && !completed;
+            const canOpen = !completed;
             const mapsQuery =
               route.local_lat && route.local_lng
                 ? `${route.local_lat},${route.local_lng}`
@@ -627,7 +515,6 @@ const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
                       </span>
                     )}
                   </div>
-
                 </div>
 
                 <div className="flex gap-2 border-t border-slate-100 bg-slate-50/70 p-3">
@@ -655,11 +542,10 @@ const RegionalPlanningHome = ({ locales, onStartJourney, startingRouteId }) => {
                         ? "Iniciando..."
                         : inProgress
                           ? "Continuar visita"
-                          : isPast
-                            ? "Visita pasada"
-                            : "Iniciar visita"}
+                          : "Iniciar visita"}
                     </button>
                   )}
+
                   <a
                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                       mapsQuery
@@ -691,6 +577,14 @@ const RegionalWorkerDashboard = () => {
   const [stockLoading, setStockLoading] = useState(false);
   const [startingRouteId, setStartingRouteId] = useState("");
   const [error, setError] = useState("");
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+  const [offlineStats, setOfflineStats] = useState({
+    pendingCount: 0,
+    failedCount: 0,
+    totalCount: 0,
+  });
   const [flowStep, setFlowStep] = useState(1);
   const [gpsRangeModal, setGpsRangeModal] = useState({
     isOpen: false,
@@ -743,16 +637,16 @@ const RegionalWorkerDashboard = () => {
     try {
       setStockLoading(true);
       const response = await regionalInventoryService.getMercaderistaStock(localId);
-      setStock(
-        getArray(response, [
-          "items",
-          "rows",
-          "stock",
-          "inventory",
-          "balances",
-          "products",
-        ])
-      );
+      const nextStock = getArray(response, [
+        "items",
+        "rows",
+        "stock",
+        "inventory",
+        "balances",
+        "products",
+      ]);
+      setStock(nextStock);
+      return nextStock;
     } finally {
       setStockLoading(false);
     }
@@ -771,6 +665,7 @@ const RegionalWorkerDashboard = () => {
     if (nextEvidence.some((item) => item?.evidence_type === "JOURNEY_START")) {
       setFlowStep((current) => Math.max(current, 2));
     }
+    return nextEvidence;
   }, []);
 
   const loadInitialData = useCallback(async () => {
@@ -795,10 +690,43 @@ const RegionalWorkerDashboard = () => {
         const nextLocalId = String(activeJourney.local_id ?? "");
         setJourney(activeJourney);
         setSelectedLocalId(nextLocalId);
-        await Promise.all([
+        const [nextStock] = await Promise.all([
           loadStock(nextLocalId),
           loadEvidence(activeJourney.id ?? activeJourney.journey_id),
         ]);
+
+        const activeJourneyId =
+          activeJourney.id ?? activeJourney.journey_id;
+        const draft =
+          await regionalInventoryService.getDraft(activeJourneyId);
+
+        if (draft) {
+          setFlowStep(Number(draft.flowStep) || 1);
+          setRegisteredProducts(
+            Array.isArray(draft.registeredProducts)
+              ? draft.registeredProducts
+              : []
+          );
+          setPhysicalCounts(draft.physicalCounts || {});
+          setClosingObservation(draft.closingObservation || "");
+          setMovementOperationId(
+            draft.movementOperationId || randomId()
+          );
+          setWasteOperationId(
+            draft.wasteOperationId || randomId()
+          );
+          setCurrentMovement(draft.currentMovement || null);
+
+          if (draft.selectedProductId) {
+            setSelectedProduct(
+              (nextStock || []).find(
+                (item) =>
+                  String(productIdOf(item)) ===
+                  String(draft.selectedProductId)
+              ) || null
+            );
+          }
+        }
       } else {
         setJourney(null);
         setEvidence([]);
@@ -821,6 +749,114 @@ const RegionalWorkerDashboard = () => {
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const refreshOfflineStats = async () => {
+      const stats = await RegionalOfflineManager.stats();
+      if (active) {
+        setOfflineStats({
+          pendingCount: stats.pendingCount || 0,
+          failedCount: stats.failedCount || 0,
+          totalCount: stats.totalCount || 0,
+        });
+      }
+    };
+
+    const handleQueueChange = () => {
+      refreshOfflineStats();
+    };
+
+    refreshOfflineStats();
+
+    window.addEventListener(
+      REGIONAL_OFFLINE_EVENTS.QUEUE_UPDATED,
+      handleQueueChange
+    );
+    window.addEventListener(
+      REGIONAL_OFFLINE_EVENTS.ITEM_SUCCESS,
+      handleQueueChange
+    );
+    window.addEventListener(
+      REGIONAL_OFFLINE_EVENTS.ITEM_ERROR,
+      handleQueueChange
+    );
+    window.addEventListener(
+      REGIONAL_OFFLINE_EVENTS.SYNC_COMPLETE,
+      handleQueueChange
+    );
+
+    return () => {
+      active = false;
+      window.removeEventListener(
+        REGIONAL_OFFLINE_EVENTS.QUEUE_UPDATED,
+        handleQueueChange
+      );
+      window.removeEventListener(
+        REGIONAL_OFFLINE_EVENTS.ITEM_SUCCESS,
+        handleQueueChange
+      );
+      window.removeEventListener(
+        REGIONAL_OFFLINE_EVENTS.ITEM_ERROR,
+        handleQueueChange
+      );
+      window.removeEventListener(
+        REGIONAL_OFFLINE_EVENTS.SYNC_COMPLETE,
+        handleQueueChange
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!journeyId) return undefined;
+
+    const timer = window.setTimeout(() => {
+      regionalInventoryService
+        .saveDraft(journeyId, {
+          flowStep,
+          selectedLocalId,
+          selectedProductId: selectedProduct
+            ? productIdOf(selectedProduct)
+            : null,
+          currentMovement,
+          registeredProducts,
+          physicalCounts,
+          closingObservation,
+          movementOperationId,
+          wasteOperationId,
+        })
+        .catch((draftError) => {
+          console.warn("No fue posible guardar borrador regional:", draftError);
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    journeyId,
+    flowStep,
+    selectedLocalId,
+    selectedProduct,
+    currentMovement,
+    registeredProducts,
+    physicalCounts,
+    closingObservation,
+    movementOperationId,
+    wasteOperationId,
+  ]);
 
   const visibleStock = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -855,21 +891,35 @@ const RegionalWorkerDashboard = () => {
   const CurrentFlowIcon = currentFlowInfo.icon;
   const selectedUnit = unitOf(selectedProduct);
 
-  const uploadEvidence = async ({ file, evidenceType, movementId, productId }) =>
+  const uploadEvidence = async ({
+    file,
+    evidenceType,
+    movementId,
+    movementClientOperationId,
+    productId,
+  }) =>
     regionalInventoryService.uploadEvidence({
       file,
       journeyId,
       evidenceType,
       clientEvidenceId: randomId(),
       movementId,
+      movementClientOperationId,
       productId,
       capturedAt: new Date().toISOString(),
-      isOfflineCapture: false,
+      isOfflineCapture: !isOnline,
     });
 
   const handleStartJourney = async (task) => {
     const localId = String(task?.local_id ?? "");
     const routeId = String(task?.id ?? "");
+
+    if (!isOnline) {
+      toast.error(
+        "Necesitas conexión para iniciar una nueva visita y validar el GPS. Si la jornada ya estaba iniciada, sí puedes continuar trabajando offline."
+      );
+      return;
+    }
 
     if (!localId || !routeId) {
       toast.error("La planificación no tiene un local válido.");
@@ -1115,8 +1165,10 @@ const RegionalWorkerDashboard = () => {
 
       setCurrentMovement({
         id: movementIdFrom(response),
+        clientOperationId: movementOperationId,
         product: selectedProduct,
         quantity: parsedQuantity,
+        offlinePending: Boolean(response?.queued),
       });
       await loadStock(activeLocalId);
       setFlowStep(4);
@@ -1146,6 +1198,7 @@ const RegionalWorkerDashboard = () => {
         file: finalShelfPhoto,
         evidenceType: "AFTER_REPLENISHMENT",
         movementId: currentMovement.id,
+        movementClientOperationId: currentMovement.clientOperationId,
         productId: productIdOf(currentMovement.product),
       });
       await loadEvidence(journeyId);
@@ -1239,6 +1292,7 @@ const RegionalWorkerDashboard = () => {
         file: wastePhoto,
         evidenceType: "WASTE",
         movementId: movementIdFrom(movementResponse),
+        movementClientOperationId: wasteOperationId,
         productId: productIdOf(product),
       });
       await Promise.all([loadStock(activeLocalId), loadEvidence(journeyId)]);
@@ -1297,15 +1351,20 @@ const RegionalWorkerDashboard = () => {
       }
 
       await uploadEvidence({ file: endPhoto, evidenceType: "JOURNEY_END" });
-      await regionalInventoryService.closeJourney(
-        journeyId,
-        closingObservation.trim() || "Jornada finalizada desde la aplicación"
-      );
+      const closeResponse =
+        await regionalInventoryService.closeJourney(
+          journeyId,
+          closingObservation.trim() ||
+            "Jornada finalizada desde la aplicación"
+        );
+
+      await regionalInventoryService.removeDraft(journeyId);
 
       setCompletedSummary({
         local: currentLocal ? localLabel(currentLocal) : "Local asignado",
         products: registeredProducts.length,
         evidences: evidence.length + 1,
+        pendingSync: Boolean(closeResponse?.queued),
       });
       setJourney(null);
       setStock([]);
@@ -1314,7 +1373,13 @@ const RegionalWorkerDashboard = () => {
       setRegisteredProducts([]);
       setSelectedProduct(null);
       setSelectedLocalId("");
-      toast.success("Jornada cerrada correctamente");
+      if (closeResponse?.queued) {
+        toast.success(
+          "Jornada guardada offline. Se sincronizará automáticamente al recuperar conexión."
+        );
+      } else {
+        toast.success("Jornada cerrada correctamente");
+      }
     } catch (requestError) {
       toast.error(
         getErrorMessage(requestError, "No fue posible cerrar la jornada.")
@@ -1394,6 +1459,22 @@ const RegionalWorkerDashboard = () => {
 
   return (
     <div className="min-h-full bg-slate-50 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 font-[Outfit] text-slate-900 sm:px-5 md:pb-10">
+      {(!isOnline || offlineStats.totalCount > 0) && (
+        <div
+          className={`mx-auto mb-4 max-w-[620px] rounded-2xl border px-4 py-3 text-center text-[9px] font-black uppercase tracking-wider ${
+            offlineStats.failedCount > 0
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-amber-200 bg-amber-50 text-amber-700"
+          }`}
+        >
+          {!isOnline
+            ? `Modo offline activo · puedes continuar una jornada ya iniciada · ${offlineStats.totalCount} operación(es) pendiente(s)`
+            : offlineStats.failedCount > 0
+              ? `${offlineStats.failedCount} operación(es) requieren reintento`
+              : `Sincronizando ${offlineStats.pendingCount} operación(es) regional(es) pendiente(s)`}
+        </div>
+      )}
+
       {gpsRangeModal.isOpen && (
         <div
           className="fixed inset-0 z-[12000] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
@@ -1537,6 +1618,11 @@ const RegionalWorkerDashboard = () => {
             <p className="mt-2 text-sm font-medium text-gray-500">
               {completedSummary.local}
             </p>
+            {completedSummary.pendingSync && (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[9px] font-black uppercase tracking-wider text-amber-700">
+                Cierre guardado offline · pendiente de sincronización
+              </div>
+            )}
             <div className="mt-6 grid grid-cols-2 gap-3">
               <MetricCard
                 label="Productos gestionados"

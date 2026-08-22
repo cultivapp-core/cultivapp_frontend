@@ -16,6 +16,10 @@ import toast from "react-hot-toast";
 
 import api from "../../api/apiClient";
 import { useAuth } from "../../context/AuthContext";
+import {
+  getSupervisorContext,
+  isRealRootUser,
+} from "./supervisorContext";
 
 const INITIAL_FORM = {
   title: "",
@@ -99,6 +103,21 @@ const normalizeCollection = (response) => {
 const AlertManager = () => {
   const { user: currentUser } = useAuth();
 
+  const supervisorContext =
+    getSupervisorContext(currentUser);
+
+  const companyId =
+    supervisorContext.companyId;
+
+  const supervisorId =
+    supervisorContext.supervisorId;
+
+  const effectiveRole =
+    supervisorContext.role;
+
+  const isRoot =
+    isRealRootUser(currentUser);
+
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(false);
 
@@ -114,30 +133,26 @@ const AlertManager = () => {
     let cancelled = false;
 
     const loadInitialData = async () => {
-      if (!currentUser?.id) {
+      if (!supervisorId) {
         return;
       }
 
       try {
         setFetchingData(true);
 
-        const isRoot = currentUser.role === "ROOT";
-
         const usersUrl = isRoot
           ? "/users"
           : `/users?company_id=${encodeURIComponent(
-              currentUser.company_id,
+              companyId || "",
             )}`;
 
         const localesUrl = isRoot
           ? "/locales"
-          : currentUser.role === "ADMIN_CLIENTE"
+          : effectiveRole === "ADMIN_CLIENTE"
             ? `/locales?company_id=${encodeURIComponent(
-                currentUser.company_id,
+                companyId || "",
               )}`
-            : `/locales/supervisor/${encodeURIComponent(
-                currentUser.id,
-              )}`;
+            : "/supervisor/my-locales";
 
         const [usersResponse, localesResponse] = await Promise.all([
           api.get(usersUrl),
@@ -155,7 +170,7 @@ const AlertManager = () => {
           usersData.filter(
             (candidate) =>
               candidate?.id &&
-              candidate.id !== currentUser.id &&
+              String(candidate.id) !== String(supervisorId) &&
               !candidate.deleted_at,
           ),
         );
@@ -192,9 +207,10 @@ const AlertManager = () => {
       cancelled = true;
     };
   }, [
-    currentUser?.company_id,
-    currentUser?.id,
-    currentUser?.role,
+    companyId,
+    supervisorId,
+    effectiveRole,
+    isRoot,
   ]);
 
   const filteredUsers = useMemo(() => {
@@ -317,7 +333,7 @@ const AlertManager = () => {
       return;
     }
 
-    if (!currentUser?.company_id) {
+    if (!companyId) {
       toast.error("No fue posible identificar la empresa");
       return;
     }
@@ -334,7 +350,7 @@ const AlertManager = () => {
         message: cleanMessage,
         type: form.type,
         scope: form.scope,
-        companyId: currentUser.company_id,
+        companyId,
         localId:
           form.scope === "local"
             ? form.localId
@@ -409,9 +425,9 @@ const AlertManager = () => {
               </p>
 
               <p className="truncate text-[10px] font-black uppercase text-slate-700">
-                {currentUser?.role === "ROOT"
+                {effectiveRole === "ROOT"
                   ? "Root"
-                  : currentUser?.role === "ADMIN_CLIENTE"
+                  : effectiveRole === "ADMIN_CLIENTE"
                     ? "Administrador"
                     : "Supervisor"}
                 {currentUser?.first_name

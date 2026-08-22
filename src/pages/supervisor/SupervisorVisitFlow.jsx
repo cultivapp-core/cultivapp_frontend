@@ -262,23 +262,12 @@ const SupervisorVisitFlow = () => {
         try {
           setLoadingMasters(true);
 
-          const storedUser =
-            localStorage.getItem("user");
-
-          const currentUser =
-            storedUser
-              ? JSON.parse(storedUser)
-              : null;
-
-          if (!currentUser?.id) {
-            throw new Error(
-              "Sesión no válida",
-            );
-          }
-
+          // Endpoint específico del Supervisor operacional.
+          // Con GERENCIA resuelve effective_user_id / acting_user_id
+          // en backend sin usar el ID del actor real.
           const response =
             await api.get(
-              "/users/my-locales",
+              "/supervisor/my-locales",
             );
 
           if (cancelled) {

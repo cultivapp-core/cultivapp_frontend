@@ -96,13 +96,29 @@ export const NotificationProvider = ({
   const [error, setError] =
     useState("");
 
+  /*
+   * Identidad operativa para notificaciones.
+   *
+   * - Usuario normal: usa user.id / company_id.
+   * - GERENCIA sin acting user: mantiene su identidad real.
+   * - GERENCIA representando un perfil operativo (por ejemplo
+   *   ADMIN_REGIONAL): usa acting_user_id y active_company_id.
+   *
+   * Nunca modificamos el usuario real almacenado en AuthContext;
+   * solamente resolvemos el sujeto operativo para polling/realtime.
+   */
   const userId =
+    user?.effective_user_id ||
+    user?.subject_user_id ||
+    user?.acting_user_id ||
     user?.id ||
     user?.user_id ||
     user?.sub ||
     null;
 
   const companyId =
+    user?.effective_company_id ||
+    user?.active_company_id ||
     user?.company_id ||
     user?.tenant_id ||
     null;
@@ -191,7 +207,7 @@ export const NotificationProvider = ({
         }
       }
     },
-    [userId],
+    [userId, companyId],
   );
 
   useEffect(() => {
@@ -308,6 +324,9 @@ export const NotificationProvider = ({
                 event: "INSERT",
                 schema: "public",
                 table: "notifications",
+                // Reduce el stream al sujeto operativo actual. La validación
+                // de tenant se mantiene también en el callback como defensa extra.
+                filter: `target_user_id=eq.${userId}`,
               },
               (payload) => {
                 console.log(
@@ -381,11 +400,17 @@ export const NotificationProvider = ({
                   cleanNotifUser ===
                   cleanUserId;
 
+                const isForCurrentTenant =
+                  !cleanUserTenant ||
+                  cleanNotifTenant ===
+                    cleanUserTenant;
+
                 if (
-                  !isForCurrentUser
+                  !isForCurrentUser ||
+                  !isForCurrentTenant
                 ) {
                   console.log(
-                    "⏭️ Notificación ignorada: no corresponde al usuario actual",
+                    "⏭️ Notificación ignorada: no corresponde al usuario/contexto actual",
                   );
                   return;
                 }
