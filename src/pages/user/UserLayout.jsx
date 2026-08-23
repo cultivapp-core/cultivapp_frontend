@@ -1,7 +1,7 @@
 import { Outlet } from "react-router-dom";
 
 import UserSidebar from "./UserSidebar";
-import UserTopbar from "./UserTopbar";
+import UserTopbar from "./UserTopBar";
 
 const UserLayout = () => {
   return (
