@@ -34,6 +34,12 @@ import ResetPassword from "./pages/auth/ResetPassword"
 
 import UserCredential from "./components/UserCredential"
 
+/* ================= GERENCIA ================= */
+
+import GerenciaContextSelector from "./pages/gerencia/GerenciaContextSelector"
+
+import GerenciaContextSwitcher from "./components/gerencia/GerenciaContextSwitcher"
+
 // --- COMPONENTES GLOBALES ---
 
 import ProtectedRoute from "./components/ProtectedRoute"
@@ -669,14 +675,11 @@ const HeartbeatMonitor = () => {
       socket.io.off("reconnect", handleReconnect);
 
       /**
+       * No desconectamos aquí porque este cleanup también puede
+       * ejecutarse durante navegación interna o recargas.
+       * El cierre real se gestiona desde logout() en AuthContext.
+       */
 
- * No desconectamos aquí porque este cleanup también puede
-
- * ejecutarse durante navegación interna o recargas.
-
- * El cierre real se gestiona desde logout() en AuthContext.
-
- */
 
     };
 
@@ -696,21 +699,20 @@ function App() {
 
         <BrowserRouter>
 
-          {/**
+          {/*
+           * Monitor global único.
+           * Mantiene useOfflineSync activo durante toda la sesión,
+           * incluso cuando el usuario cambia de pantalla.
+           */}
 
- * Monitor global único.
-
- * Mantiene useOfflineSync activo durante toda la sesión,
-
- * incluso cuando el usuario cambia de pantalla.
-
- */}
 
           <OfflineSyncMonitor />
 
           <RegionalOfflineSyncMonitor />
 
           <HeartbeatMonitor />
+
+          <GerenciaContextSwitcher />
 
           <Toaster
 
@@ -757,6 +759,16 @@ function App() {
           <Routes>
 
             <Route path="/" element={<Login />} />
+
+            {/* GERENCIA - SELECTOR MULTIEMPRESA / MULTIPERFIL */}
+            <Route
+              path="/gerencia"
+              element={
+                <ProtectedRoute>
+                  <GerenciaContextSelector />
+                </ProtectedRoute>
+              }
+            />
 
             <Route path="/forgot-password" element={<ForgotPassword />} />
 

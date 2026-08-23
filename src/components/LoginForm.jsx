@@ -12,29 +12,29 @@ const LoginAlertModal = ({ isOpen, type = "error", title, message, onClose }) =>
       iconText: "text-red-500",
       button: "bg-red-500 hover:bg-red-600",
       ring: "ring-red-100",
-      icon: "!"
+      icon: "!",
     },
     warning: {
       iconBg: "bg-amber-50",
       iconText: "text-amber-500",
       button: "bg-amber-500 hover:bg-amber-600",
       ring: "ring-amber-100",
-      icon: "!"
+      icon: "!",
     },
     info: {
       iconBg: "bg-blue-50",
       iconText: "text-blue-500",
       button: "bg-blue-600 hover:bg-blue-700",
       ring: "ring-blue-100",
-      icon: "i"
+      icon: "i",
     },
     success: {
       iconBg: "bg-green-50",
       iconText: "text-[#87be00]",
       button: "bg-[#87be00] hover:bg-[#76a600]",
       ring: "ring-green-100",
-      icon: "✓"
-    }
+      icon: "✓",
+    },
   };
 
   const currentStyle = styles[type] || styles.error;
@@ -77,7 +77,9 @@ const LoginAlertModal = ({ isOpen, type = "error", title, message, onClose }) =>
             className="w-full max-w-sm rounded-[2rem] bg-white p-6 shadow-2xl border border-gray-100 font-[Outfit]"
           >
             <div className="flex flex-col items-center text-center font-[Outfit]">
-              <div className={`w-16 h-16 rounded-2xl ${currentStyle.iconBg} ${currentStyle.iconText} ${currentStyle.ring} ring-8 flex items-center justify-center text-3xl font-black mb-6`}>
+              <div
+                className={`w-16 h-16 rounded-2xl ${currentStyle.iconBg} ${currentStyle.iconText} ${currentStyle.ring} ring-8 flex items-center justify-center text-3xl font-black mb-6`}
+              >
                 {currentStyle.icon}
               </div>
 
@@ -117,7 +119,7 @@ const LoginForm = () => {
     isOpen: false,
     type: "error",
     title: "",
-    message: ""
+    message: "",
   });
 
   const { login } = useAuth();
@@ -143,50 +145,50 @@ const LoginForm = () => {
         type: "warning",
         title: "Sesión cerrada",
         message:
-          "Tu sesión se cerró porque se inició sesión con tu cuenta en otro dispositivo."
+          "Tu sesión se cerró porque se inició sesión con tu cuenta en otro dispositivo.",
       },
       session_expired: {
         type: "warning",
         title: "Sesión expirada",
         message:
-          "Tu sesión expiró por seguridad. Ingresa nuevamente para continuar."
+          "Tu sesión expiró por seguridad. Ingresa nuevamente para continuar.",
       },
       token_expired: {
         type: "warning",
         title: "Sesión expirada",
         message:
-          "Tu sesión expiró por seguridad. Ingresa nuevamente para continuar."
+          "Tu sesión expiró por seguridad. Ingresa nuevamente para continuar.",
       },
       unauthorized: {
         type: "warning",
         title: "Acceso no autorizado",
         message:
-          "Debes iniciar sesión nuevamente para acceder a este módulo."
+          "Debes iniciar sesión nuevamente para acceder a este módulo.",
       },
       forbidden: {
         type: "warning",
         title: "Acceso denegado",
         message:
-          "Tu cuenta no tiene permisos para acceder al módulo solicitado."
+          "Tu cuenta no tiene permisos para acceder al módulo solicitado.",
       },
       account_disabled: {
         type: "warning",
         title: "Cuenta deshabilitada",
         message:
-          "Tu cuenta se encuentra deshabilitada. Comunícate con un administrador."
+          "Tu cuenta se encuentra deshabilitada. Comunícate con un administrador.",
       },
       company_disabled: {
         type: "warning",
         title: "Empresa no disponible",
         message:
-          "La empresa asociada a tu cuenta se encuentra inactiva o suspendida."
+          "La empresa asociada a tu cuenta se encuentra inactiva o suspendida.",
       },
       contract_expired: {
         type: "warning",
         title: "Contrato vencido",
         message:
-          "Tu contrato laboral se encuentra vencido. Comunícate con un administrador para regularizar tu acceso."
-      }
+          "Tu contrato laboral se encuentra vencido. Comunícate con un administrador para regularizar tu acceso.",
+      },
     };
 
     const alertConfig = authAlerts[authError];
@@ -206,7 +208,7 @@ const LoginForm = () => {
     if (!cleanEmail) {
       showLoginAlert({
         title: "Correo requerido",
-        message: "Debes ingresar tu correo electrónico para continuar."
+        message: "Debes ingresar tu correo electrónico para continuar.",
       });
       return false;
     }
@@ -216,7 +218,7 @@ const LoginForm = () => {
     if (!emailPattern.test(cleanEmail)) {
       showLoginAlert({
         title: "Correo incorrecto",
-        message: "Ingresa un correo electrónico válido."
+        message: "Ingresa un correo electrónico válido.",
       });
       return false;
     }
@@ -224,7 +226,7 @@ const LoginForm = () => {
     if (!cleanPassword) {
       showLoginAlert({
         title: "Contraseña requerida",
-        message: "Debes ingresar tu contraseña para continuar."
+        message: "Debes ingresar tu contraseña para continuar.",
       });
       return false;
     }
@@ -248,11 +250,12 @@ const LoginForm = () => {
       "";
 
     const normalizedCode = String(errorCode).toLowerCase();
+
     const normalizedAuthError = String(
       error?.authError ||
-      error?.response?.data?.authError ||
-      error?.data?.authError ||
-      ""
+        error?.response?.data?.authError ||
+        error?.data?.authError ||
+        "",
     ).toLowerCase();
 
     /* =========================================
@@ -269,10 +272,11 @@ const LoginForm = () => {
         type: "warning",
         title: "Contrato vencido",
         message:
-          "Tu contrato laboral se encuentra vencido. Comunícate con un administrador para regularizar tu acceso."
+          "Tu contrato laboral se encuentra vencido. Comunícate con un administrador para regularizar tu acceso.",
       });
       return;
     }
+
     /* =========================================
        SESIÓN / TOKEN EXPIRADO
     ========================================= */
@@ -289,7 +293,7 @@ const LoginForm = () => {
         type: "warning",
         title: "Sesión expirada",
         message:
-          "Tu sesión expiró por seguridad. Ingresa nuevamente para continuar."
+          "Tu sesión expiró por seguridad. Ingresa nuevamente para continuar.",
       });
       return;
     }
@@ -302,23 +306,19 @@ const LoginForm = () => {
     ========================================= */
     if (
       normalizedCode === "company_disabled" ||
-      (
-        normalizedMessage.includes("empresa") &&
-        (
-          normalizedMessage.includes("inactiva") ||
+      (normalizedMessage.includes("empresa") &&
+        (normalizedMessage.includes("inactiva") ||
           normalizedMessage.includes("inactivo") ||
           normalizedMessage.includes("deshabilitada") ||
           normalizedMessage.includes("deshabilitado") ||
           normalizedMessage.includes("suspendida") ||
-          normalizedMessage.includes("suspendido")
-        )
-      )
+          normalizedMessage.includes("suspendido")))
     ) {
       showLoginAlert({
         type: "warning",
         title: "Empresa no disponible",
         message:
-          "La empresa asociada a tu cuenta se encuentra inactiva o suspendida."
+          "La empresa asociada a tu cuenta se encuentra inactiva o suspendida.",
       });
       return;
     }
@@ -337,7 +337,7 @@ const LoginForm = () => {
         type: "warning",
         title: "Cuenta deshabilitada",
         message:
-          "Tu cuenta se encuentra deshabilitada. Comunícate con un administrador."
+          "Tu cuenta se encuentra deshabilitada. Comunícate con un administrador.",
       });
       return;
     }
@@ -355,7 +355,7 @@ const LoginForm = () => {
         type: "warning",
         title: "Demasiados intentos",
         message:
-          "Has realizado demasiados intentos de acceso. Espera unos minutos antes de volver a intentarlo."
+          "Has realizado demasiados intentos de acceso. Espera unos minutos antes de volver a intentarlo.",
       });
       return;
     }
@@ -374,7 +374,7 @@ const LoginForm = () => {
         type: "warning",
         title: "Acceso denegado",
         message:
-          "Tu cuenta no tiene permisos para acceder al módulo solicitado."
+          "Tu cuenta no tiene permisos para acceder al módulo solicitado.",
       });
       return;
     }
@@ -391,14 +391,13 @@ const LoginForm = () => {
       normalizedMessage.includes("correo no registrado")
     ) {
       showLoginAlert({
-    type: "error",
-    title: "Correo incorrecto",
-    message:
-      "El correo ingresado no está registrado. Ingresa un correo válido."
-  });
+        type: "error",
+        title: "Correo incorrecto",
+        message:
+          "El correo ingresado no está registrado. Ingresa un correo válido.",
+      });
       return;
     }
-
 
     /* =========================================
        CREDENCIALES / CONTRASEÑA INCORRECTA
@@ -411,11 +410,11 @@ const LoginForm = () => {
       normalizedMessage.includes("password")
     ) {
       showLoginAlert({
-    type: "error",
-    title: "Contraseña inválida",
-    message:
-      "La contraseña ingresada no es correcta. Favor volver a intentarlo."
-  });
+        type: "error",
+        title: "Contraseña inválida",
+        message:
+          "La contraseña ingresada no es correcta. Favor volver a intentarlo.",
+      });
       return;
     }
 
@@ -432,7 +431,7 @@ const LoginForm = () => {
         type: "warning",
         title: "Sin conexión",
         message:
-          "No fue posible conectar con el servidor. Revisa tu conexión a internet e inténtalo nuevamente."
+          "No fue posible conectar con el servidor. Revisa tu conexión a internet e inténtalo nuevamente.",
       });
       return;
     }
@@ -443,7 +442,7 @@ const LoginForm = () => {
     showLoginAlert({
       type: "error",
       title: "No se pudo iniciar sesión",
-      message
+      message,
     });
   };
 
@@ -457,7 +456,7 @@ const LoginForm = () => {
     try {
       const response = await api.post("auth/login", {
         email: email.trim(),
-        password: password.trim()
+        password: password.trim(),
       });
 
       const data = response?.data || response;
@@ -466,7 +465,7 @@ const LoginForm = () => {
 
       if (data.must_change_password) {
         toast("Debes cambiar tu contraseña antes de continuar", {
-          icon: "🔐"
+          icon: "🔐",
         });
 
         navigate("/change-password");
@@ -483,10 +482,16 @@ const LoginForm = () => {
         USER: "/usuario",
         USUARIO: "/usuario",
         MERCADERISTA_REGIONAL: "/mercaderista-regional",
-        VIEW: "/viewer"
+        VIEW: "/viewer",
+
+        // =========================================
+        // GERENCIA - SELECTOR MULTIEMPRESA / PERFIL
+        // =========================================
+        GERENCIA: "/gerencia",
       };
 
       const redirect = roleRoutes[data.user.role];
+
       navigate(redirect || "/");
     } catch (error) {
       handleLoginError(error);
@@ -526,10 +531,12 @@ const LoginForm = () => {
             <div className="flex-1 flex flex-col justify-center md:justify-start">
               <form onSubmit={handleSubmit} className="space-y-6" noValidate>
                 <div>
-                  <label htmlFor="login-email" className="block text-sm text-gray-600 mb-2">
+                  <label
+                    htmlFor="login-email"
+                    className="block text-sm text-gray-600 mb-2"
+                  >
                     Correo electrónico
                   </label>
-
                   <input
                     id="login-email"
                     type="email"
@@ -542,10 +549,12 @@ const LoginForm = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="login-password" className="block text-sm text-gray-600 mb-2">
+                  <label
+                    htmlFor="login-password"
+                    className="block text-sm text-gray-600 mb-2"
+                  >
                     Contraseña
                   </label>
-
                   <input
                     id="login-password"
                     type="password"
